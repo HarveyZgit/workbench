@@ -16,15 +16,11 @@
 
 ## 第一个工具：Markdown Comment
 
-`markdown-comment` 面向 Markdown 的审阅与协作：在渲染后的文档中划词或全文评论，由 CLI 供 AI Agent 读取、回复与解决，形成「人评论 → Agent 处理 → 原处回复」的闭环。
+`markdown-comment` 是一个以 **Markdown 文档评论** 为核心的工具：为文档和选中文本建立可重定位的评论线程，并让人和 Agent 都能读取、回复与解决它们。
 
-其计划包含三个可组合的部分：
+VS Code 扩展、CLI、Skill 和未来的其他 IDE / 本地 Web 页面，都是围绕同一评论核心的接入方式，而不是产品边界。这样评论数据、锚点和自动化流程不会被某一个编辑器绑定。
 
-- VS Code 扩展：评论预览、划词、侧栏线程与源码定位。
-- CLI：供人和 Agent 列出、回复、解决评论。
-- Skill：把评论处理流程接入不同 Agent 运行环境。
-
-当前包位已建立；迁移会在确认包边界、发布方式和本地/Codex 使用体验后进行。
+目标架构、层级边界与迁移原则见 [`docs/architecture/markdown-comment.md`](docs/architecture/markdown-comment.md)。当前包位仍处于迁移准备阶段。
 
 ## 开发
 
@@ -60,4 +56,4 @@ emo run test --filter './packages/markdown-comment'
 
 - 统一沉淀并分发个人 Skills、Rules、CLI 与 MCP 服务。
 - 为各类工具提供一致的安装、测试与发布体验。
-- 让 VS Code、Codex 等不同入口可以共享同一套 AI 工作流与数据。
+- 让 VS Code、Codex 与未来的 IDE 入口共享同一套 AI 工作流与数据。

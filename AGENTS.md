@@ -1,0 +1,43 @@
+# AI Workbench Agent Guide
+
+## Purpose
+
+This repository is a personal Monorepo for AI assets: tools, Skills, rules, CLIs, MCP services, and their shared configuration. Keep every asset independently understandable, testable, and installable.
+
+The repository is written primarily for a Chinese-speaking maintainer. User-facing documentation and product copy should normally be Chinese; use English when it is conventional for code, package metadata, or commit messages.
+
+## Source of truth
+
+- Read [README.md](README.md) for repository scope and development entry points.
+- Read [docs/architecture/markdown-comment.md](docs/architecture/markdown-comment.md) before changing `packages/markdown-comment`.
+- `packages/markdown-comment` is currently a migration landing zone. Do not treat its Rslib starter implementation as the final product architecture.
+
+## Markdown Comment design
+
+`markdown-comment` is Markdown-commenting software first. Its pure domain layer owns documents, threads, comments, anchors, relocation, and storage contracts.
+
+- CLI, VS Code, Skills, local web pages, and future IDE integrations are adapters.
+- Core code must not import `vscode`, browser globals, or a particular editor SDK.
+- Comment storage must not require VS Code to have started. Editor-specific storage is only a compatibility/import concern.
+- Skills are operating instructions for an Agent; they must invoke the public CLI/API rather than reach into private storage formats.
+- Preserve existing data when changing the stored schema. Make compatibility fields optional and provide explicit migrations where needed.
+
+## Working rules
+
+- This is an Eden Monorepo: use `emo`, never invoke `pnpm` directly. Use `emo run-pnpm` only when inspecting pnpm-specific behavior.
+- Scope commands with `--filter` whenever possible, for example `emo build --filter './packages/markdown-comment'`.
+- Prefer `rg` for searches. Respect `.gitignore`; use `rg --no-ignore` only when ignored files are intentionally in scope.
+- Do not edit the original tool repository under `~/Work/Code/corehr-fe-ai-kit` unless the task explicitly includes that repository. Its migration history and any untracked files belong to the user.
+- Keep changes narrow. Do not replace unrelated user changes or generated files.
+- Update the architecture document and relevant README when a public boundary, storage format, command, or adapter changes.
+
+## Verification
+
+Run the smallest relevant checks before handing off. For the current landing package:
+
+```sh
+emo build --filter './packages/markdown-comment'
+emo test --filter './packages/markdown-comment'
+```
+
+When the tool migration introduces new checks, document them in the package README and run the adapter-specific checks affected by the change.
