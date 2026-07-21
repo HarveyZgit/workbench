@@ -1,18 +1,16 @@
 {
+  // Webview 跑在浏览器沙箱里，用 DOM lib、不用 node types。
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "target": "ES2022",
-    "lib": ["ES2022"],
-    "outDir": "dist",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "sourceMap": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": []
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist", "src/preview/webview.ts"]
+  "include": ["src/preview/webview.ts", "src/preview/messages.ts", "src/preview/shims.d.ts"]
 }

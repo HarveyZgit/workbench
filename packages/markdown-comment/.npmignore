@@ -1,0 +1,13 @@
+# npm 发布内容控制（vsce 用 .vscodeignore，两者分开，不能写进 package.json 的 files）。
+# 发布物保留：dist/cli.js、dist/extension.js、vscode-markdown-comment.vsix、skill/、README.md、package.json
+src/
+node_modules/
+.vscode/
+*.map
+*.ts
+esbuild.mjs
+tsconfig.json
+.vscodeignore
+.gitignore
+pnpm-lock.yaml
+.tmp-*
