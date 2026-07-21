@@ -1,6 +1,6 @@
 # Markdown Comment architecture
 
-> Status: target architecture for the migration. The current `packages/markdown-comment` implementation is only a landing scaffold.
+> Status: the existing VS Code implementation has been migrated into `packages/markdown-comment`. This is the target architecture for its next refactoring phase; the current implementation remains VS Code-centred until the core is extracted.
 
 ## Product definition
 
@@ -77,7 +77,7 @@ Split these into published packages only when separate release cadence or reuse 
 
 ## Migration sequence
 
-1. Move the existing extension, CLI, tests, and Skill into this package without dropping the existing user workflow.
+1. ✅ Move the existing extension, CLI, build configuration, and Skill into this package without dropping the existing user workflow.
 2. Extract editor-neutral types, anchors, operations, and storage from the VS Code extension into the core.
 3. Make the CLI use the portable store directly; retain a one-time, safe import path for existing VS Code data.
 4. Convert the VS Code extension into an adapter over the core, preserving the rendered-preview experience.

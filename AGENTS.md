@@ -10,7 +10,7 @@ The repository is written primarily for a Chinese-speaking maintainer. User-faci
 
 - Read [README.md](README.md) for repository scope and development entry points.
 - Read [docs/architecture/markdown-comment.md](docs/architecture/markdown-comment.md) before changing `packages/markdown-comment`.
-- `packages/markdown-comment` is currently a migration landing zone. Do not treat its Rslib starter implementation as the final product architecture.
+- `packages/markdown-comment` contains the migrated VS Code implementation. It remains a legacy, VS Code-centred implementation while the editor-neutral core is extracted.
 
 ## Markdown Comment design
 
@@ -25,7 +25,7 @@ The repository is written primarily for a Chinese-speaking maintainer. User-faci
 ## Working rules
 
 - This is an Eden Monorepo: use `emo`, never invoke `pnpm` directly. Use `emo run-pnpm` only when inspecting pnpm-specific behavior.
-- Scope commands with `--filter` whenever possible, for example `emo build --filter './packages/markdown-comment'`.
+- Scope commands with `--filter` whenever possible, for example `emo run build --filter './packages/markdown-comment'`.
 - Prefer `rg` for searches. Respect `.gitignore`; use `rg --no-ignore` only when ignored files are intentionally in scope.
 - Do not edit the original tool repository under `~/Work/Code/corehr-fe-ai-kit` unless the task explicitly includes that repository. Its migration history and any untracked files belong to the user.
 - Keep changes narrow. Do not replace unrelated user changes or generated files.
@@ -33,11 +33,11 @@ The repository is written primarily for a Chinese-speaking maintainer. User-faci
 
 ## Verification
 
-Run the smallest relevant checks before handing off. For the current landing package:
+Run the smallest relevant checks before handing off. For the current Markdown Comment package:
 
 ```sh
-emo build --filter './packages/markdown-comment'
-emo test --filter './packages/markdown-comment'
+emo run build --filter './packages/markdown-comment'
+emo run check --filter './packages/markdown-comment'
 ```
 
 When the tool migration introduces new checks, document them in the package README and run the adapter-specific checks affected by the change.

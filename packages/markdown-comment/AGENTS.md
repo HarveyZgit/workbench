@@ -4,7 +4,7 @@ Read the repository-level [AGENTS.md](../../AGENTS.md) and the target [architect
 
 ## Current state
 
-This directory is a landing scaffold for a migration. The present Rslib/Rstest sample (`src/index.ts`) does **not** describe the future product and should not shape new APIs. Keep it working until it is deliberately replaced as part of the migration.
+The current implementation has been migrated from the former standalone VS Code package. It is functional but still VS Code-centred: `src/anchor.ts` uses VS Code ranges and `src/storage.ts` follows the existing VS Code global-storage pointer. Treat the architecture document as the destination, not a claim about the current source layout.
 
 ## Design constraints
 
@@ -19,8 +19,8 @@ This directory is a landing scaffold for a migration. The present Rslib/Rstest s
 Use Eden Monorepo commands from the repository root:
 
 ```sh
-emo build --filter './packages/markdown-comment'
-emo test --filter './packages/markdown-comment'
+emo run build --filter './packages/markdown-comment'
+emo run check --filter './packages/markdown-comment'
 ```
 
 Do not run `pnpm` directly in this repository. When the migration changes the build or test setup, update this file and the package README in the same change.

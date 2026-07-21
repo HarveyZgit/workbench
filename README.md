@@ -8,7 +8,7 @@
 
 | 路径 | 用途 | 状态 |
 | --- | --- | --- |
-| `packages/markdown-comment` | Markdown 评论工具的目标包位；将承接 VS Code 扩展、CLI 与 Agent Skill | 迁移准备中 |
+| `packages/markdown-comment` | Markdown 评论工具：已迁入 VS Code 扩展、CLI 与 Agent Skill | 架构迁移中 |
 | `packages/config` | 可复用的 TypeScript、Rslib 与 Rstest 配置 | 已启用 |
 | `infra` | Monorepo 依赖、Git hooks、提交规范与通用工程配置 | 已启用 |
 
@@ -20,7 +20,7 @@
 
 VS Code 扩展、CLI、Skill 和未来的其他 IDE / 本地 Web 页面，都是围绕同一评论核心的接入方式，而不是产品边界。这样评论数据、锚点和自动化流程不会被某一个编辑器绑定。
 
-目标架构、层级边界与迁移原则见 [`docs/architecture/markdown-comment.md`](docs/architecture/markdown-comment.md)。当前包位仍处于迁移准备阶段。
+目标架构、层级边界与迁移原则见 [`docs/architecture/markdown-comment.md`](docs/architecture/markdown-comment.md)。现有 VS Code 实现已迁入；编辑器无关核心的抽取是下一阶段工作。
 
 ## 开发
 
@@ -35,14 +35,14 @@ emo install
 
 ```sh
 emo build
-emo test
+emo run check
 ```
 
 或在仓库根目录按包筛选：
 
 ```sh
 emo run build --filter './packages/markdown-comment'
-emo run test --filter './packages/markdown-comment'
+emo run check --filter './packages/markdown-comment'
 ```
 
 ## 约定
