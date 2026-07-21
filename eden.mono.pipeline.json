@@ -1,0 +1,7 @@
+{
+  "$schema": "https://sf-unpkg-src.bytedance.net/@ies/eden-monorepo@3.11.1/lib/mono.pipeline.schema.json",
+  "scene": {
+    "gitlab": {},
+    "scm": {}
+  }
+}

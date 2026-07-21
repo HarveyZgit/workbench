@@ -1,0 +1,29 @@
+{
+  "$schema": "https://sf-unpkg-src.bytedance.net/@ies/eden-monorepo@3.11.1/lib/monorepo.schema.json",
+  "config": {
+    "strictNodeModules": true,
+    "infraDir": "infra",
+    "pnpmVersion": "10.12.1",
+    "edenMonoVersion": "3.11.1",
+    "scriptName": {
+      "test": [
+        "test"
+      ],
+      "build": [
+        "build"
+      ],
+      "start": [
+        "build:watch",
+        "dev",
+        "start",
+        "serve"
+      ]
+    }
+  },
+  "packages": [
+    {
+      "path": "packages/config",
+      "shouldPublish": false
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@byted-emo/config",
+  "version": "1.0.0",
+  "private": true,
+  "description": "",
+  "main": ".eslintrc.js",
+  "scripts": {},
+  "dependencies": {
+    "eslint": "^8.57.0",
+    "@byted/eslint-config-standard": "^3.1.1",
+    "@byted/eslint-config-standard-react": "^2.1.1",
+    "@byted/eslint-config-standard-ts": "^3.1.1",
+    "eslint-plugin-prettier": "~5.2.2",
+    "prettier": "^3.4.2",
+    "@rstest/core": "^0.10.5",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@types/node": "18.6.2",
+    "happy-dom": "^20.10.3"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

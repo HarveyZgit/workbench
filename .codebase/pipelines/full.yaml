@@ -1,0 +1,25 @@
+name: Full Pipeline - Before Merge
+trigger: change
+jobs:
+  emo-full:
+    image: hub.byted.org/base/ci_nodejs_22:297bea689b0966fcbdb2daff6b39ed6b
+    steps:
+     - name: Init
+       commands:
+         - npm config set registry https://bnpm.byted.org
+         - npm install -g @ies/eden-monorepo@3.11.1
+     - name: Install
+       commands:
+         - emo install
+     - name: Lint
+       commands:
+         - emo run lint
+     - name: Format
+       commands:
+         - emo run format:ci --infra
+     - name: Build
+       commands:
+         - emo run build
+     - name: Test
+       commands:
+         - emo run test

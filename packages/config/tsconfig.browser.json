@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "strictNullChecks":true,
+    "outDir": "dist",
+    "target": "es6",
+    "declaration": true,
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "sourceMap": true
+  }
+}
