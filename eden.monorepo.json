@@ -24,6 +24,10 @@
     {
       "path": "packages/config",
       "shouldPublish": false
+    },
+    {
+      "path": "packages/markdown-comment",
+      "shouldPublish": true
     }
   ]
 }
