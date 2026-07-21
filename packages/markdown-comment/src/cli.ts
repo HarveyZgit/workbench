@@ -268,7 +268,7 @@ async function cmdInit(): Promise<void> {
   }
 
   if (!flags.has('--no-extension')) {
-    const vsix = path.join(pkgRoot, 'vscode-markdown-comment.vsix');
+    const vsix = path.join(pkgRoot, 'dist', 'vscode-markdown-comment.vsix');
     if (!fs.existsSync(vsix)) {
       const vsce = path.join(pkgRoot, 'node_modules', '.bin', 'vsce');
       process.stdout.write('打包 vsix…\n');
@@ -285,7 +285,7 @@ async function cmdInit(): Promise<void> {
   if (skillTargets.length) {
     // CLI 已全局可用就用 mdc，否则回退绝对路径，保证 Agent 一定能调用。
     const cliCmd = hasGlobalCli() ? 'mdc' : `node ${path.join(pkgRoot, 'dist', 'cli.js')}`;
-    const body = fs.readFileSync(path.join(pkgRoot, 'skill', 'SKILL.md'), 'utf8').replaceAll('{{CLI}}', cliCmd);
+    const body = fs.readFileSync(path.join(pkgRoot, 'dist', 'resources', 'skills', 'markdown-comment', 'SKILL.md'), 'utf8').replaceAll('{{CLI}}', cliCmd);
     for (const dir of skillTargets) {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'SKILL.md'), body);

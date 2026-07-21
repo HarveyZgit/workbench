@@ -1,11 +1,10 @@
 .vscode/**
 src/**
 node_modules/**
-examples/**
-skill/**
 esbuild.mjs
 tsconfig.json
 pnpm-lock.yaml
 .gitignore
 **/*.map
 **/*.ts
+**/*.vsix

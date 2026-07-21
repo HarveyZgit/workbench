@@ -186,8 +186,8 @@
     "watch": "node esbuild.mjs --watch",
     "setup": "node esbuild.mjs --production && node dist/cli.js init",
     "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
-    "package": "vsce package --no-dependencies -o vscode-markdown-comment.vsix",
-    "prepack": "node esbuild.mjs --production && vsce package --no-dependencies -o vscode-markdown-comment.vsix"
+    "package": "vsce package --no-dependencies -o dist/vscode-markdown-comment.vsix",
+    "prepack": "node esbuild.mjs --production && vsce package --no-dependencies -o dist/vscode-markdown-comment.vsix"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",

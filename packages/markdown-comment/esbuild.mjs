@@ -1,7 +1,18 @@
 import esbuild from 'esbuild';
+import { copyFile, mkdir } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
+const packageRoot = path.dirname(fileURLToPath(import.meta.url));
+const skillSource = path.resolve(packageRoot, '../../resources/skills/markdown-comment/SKILL.md');
+const skillOutput = path.join(packageRoot, 'dist/resources/skills/markdown-comment/SKILL.md');
+
+async function copySkill() {
+  await mkdir(path.dirname(skillOutput), { recursive: true });
+  await copyFile(skillSource, skillOutput);
+}
 
 /** Node 侧：extension.js 由 VS Code 宿主加载；cli.js 作为 markdown-comment 命令给 Agent 用。 */
 /** @type {import('esbuild').BuildOptions} */
@@ -35,9 +46,11 @@ const webviewOptions = {
 };
 
 if (watch) {
+  await copySkill();
   const ctxs = await Promise.all([esbuild.context(nodeOptions), esbuild.context(webviewOptions)]);
   await Promise.all(ctxs.map((c) => c.watch()));
   console.log('[esbuild] watching…');
 } else {
   await Promise.all([esbuild.build(nodeOptions), esbuild.build(webviewOptions)]);
+  await copySkill();
 }

@@ -11,6 +11,7 @@ The repository is written primarily for a Chinese-speaking maintainer. User-faci
 - Read [README.md](README.md) for repository scope and development entry points.
 - Read [docs/architecture/markdown-comment.md](docs/architecture/markdown-comment.md) before changing `packages/markdown-comment`.
 - `packages/markdown-comment` contains the migrated VS Code implementation. It remains a legacy, VS Code-centred implementation while the editor-neutral core is extracted.
+- Skill source files live in `resources/skills/<skill-name>/SKILL.md`. A distributable package may copy its Skill into `dist/resources/` during its build.
 
 ## Markdown Comment design
 

@@ -2,7 +2,6 @@
 # 发布物保留：dist/cli.js、dist/extension.js、vscode-markdown-comment.vsix、skill/、README.md、package.json
 src/
 node_modules/
-examples/
 .vscode/
 *.map
 *.ts
