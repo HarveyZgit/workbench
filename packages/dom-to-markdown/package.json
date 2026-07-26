@@ -1,0 +1,28 @@
+{
+  "name": "dom-to-markdown",
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rslib build",
+    "dev": "rslib build --watch",
+    "test": "rstest",
+    "test:watch": "rstest --watch"
+  },
+  "devDependencies": {
+    "@rslib/core": "^0.23.0",
+    "@rstest/adapter-rslib": "^0.10.5",
+    "@rstest/core": "^0.10.5",
+    "@types/node": "^24.10.9",
+    "typescript": "^6.0.3"
+  }
+}

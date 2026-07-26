@@ -28,6 +28,10 @@
     {
       "path": "packages/markdown-comment",
       "shouldPublish": true
+    },
+    {
+      "path": "packages/dom-to-markdown",
+      "shouldPublish": true
     }
   ]
 }
