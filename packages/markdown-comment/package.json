@@ -22,7 +22,8 @@
     "mdc": "./dist/cli.js"
   },
   "activationEvents": [
-    "onLanguage:markdown"
+    "onLanguage:markdown",
+    "onStartupFinished"
   ],
   "contributes": {
     "commands": [
@@ -87,24 +88,24 @@
       "editor/title": [
         {
           "command": "markdownComment.openPreview",
-          "when": "editorLangId == markdown",
+          "when": "editorLangId == markdown || resourceExtname =~ /\\.(md|markdown|mkd|mkdn|mdwn|mdown|markdn|mdtxt|mdtext)$/i",
           "group": "navigation"
         }
       ],
       "editor/context": [
         {
           "command": "markdownComment.addComment",
-          "when": "editorLangId == markdown && config.markdownComment.sourceComments.enabled",
+          "when": "(editorLangId == markdown || resourceExtname =~ /\\.(md|markdown|mkd|mkdn|mdwn|mdown|markdn|mdtxt|mdtext)$/i) && config.markdownComment.sourceComments.enabled",
           "group": "1_modification"
         },
         {
           "command": "markdownComment.addDocumentComment",
-          "when": "editorLangId == markdown && config.markdownComment.sourceComments.enabled",
+          "when": "(editorLangId == markdown || resourceExtname =~ /\\.(md|markdown|mkd|mkdn|mdwn|mdown|markdn|mdtxt|mdtext)$/i) && config.markdownComment.sourceComments.enabled",
           "group": "1_modification"
         },
         {
           "command": "markdownComment.openPreview",
-          "when": "editorLangId == markdown",
+          "when": "editorLangId == markdown || resourceExtname =~ /\\.(md|markdown|mkd|mkdn|mdwn|mdown|markdn|mdtxt|mdtext)$/i",
           "group": "1_modification"
         }
       ],
@@ -167,7 +168,7 @@
         "command": "markdownComment.addComment",
         "key": "ctrl+alt+m",
         "mac": "cmd+alt+m",
-        "when": "editorLangId == markdown && editorTextFocus && config.markdownComment.sourceComments.enabled"
+        "when": "(editorLangId == markdown || resourceExtname =~ /\\.(md|markdown|mkd|mkdn|mdwn|mdown|markdn|mdtxt|mdtext)$/i) && editorTextFocus && config.markdownComment.sourceComments.enabled"
       }
     ],
     "configuration": {
