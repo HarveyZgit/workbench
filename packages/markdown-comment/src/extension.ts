@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { writePointer, loadDoc, saveDoc, fileHash } from './storage';
+import { isMarkdownDocument } from './markdown-lang';
 import type { StoredAnchor, StoredComment, StoredThread } from './types';
 import { buildAnchorFromRange, relocate } from './anchor';
 import { openPreview } from './preview/panel';
@@ -156,7 +157,7 @@ function toMarkdownComment(sc: StoredComment, thread: vscode.CommentThread): Mar
 
 function loadForDocument(doc: vscode.TextDocument): void {
   // 关闭源码内联评论：不在源码编辑器里渲染已有评论（也就不会标记 loaded / 不会写盘）。
-  if (!sourceCommentsEnabled() || doc.languageId !== 'markdown' || doc.uri.scheme !== 'file') {
+  if (!sourceCommentsEnabled() || doc.uri.scheme !== 'file' || !isMarkdownDocument(doc.languageId, doc.uri.fsPath)) {
     return;
   }
   const k = keyOf(doc.uri);
@@ -285,7 +286,7 @@ function startThread(kind: 'selection' | 'document'): void {
     return;
   }
   const editor = vscode.window.activeTextEditor;
-  if (!editor || editor.document.languageId !== 'markdown') {
+  if (!editor || !isMarkdownDocument(editor.document.languageId, editor.document.uri.fsPath)) {
     vscode.window.showInformationMessage('请在 Markdown 文件中操作');
     return;
   }
@@ -415,7 +416,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   controller.commentingRangeProvider = {
     provideCommentingRanges(document) {
-      if (!sourceCommentsEnabled() || document.languageId !== 'markdown' || document.uri.scheme !== 'file') {
+      if (!sourceCommentsEnabled() || document.uri.scheme !== 'file' || !isMarkdownDocument(document.languageId, document.uri.fsPath)) {
         return [];
       }
       return [new vscode.Range(0, 0, Math.max(0, document.lineCount - 1), 0)];

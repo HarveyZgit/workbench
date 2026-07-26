@@ -6,6 +6,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { loadDoc, saveDoc, fileHash } from '../storage';
+import { isMarkdownDocument } from '../markdown-lang';
 import { buildAnchorFromRange, mapRenderedSelectionToRange, relocate } from '../anchor';
 import type { StoredDocument, StoredThread } from '../types';
 import type { HostToWebview, RenderedSelection, WebviewToHost, WireThread } from './messages';
@@ -272,7 +273,7 @@ function buildHtml(webview: vscode.Webview, scriptUri: vscode.Uri, title: string
 
 export function openPreview(context: vscode.ExtensionContext, editor?: vscode.TextEditor): void {
   const ed = editor ?? vscode.window.activeTextEditor;
-  if (!ed || ed.document.languageId !== 'markdown' || ed.document.uri.scheme !== 'file') {
+  if (!ed || ed.document.uri.scheme !== 'file' || !isMarkdownDocument(ed.document.languageId, ed.document.uri.fsPath)) {
     vscode.window.showInformationMessage('请在 Markdown 文件中打开评论预览');
     return;
   }
