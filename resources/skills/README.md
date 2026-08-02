@@ -9,7 +9,7 @@
 | **纯 workflow skill** | `SKILL.md` 里没有 `{{ }}` 占位符，纯操作指令 | `scripts/link-skills.sh` 软链，改完即生效 |
 | **包绑定型 skill** | `SKILL.md` 含 `{{CLI}}` 等占位符，需在所属包 build 时替换真实路径后拷贝安装 | 由所属 package 的 build 负责，`link-skills.sh` 会跳过 |
 
-例：`review-and-commit` 是纯 workflow skill；`markdown-comment` 是包绑定型（CLI 路径 build 时注入）。
+例：`review-and-commit` 和 `session-handoff` 是纯 workflow skill；`markdown-comment` 是包绑定型（CLI 路径 build 时注入）。
 
 ## 目录约定
 

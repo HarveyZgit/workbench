@@ -121,6 +121,8 @@ for skill_path in "$SKILLS_SRC"/*/; do
   name="$(basename "$skill_path")"
   skill_path="${skill_path%/}"
 
+  [[ -f "$skill_path/SKILL.md" ]] || continue
+
   log ""
   log "skill: $name"
 

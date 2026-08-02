@@ -1,0 +1,11 @@
+{
+  "eval_id": 3,
+  "eval_name": "stop-on-blocking-drift",
+  "prompt": "评测准备：先从 Skill 根目录运行 `python3 evals/setup_eval_workspace.py resume-drift <一个不存在的临时目录>`，然后在输出的临时 Git 仓库中执行任务。任务：按 HANDOFF-export-retry.md 接着做。注意我现在切到了另一个分支，而且 handoff 里作为修改起点的 src/retry.ts 已经不存在。",
+  "assertions": [
+    "在执行原 Immediate Next Action 前核对 branch 和关键文件。",
+    "明确指出 branch 不匹配和 src/retry.ts 缺失两项差异。",
+    "没有修改 retry-v2.ts，也没有伪造或重建缺失文件。",
+    "只询问解决阻断所需的最小问题，不复述整份 Handoff。"
+  ]
+}

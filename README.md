@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | `packages/markdown-comment` | Markdown 评论工具：已迁入 VS Code 扩展、CLI 与 Agent Skill | 架构迁移中 |
 | `packages/config` | 可复用的 TypeScript、Rslib 与 Rstest 配置 | 已启用 |
-| `resources/skills` | 可复用的 Agent Skill 源文件（`markdown-comment`、`review-and-commit`），经 `scripts/link-skills.sh` 分发到本机各 Agent | 已启用 |
+| `resources/skills` | 可复用的 Agent Skill 源文件（`markdown-comment`、`review-and-commit`、`session-handoff`），经 `scripts/link-skills.sh` 分发到本机各 Agent | 已启用 |
 | `infra` | Monorepo 依赖、Git hooks、提交规范与通用工程配置 | 已启用 |
 
 后续资产按类型放入清晰的顶层目录或独立 package；每个可发布/可安装的工具都应有自己的 README、使用入口和验证方式。
