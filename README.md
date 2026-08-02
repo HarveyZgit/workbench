@@ -10,7 +10,8 @@
 | --- | --- | --- |
 | `packages/markdown-comment` | Markdown 评论工具：已迁入 VS Code 扩展、CLI 与 Agent Skill | 架构迁移中 |
 | `packages/config` | 可复用的 TypeScript、Rslib 与 Rstest 配置 | 已启用 |
-| `resources/skills` | 可复用的 Agent Skill 源文件 | 已启用 |
+| `resources/skills` | 可复用的 Agent Skill 源文件（`markdown-comment`、`review-and-commit`、`session-handoff`），经 `scripts/link-skills.sh` 分发到本机各 Agent | 已启用 |
+| `resources/evals` | 按 Skill 隔离的评测定义、夹具、测试与 iteration 产物 | 已启用 |
 | `infra` | Monorepo 依赖、Git hooks、提交规范与通用工程配置 | 已启用 |
 
 后续资产按类型放入清晰的顶层目录或独立 package；每个可发布/可安装的工具都应有自己的 README、使用入口和验证方式。
@@ -50,6 +51,7 @@ emo run check --filter './packages/markdown-comment'
 
 - 新资产优先做成边界明确、可单独验证的 package。
 - 面向 Agent 的能力同时提供简洁的人类文档和可执行的 Skill/CLI 入口。
+- 纯 workflow Skill 用 `scripts/link-skills.sh` 软链到本机各 Agent 目录，安装与约定见 [`resources/skills/README.md`](resources/skills/README.md)。
 - 不把个人运行时数据、构建产物或本机配置提交进仓库。
 - 变更应附带适当的测试或可复现验证命令。
 

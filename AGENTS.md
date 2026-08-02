@@ -11,7 +11,7 @@ The repository is written primarily for a Chinese-speaking maintainer. User-faci
 - Read [README.md](README.md) for repository scope and development entry points.
 - Read [docs/architecture/markdown-comment.md](docs/architecture/markdown-comment.md) before changing `packages/markdown-comment`.
 - `packages/markdown-comment` contains the migrated VS Code implementation. It remains a legacy, VS Code-centred implementation while the editor-neutral core is extracted.
-- Skill source files live in `resources/skills/<skill-name>/SKILL.md`. A distributable package may copy its Skill into `dist/resources/` during its build.
+- Skill source files live in `resources/skills/<skill-name>/SKILL.md`. See [resources/skills/README.md](resources/skills/README.md) for the two skill types (pure workflow vs package-bound `{{ }}`) and the install topology. Pure workflow skills are symlinked into `~/.agents/skills` (authoritative), `~/.trae/skills`, and `~/.claude/skills` via `scripts/link-skills.sh`; package-bound skills copy their Skill into `dist/resources/` during their build.
 
 ## Markdown Comment design
 

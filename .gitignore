@@ -35,6 +35,10 @@ build/Release
 node_modules/
 jspm_packages/
 
+# Python bytecode
+__pycache__/
+*.py[cod]
+
 # Optional npm cache directory
 .npm
 
@@ -85,3 +89,7 @@ output_resource
 tsconfig.tsbuildinfo
 
 .temp
+
+# Eval fixtures intentionally exercise repository instruction discovery.
+!resources/evals/session-handoff/fixtures/resume-compatible/AGENTS.md
+!resources/evals/session-handoff/fixtures/resume-drift/AGENTS.md

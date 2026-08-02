@@ -2,7 +2,6 @@
   "compilerOptions": {
     "lib": ["ES2022"],
     "noEmit": true,
-    "rootDir": "src",
     "skipLibCheck": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
@@ -10,5 +9,5 @@
     "useDefineForClassFields": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src"]
+  "include": ["tests", "rstest.config.ts"]
 }
