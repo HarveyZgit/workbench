@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).with_name("setup_eval_workspace.py")
+SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "setup_eval_workspace.py"
 
 
 class SetupEvalWorkspaceTest(unittest.TestCase):

@@ -10,7 +10,8 @@
       2,
       3
     ],
-    "runs_per_configuration": 1
+    "runs_per_configuration": 1,
+    "eval_path": "/Users/bytedance/Work/Code/workbench/resources/evals/session-handoff"
   },
   "runs": [
     {
@@ -175,7 +176,7 @@
     "All three with-skill smoke evals passed their assertions.",
     "No independent without-skill baseline was run; this is a single-configuration smoke evaluation.",
     "Timing and token metrics are intentionally omitted rather than reconstructed.",
-    "Each eval prompt explicitly runs setup_eval_workspace.py; setup only replaces marked directories with --replace.",
+    "Each eval prompt explicitly runs resources/evals/session-handoff/scripts/setup_eval_workspace.py; setup only replaces marked directories with --replace.",
     "--check-state requires valid=true, structure_valid=true, and state_compatible=true, and exits non-zero on drift.",
     "Review qualitative outputs before treating the 100% pass rate as comparative evidence."
   ]

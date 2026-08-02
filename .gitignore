@@ -91,5 +91,5 @@ tsconfig.tsbuildinfo
 .temp
 
 # Eval fixtures intentionally exercise repository instruction discovery.
-!resources/skills/session-handoff/evals/fixtures/resume-compatible/AGENTS.md
-!resources/skills/session-handoff/evals/fixtures/resume-drift/AGENTS.md
+!resources/evals/session-handoff/fixtures/resume-compatible/AGENTS.md
+!resources/evals/session-handoff/fixtures/resume-drift/AGENTS.md

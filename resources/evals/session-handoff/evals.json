@@ -3,13 +3,13 @@
   "evals": [
     {
       "id": 1,
-      "prompt": "评测准备：先从 Skill 根目录运行 `python3 evals/setup_eval_workspace.py create <一个不存在的临时目录>`，然后在输出的临时 Git 仓库中执行任务。任务：我们正在修复导出任务的重试逻辑。我已经决定不要改 API schema，也不要为了测试通过放宽校验。当前有未提交改动，单测还剩一个失败。请写一份 handoff，让任意新会话可以直接接着做；我没有指定输出路径。",
+      "prompt": "评测准备：先从仓库根目录运行 `python3 resources/evals/session-handoff/scripts/setup_eval_workspace.py create <一个不存在的临时目录>`，然后在输出的临时 Git 仓库中执行任务。任务：我们正在修复导出任务的重试逻辑。我已经决定不要改 API schema，也不要为了测试通过放宽校验。当前有未提交改动，单测还剩一个失败。请写一份 handoff，让任意新会话可以直接接着做；我没有指定输出路径。",
       "expected_output": "在仓库根目录 .tmp/HANDOFF-<topic>.md 创建自包含 Handoff，准确记录用户约束、工作区快照、失败验证、首个未完成任务和可直接执行的下一动作，并通过校验器。",
       "files": [
-        "evals/setup_eval_workspace.py",
-        "evals/fixtures/resume-compatible/AGENTS.md",
-        "evals/fixtures/resume-compatible/src/retry.ts",
-        "evals/fixtures/resume-compatible/test/retry.test.mjs"
+        "scripts/setup_eval_workspace.py",
+        "fixtures/resume-compatible/AGENTS.md",
+        "fixtures/resume-compatible/src/retry.ts",
+        "fixtures/resume-compatible/test/retry.test.mjs"
       ],
       "expectations": [
         "Handoff 写入仓库根目录的 .tmp/HANDOFF-<topic>.md，而不是 .claude、全局目录或聊天回复正文。",
@@ -22,14 +22,14 @@
     },
     {
       "id": 2,
-      "prompt": "评测准备：先从 Skill 根目录运行 `python3 evals/setup_eval_workspace.py resume-compatible <一个不存在的临时目录>`，然后在输出的临时 Git 仓库中执行任务。任务：使用仓库中的 HANDOFF-export-retry.md 继续工作。当前仓库状态与文档一致，没有未回答问题；不要给我讲背景，直接开始。",
+      "prompt": "评测准备：先从仓库根目录运行 `python3 resources/evals/session-handoff/scripts/setup_eval_workspace.py resume-compatible <一个不存在的临时目录>`，然后在输出的临时 Git 仓库中执行任务。任务：使用仓库中的 HANDOFF-export-retry.md 继续工作。当前仓库状态与文档一致，没有未回答问题；不要给我讲背景，直接开始。",
       "expected_output": "完整读取 Handoff 和仓库规则，完成最小状态核对后直接执行第一个未完成任务，不询问是否继续，也不复述长摘要。",
       "files": [
-        "evals/setup_eval_workspace.py",
-        "evals/fixtures/resume-compatible/HANDOFF-export-retry.md",
-        "evals/fixtures/resume-compatible/AGENTS.md",
-        "evals/fixtures/resume-compatible/src/retry.ts",
-        "evals/fixtures/resume-compatible/test/retry.test.mjs"
+        "scripts/setup_eval_workspace.py",
+        "fixtures/resume-compatible/HANDOFF-export-retry.md",
+        "fixtures/resume-compatible/AGENTS.md",
+        "fixtures/resume-compatible/src/retry.ts",
+        "fixtures/resume-compatible/test/retry.test.mjs"
       ],
       "expectations": [
         "读取 Handoff 和适用的 AGENTS.md 后再修改代码。",
@@ -41,13 +41,13 @@
     },
     {
       "id": 3,
-      "prompt": "评测准备：先从 Skill 根目录运行 `python3 evals/setup_eval_workspace.py resume-drift <一个不存在的临时目录>`，然后在输出的临时 Git 仓库中执行任务。任务：按 HANDOFF-export-retry.md 接着做。注意我现在切到了另一个分支，而且 handoff 里作为修改起点的 src/retry.ts 已经不存在。",
+      "prompt": "评测准备：先从仓库根目录运行 `python3 resources/evals/session-handoff/scripts/setup_eval_workspace.py resume-drift <一个不存在的临时目录>`，然后在输出的临时 Git 仓库中执行任务。任务：按 HANDOFF-export-retry.md 接着做。注意我现在切到了另一个分支，而且 handoff 里作为修改起点的 src/retry.ts 已经不存在。",
       "expected_output": "识别 branch 和关键文件的阻断性漂移，不盲目执行原命令；只报告具体差异并提出继续所需的最小问题。",
       "files": [
-        "evals/setup_eval_workspace.py",
-        "evals/fixtures/resume-drift/HANDOFF-export-retry.md",
-        "evals/fixtures/resume-drift/AGENTS.md",
-        "evals/fixtures/resume-drift/src/retry-v2.ts"
+        "scripts/setup_eval_workspace.py",
+        "fixtures/resume-drift/HANDOFF-export-retry.md",
+        "fixtures/resume-drift/AGENTS.md",
+        "fixtures/resume-drift/src/retry-v2.ts"
       ],
       "expectations": [
         "在执行原 Immediate Next Action 前核对 branch 和关键文件。",

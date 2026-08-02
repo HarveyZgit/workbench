@@ -21,6 +21,10 @@ resources/skills/<skill-name>/
   assets/           # 可选：模板等
 ```
 
+Skill 的评测定义、夹具、测试和 iteration 产物统一放在
+`resources/evals/<skill-name>/`，不要放进会被全局安装的 Skill 目录。详见
+[`resources/evals/README.md`](../evals/README.md)。
+
 ## 安装（纯 workflow skill）
 
 ```sh

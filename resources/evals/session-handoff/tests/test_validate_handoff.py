@@ -9,7 +9,9 @@ import unittest
 from pathlib import Path
 
 
-SCRIPT_PATH = Path(__file__).with_name("validate_handoff.py")
+EVAL_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = EVAL_ROOT.parents[2]
+SCRIPT_PATH = REPO_ROOT / "resources" / "skills" / "session-handoff" / "scripts" / "validate_handoff.py"
 SPEC = importlib.util.spec_from_file_location("validate_handoff", SCRIPT_PATH)
 assert SPEC and SPEC.loader
 VALIDATOR = importlib.util.module_from_spec(SPEC)
@@ -81,7 +83,7 @@ Finish the validator behavior.
 
 ## Immediate Next Action
 
-Run `python3 scripts/test_validate_handoff.py` from the Skill directory, confirm all tests pass, and inspect any failure before changing the validator.
+Run `python3 resources/evals/session-handoff/tests/test_validate_handoff.py` from the repository root, confirm all tests pass, and inspect any failure before changing the validator.
 
 ## Critical Context
 
@@ -111,7 +113,7 @@ Run `python3 scripts/test_validate_handoff.py` from the Skill directory, confirm
 
 ### Not Run
 
-- `python3 scripts/test_validate_handoff.py` — This is the next action.
+- `python3 resources/evals/session-handoff/tests/test_validate_handoff.py` — This is the next action.
 
 ## Workspace Snapshot
 

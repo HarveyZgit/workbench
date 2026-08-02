@@ -10,9 +10,9 @@ import tempfile
 from pathlib import Path
 
 
-EVALS_DIR = Path(__file__).resolve().parent
-FIXTURES_DIR = EVALS_DIR / "fixtures"
-REPO_ROOT = EVALS_DIR.parents[3]
+EVAL_ROOT = Path(__file__).resolve().parent.parent
+FIXTURES_DIR = EVAL_ROOT / "fixtures"
+REPO_ROOT = EVAL_ROOT.parents[2]
 MARKER_NAME = ".session-handoff-eval"
 GIT_ISOLATION_ARGS = (
     "-c",

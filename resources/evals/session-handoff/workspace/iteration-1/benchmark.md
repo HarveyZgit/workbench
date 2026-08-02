@@ -17,6 +17,8 @@ This is a single-configuration smoke evaluation, not a with/without-skill compar
 - Create mode produced a validated `.tmp/HANDOFF-<topic>.md`.
 - Compatible resume mode immediately implemented the first task and passed 2 focused tests.
 - Drift resume mode reported branch/file drift and did not mutate the replacement implementation.
-- Each eval declares its reproducible `setup_eval_workspace.py` command; setup refuses to replace unmanaged directories.
+- Each eval declares its reproducible
+  `resources/evals/session-handoff/scripts/setup_eval_workspace.py` command; setup refuses to replace
+  unmanaged directories.
 - `--check-state` now separates structural validity from state compatibility and exits non-zero on drift.
 - Use the review viewer for qualitative inspection; do not interpret this smoke result as causal proof against a baseline.
