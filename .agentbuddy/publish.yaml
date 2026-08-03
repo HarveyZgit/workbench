@@ -1,14 +1,8 @@
 schema_version: v1
 
-metadata:
-  name: ai-workbench
-  description: 个人 AI 资产与 Agent Skills
-  owner: zhanghang_harvey
-
 registry:
   skills:
     - path: resources/skills
-      # Keep this list explicit: adding a directory must not publish it automatically.
       items:
         - markdown-comment
         - review-and-commit

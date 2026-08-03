@@ -44,27 +44,8 @@ scripts/link-skills.sh             # 实际建立软链
 
 脚本是幂等的、且只碰自己管理的软链：遇到真实文件/目录或指向别处的软链会跳过并告警，绝不删你的数据。
 
-## 发布到 AgentBuddy
-
-AgentBuddy 的发布白名单位于仓库根目录的
-`.agentbuddy/publish.yaml`。`registry.skills[].items` 只列出需要发布的
-Skill；仅在 `resources/skills/` 新增目录不会自动发布。
-
-新增或移除 AgentBuddy 发布项时：
-
-1. 确认 Skill 目录符合上述约定，且 `SKILL.md` 的 frontmatter 包含合法的
-   `name` 和 `description`。
-2. 显式修改 `.agentbuddy/publish.yaml` 中的 `items`。
-3. 提交并推送。AgentBuddy 在空间开启 Git 仓库触发器、指定产物发布配置，
-   并选择“仅发布变更部分”后，会自动发布本次变更的白名单 Skill。
-
-当前目标空间是
-`https://skills.byted.org/zhanghang_harvey/skills`。平台发布设置属于空间配置，
-不存放在仓库中。
-
 ## 新增一个 skill
 
 1. 建 `resources/skills/<name>/SKILL.md`，写好 `name` / `description`（description 决定触发准确度，写清“做什么 + 什么时候用”）。
 2. 纯 workflow 就跑 `scripts/link-skills.sh` 安装；包绑定型交给所属包 build。
-3. 需要发布到 AgentBuddy 时，将名称加入 `.agentbuddy/publish.yaml` 的白名单。
-4. skill 通常在新会话或重新加载后才出现在 Agent 的 skills 列表里。
+3. skill 通常在新会话或重新加载后才出现在 Agent 的 skills 列表里。

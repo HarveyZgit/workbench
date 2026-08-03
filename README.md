@@ -52,7 +52,6 @@ emo run check --filter './packages/markdown-comment'
 - 新资产优先做成边界明确、可单独验证的 package。
 - 面向 Agent 的能力同时提供简洁的人类文档和可执行的 Skill/CLI 入口。
 - 纯 workflow Skill 用 `scripts/link-skills.sh` 软链到本机各 Agent 目录，安装与约定见 [`resources/skills/README.md`](resources/skills/README.md)。
-- 发布到 AgentBuddy 的 Skill 使用 `.agentbuddy/publish.yaml` 显式白名单，新增目录不会自动发布。
 - 不把个人运行时数据、构建产物或本机配置提交进仓库。
 - 变更应附带适当的测试或可复现验证命令。
 
