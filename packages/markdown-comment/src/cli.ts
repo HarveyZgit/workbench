@@ -16,7 +16,9 @@ function fail(msg: string): never {
 function getStorageDir(): string {
   const dir = readStorageDir();
   if (!dir) {
-    fail('未找到评论存储。请先在 VS Code 里启动 Markdown Comment 插件（它会写入存储指针 ~/.markdown-comment/pointer.json）。');
+    fail(
+      '未找到评论存储。请先在 VS Code 里启动 Markdown Comment 插件（它会写入存储指针 ~/.markdown-comment/pointer.json）。',
+    );
   }
   return dir;
 }
@@ -25,9 +27,55 @@ const [, , cmd, ...rest] = process.argv;
 const flags = new Set(rest.filter((a) => a.startsWith('--')));
 const args = rest.filter((a) => !a.startsWith('--'));
 
-function flagValue(name: string): string | undefined {
-  const i = rest.indexOf(name);
-  return i >= 0 ? rest[i + 1] : undefined;
+function requiredFlagValue(name: string): string | undefined {
+  const indexes = rest.flatMap((value, index) => (value === name ? [index] : []));
+  if (indexes.length > 1) {
+    fail(`${name} 只能传一次。`);
+  }
+  if (!indexes.length) {
+    return undefined;
+  }
+  const value = rest[indexes[0] + 1];
+  if (!value || value.startsWith('-')) {
+    fail(`${name} 缺少目录参数。`);
+  }
+  return value;
+}
+
+function validateInitArgs(): void {
+  const valueFlags = new Set(['--skill-dir', '--skill-dirs']);
+  const booleanFlags = new Set(['--no-skill', '--no-extension']);
+  const seen = new Set<string>();
+  for (let index = 0; index < rest.length; index += 1) {
+    const token = rest[index];
+    if (valueFlags.has(token)) {
+      if (seen.has(token)) {
+        fail(`${token} 只能传一次。`);
+      }
+      const value = rest[index + 1];
+      if (!value || value.startsWith('-')) {
+        fail(`${token} 缺少目录参数。`);
+      }
+      seen.add(token);
+      index += 1;
+      continue;
+    }
+    if (booleanFlags.has(token)) {
+      if (seen.has(token)) {
+        fail(`${token} 只能传一次。`);
+      }
+      seen.add(token);
+      continue;
+    }
+    if (token.startsWith('--')) {
+      fail(`未知参数: ${token}`);
+    }
+    fail(`不支持的位置参数: ${token}`);
+  }
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
@@ -213,10 +261,6 @@ function hasGlobalCli(): boolean {
   }
 }
 
-// 支持的 skill 目录约定（多选，默认 .agents/skills）。
-const SKILL_CONVS = ['.agents/skills', '.claude/skills', '.codex/skills', '.trae/skills'];
-const DEFAULT_CONVS = ['.agents/skills'];
-
 function askLine(prompt: string): Promise<string> {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -227,43 +271,54 @@ function askLine(prompt: string): Promise<string> {
   });
 }
 
-/** 决定装到哪些 skill 目录约定：--skill-dirs 指定 > 交互多选 > 非 TTY 用默认。 */
-async function chooseSkillConvs(): Promise<string[]> {
-  const csv = flagValue('--skill-dirs');
-  if (csv) {
-    return csv.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+function parseSkillDirs(input: string, label: string): string[] {
+  const directories = [...new Set(input.split(',').map((s) => s.trim()).filter(Boolean))];
+  if (!directories.length) {
+    fail(`${label} 至少需要一个非空目录。`);
   }
-  if (!process.stdin.isTTY) {
-    return DEFAULT_CONVS; // 非交互（如 Agent 调用）：用默认，不卡住。
-  }
-  process.stdout.write('安装 skill 到哪些目录？（输入数字，逗号/空格分隔多选；回车=默认 .agents/skills；all=全部）\n');
-  SKILL_CONVS.forEach((c, i) => process.stdout.write(`  ${i + 1}) ${c}${c === DEFAULT_CONVS[0] ? '   [默认]' : ''}\n`));
-  const line = (await askLine('> ')).trim();
-  if (!line) {
-    return DEFAULT_CONVS;
-  }
-  if (line.toLowerCase() === 'all') {
-    return [...SKILL_CONVS];
-  }
-  const chosen = [...new Set(line.split(/[\s,]+/).map((s) => parseInt(s, 10)))]
-    .filter((n) => n >= 1 && n <= SKILL_CONVS.length)
-    .map((n) => SKILL_CONVS[n - 1]);
-  return chosen.length ? chosen : DEFAULT_CONVS;
+  return directories;
 }
 
-/** 安装：打 vsix → 装 VS Code 插件 → 写 skill（默认 ~/.agents/skills，可多选 / --project 装当前项目）。 */
+/** 决定装到哪些 skill 根目录：--skill-dirs 指定 > 交互输入 > 非 TTY 明确失败。 */
+async function chooseSkillDirs(): Promise<string[]> {
+  const csv = requiredFlagValue('--skill-dirs');
+  if (csv) {
+    return parseSkillDirs(csv, '--skill-dirs');
+  }
+  if (!process.stdin.isTTY) {
+    fail('非交互安装必须用 --skill-dir <目录> 或 --skill-dirs <目录列表> 明确指定 skill 目标。');
+  }
+  const line = (
+    await askLine('请输入一个或多个 skill 根目录（逗号分隔；每个目录下会创建 markdown-comment/）：\n> ')
+  ).trim();
+  if (!line) {
+    fail('未指定 skill 目标目录；可用 --no-skill 跳过安装。');
+  }
+  return parseSkillDirs(line, 'skill 目录');
+}
+
+/** 安装：打 vsix → 装 VS Code 插件 → 写 skill（目标目录必须显式指定）。 */
 async function cmdInit(): Promise<void> {
+  validateInitArgs();
   const pkgRoot = path.resolve(__dirname, '..'); // dist/.. = 包根
 
   // 先决定 skill 目标（含交互），避免插件安装日志后再打断提问。
   let skillTargets: string[] = [];
+  const explicit = requiredFlagValue('--skill-dir');
+  const roots = requiredFlagValue('--skill-dirs');
+  if (explicit && roots) {
+    fail('--skill-dir 与 --skill-dirs 不能同时使用。');
+  }
+  if (flags.has('--no-skill') && (explicit || roots)) {
+    fail('--no-skill 不能与 --skill-dir 或 --skill-dirs 同时使用。');
+  }
   if (!flags.has('--no-skill')) {
-    const explicit = flagValue('--skill-dir');
     if (explicit) {
-      skillTargets = [explicit]; // 显式指定单个 markdown-comment 目录（向后兼容）
+      skillTargets = [path.resolve(explicit.replace(/^~(?=$|\/)/, os.homedir()))];
     } else {
-      const base = flags.has('--project') ? process.cwd() : os.homedir();
-      skillTargets = (await chooseSkillConvs()).map((c) => path.join(base, c, 'markdown-comment'));
+      skillTargets = (await chooseSkillDirs()).map((directory) =>
+        path.join(path.resolve(directory.replace(/^~(?=$|\/)/, os.homedir())), 'markdown-comment'),
+      );
     }
   }
 
@@ -278,14 +333,18 @@ async function cmdInit(): Promise<void> {
     try {
       execFileSync('code', ['--install-extension', vsix, '--force'], { stdio: 'inherit' });
     } catch {
-      fail('调用 `code` 失败。请确认 VS Code 的 code 命令在 PATH（VS Code 执行 “Shell Command: Install \'code\' command in PATH”），或加 --no-extension 跳过。');
+      fail(
+        "调用 `code` 失败。请确认 VS Code 的 code 命令在 PATH（VS Code 执行 “Shell Command: Install 'code' command in PATH”），或加 --no-extension 跳过。",
+      );
     }
   }
 
   if (skillTargets.length) {
     // CLI 已全局可用就用 mdc，否则回退绝对路径，保证 Agent 一定能调用。
-    const cliCmd = hasGlobalCli() ? 'mdc' : `node ${path.join(pkgRoot, 'dist', 'cli.js')}`;
-    const body = fs.readFileSync(path.join(pkgRoot, 'dist', 'resources', 'skills', 'markdown-comment', 'SKILL.md'), 'utf8').replaceAll('{{CLI}}', cliCmd);
+    const cliCmd = hasGlobalCli() ? 'mdc' : `node ${shellQuote(path.join(pkgRoot, 'dist', 'cli.js'))}`;
+    const body = fs
+      .readFileSync(path.join(pkgRoot, 'dist', 'resources', 'skills', 'markdown-comment', 'SKILL.md'), 'utf8')
+      .replaceAll('{{CLI}}', cliCmd);
     for (const dir of skillTargets) {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, 'SKILL.md'), body);
@@ -293,7 +352,9 @@ async function cmdInit(): Promise<void> {
     }
   }
 
-  process.stdout.write('\n完成。VS Code 执行 “Developer: Reload Window”，打开任意 .md 即可划词评论（在跑 F5 调试实例的话先关掉）。\n');
+  process.stdout.write(
+    '\n完成。VS Code 执行 “Developer: Reload Window”，打开任意 .md 即可划词评论（在跑 F5 调试实例的话先关掉）。\n',
+  );
 }
 
 switch (cmd) {
@@ -316,10 +377,10 @@ switch (cmd) {
         'markdown-comment（简写 mdc）<command>',
         '',
         '给用户：',
-        '  init [--project] [--skill-dirs <a,b>] [--skill-dir <dir>] [--no-skill] [--no-extension]',
+        '  init [--skill-dirs <a,b>] [--skill-dir <dir>] [--no-skill] [--no-extension]',
         '                                  安装 VS Code 插件 + Agent skill',
-        '                                  skill 目录交互多选（.agents/.claude/.codex/.trae/skills，默认 .agents/skills）',
-        '                                  --skill-dirs 跳过交互直接指定；--project 装当前项目而非用户目录',
+        '                                  --skill-dir 指定完整目标目录；--skill-dirs 指定一个或多个 skill 根目录',
+        '                                  未传目录时仅在 TTY 交互询问；非交互调用必须显式指定',
         '',
         '给 Agent：',
         '  list [file] [-g] [--open] [--name-only] [--hidden] [--json]',

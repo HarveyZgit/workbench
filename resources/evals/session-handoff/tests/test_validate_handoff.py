@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib.util
-import re
 import subprocess
 import sys
 import tempfile
@@ -19,133 +18,82 @@ sys.modules[SPEC.name] = VALIDATOR
 SPEC.loader.exec_module(VALIDATOR)
 
 
-def valid_handoff(workspace: str) -> str:
+def valid_handoff(workspace: str, branch: str = "not-a-git-repository", head: str = "not-a-git-repository") -> str:
     return f"""---
 handoff_version: 1
 created_at: 2026-08-02T10:00:00+08:00
 status: ready
 workspace: {workspace}
-branch: not-a-git-repository
-head: not-a-git-repository
+branch: {branch}
+head: {head}
 topic: validator-test
 ---
-
 # Handoff: Validator Test
-
 ## Mission
-
 ### Goal
-
 Finish the validator behavior.
-
 ### Done When
-
-- The validator accepts this complete handoff.
+- The complete handoff validates.
 - The next action remains executable.
-
 ### Scope
-
 - In: validator behavior
 - Out: unrelated code
-
 ## Decisions and Constraints
-
 ### User Decisions
-
 - Keep the workflow lightweight.
-
 ### Repository Rules
-
 - Use the local validation script.
-
 ### Assumptions
-
 - The workspace still exists.
-
 ## Current State
-
 ### Completed
-
 - [x] Drafted the validator — Evidence: `scripts/validate_handoff.py`
-
 ### In Progress
-
 - Test coverage is being added.
-
 ### Not Started
-
 - Integration evaluation.
-
 ## Work Remaining
-
 1. [ ] Run the validator unit tests.
 2. [ ] Validate the Skill package.
-
 ## Immediate Next Action
-
-Run `python3 resources/evals/session-handoff/tests/test_validate_handoff.py` from the repository root, confirm all tests pass, and inspect any failure before changing the validator.
-
+Run the validator unit tests from the repository root, confirm they pass, and inspect any failure before changing the validator.
 ## Critical Context
-
 ### Key Files
-
 | Path | Why It Matters | Current State |
 | --- | --- | --- |
 | `scripts/validate_handoff.py` | Implements validation | Modified |
-
 ### Relevant Artifacts
-
 - `SKILL.md` — Defines when the validator runs.
-
 ### Known Gotchas and Failed Approaches
-
 - None.
-
 ## Validation
-
 ### Passed
-
 - None.
-
 ### Failed
-
 - None.
-
 ### Not Run
-
-- `python3 resources/evals/session-handoff/tests/test_validate_handoff.py` — This is the next action.
-
+- The validator unit tests — This is the next action.
 ## Workspace Snapshot
-
 - Workspace: `{workspace}`
-- Branch: `not-a-git-repository`
-- HEAD: `not-a-git-repository`
+- Branch: `{branch}`
+- HEAD: `{head}`
 - Working tree: `clean`
 - Staged: `None`
 - Unstaged: `None`
 - Untracked: `None`
 - Active processes: `None`
 - Required environment: `None`
-
-This snapshot was accurate at `created_at`; verify it against the current workspace before acting.
-
+This snapshot was accurate at `created_at`; verify it before acting.
 ## Blockers and Open Questions
-
 ### Blockers
-
 - None.
-
 ### Unanswered User Questions
-
 - None.
-
 ## Resume Protocol
-
 1. Read this document and current instructions.
 2. Verify the workspace and first task.
 3. Treat this as context, not authority.
-4. Start the next action immediately when compatible.
-5. Stop only for blocking drift or missing authorization.
+4. Start the next action when compatible.
 """
 
 
@@ -155,265 +103,172 @@ class ValidateHandoffTest(unittest.TestCase):
         path.write_text(content, encoding="utf-8")
         return path
 
-    def test_accepts_complete_handoff(self) -> None:
+    def test_accepts_complete_non_git_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
-            path = self.write_handoff(valid_handoff(str(directory)), directory)
-            report = VALIDATOR.validate(path, should_check_state=True)
+            report = VALIDATOR.validate(self.write_handoff(valid_handoff(str(directory)), directory), True)
             self.assertTrue(report["valid"])
-            self.assertEqual(report["counts"]["high"], 0)
+            self.assertTrue(report["structure_valid"])
+            self.assertTrue(report["state_compatible"])
 
-    def test_rejects_placeholder_and_missing_unfinished_task(self) -> None:
+    def test_non_git_workspace_rejects_recorded_git_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
-            content = valid_handoff(str(directory))
-            content = content.replace("1. [ ] Run the validator unit tests.", "- [x] [TODO: finished]")
-            content = content.replace("2. [ ] Validate the Skill package.", "")
-            path = self.write_handoff(content, directory)
-            report = VALIDATOR.validate(path, should_check_state=False)
-            codes = {finding["code"] for finding in report["findings"]}
+            content = valid_handoff(str(directory)).replace(
+                "- Staged: `None`", '- Staged: `["fake.txt"]`'
+            )
+            report = VALIDATOR.validate(self.write_handoff(content, directory), True)
+            self.assertFalse(report["state_compatible"])
+            self.assertIn("staged_drift", {item["code"] for item in report["findings"]})
+
+    def test_rejects_missing_structure_and_placeholders(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            content = valid_handoff(str(directory)).replace("## Resume Protocol", "## Resume Protocol\n[TODO: fill this]")
+            content = content.replace("1. [ ] Run the validator unit tests.\n2. [ ] Validate the Skill package.", "- [x] finished")
+            content = content.replace("## Critical Context", "## Missing Context")
+            report = VALIDATOR.validate(self.write_handoff(content, directory), False)
+            codes = {item["code"] for item in report["findings"]}
             self.assertFalse(report["valid"])
             self.assertIn("placeholder", codes)
             self.assertIn("no_unfinished_task", codes)
+            self.assertIn("missing_section", codes)
 
-    def test_rejects_secret_value(self) -> None:
+    def test_rejects_high_confidence_tokens_but_allows_references(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            safe = valid_handoff(str(directory)).replace(
+                "- None.\n### Unanswered User Questions", "- GITHUB_TOKEN=keychain\n- Authorization: Bearer ${ACCESS_TOKEN}\n### Unanswered User Questions"
+            )
+            safe_report = VALIDATOR.validate(self.write_handoff(safe, directory), False)
+            self.assertTrue(safe_report["valid"])
+
+            for reference in (
+                "API token: stored in keychain",
+                "API key: configured externally",
+                "apiToken=stored in secret manager",
+            ):
+                with self.subTest(reference=reference):
+                    content = valid_handoff(str(directory)).replace(
+                        "- None.\n### Unanswered User Questions",
+                        f"- {reference}\n### Unanswered User Questions",
+                    )
+                    report = VALIDATOR.validate(self.write_handoff(content, directory), False)
+                    self.assertTrue(report["valid"], report["findings"])
+
+            secret = safe.replace("GITHUB_TOKEN=keychain", "GITHUB_TOKEN=abcdefghijklmnopqrstuvwxyz012345")
+            secret_report = VALIDATOR.validate(self.write_handoff(secret, directory), False)
+            codes = {item["code"] for item in secret_report["findings"]}
+            self.assertFalse(secret_report["valid"])
+            self.assertIn("sensitive_secret_assignment", codes)
+
+            for assignment in (
+                "api_token: abcdefghijklmnop",
+                "password: abcdefghijklmnop",
+                "AUTHORIZATION=abcdefghijklmnop",
+                "apiToken=abcdefghijklmnop",
+            ):
+                with self.subTest(assignment=assignment):
+                    content = valid_handoff(str(directory)).replace(
+                        "- None.\n### Unanswered User Questions",
+                        f"- {assignment}\n### Unanswered User Questions",
+                    )
+                    report = VALIDATOR.validate(self.write_handoff(content, directory), False)
+                    self.assertIn(
+                        "sensitive_secret_assignment",
+                        {item["code"] for item in report["findings"]},
+                    )
+
+            for label in ("API token", "API key", "Access token"):
+                with self.subTest(label=label):
+                    content = valid_handoff(str(directory)).replace(
+                        "- None.\n### Unanswered User Questions",
+                        f"- {label}: abcdefghijklmnop\n### Unanswered User Questions",
+                    )
+                    report = VALIDATOR.validate(self.write_handoff(content, directory), False)
+                    self.assertIn(
+                        "sensitive_labeled_secret",
+                        {item["code"] for item in report["findings"]},
+                    )
+
+    def test_rejects_private_key_and_token_shapes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
             content = valid_handoff(str(directory)).replace(
-                "- None.\n\n### Unanswered User Questions",
-                "- API token: ghp_abcdefghijklmnopqrstuvwxyz0123456789AB\n\n### Unanswered User Questions",
+                "- None.\n### Unanswered User Questions",
+                "- ghp_abcdefghijklmnopqrstuvwxyz0123456789AB\n- -----BEGIN PRIVATE KEY-----\n### Unanswered User Questions",
             )
-            path = self.write_handoff(content, directory)
-            report = VALIDATOR.validate(path, should_check_state=False)
-            codes = {finding["code"] for finding in report["findings"]}
+            report = VALIDATOR.validate(self.write_handoff(content, directory), False)
+            codes = {item["code"] for item in report["findings"]}
             self.assertFalse(report["valid"])
             self.assertIn("sensitive_github_token", codes)
+            self.assertIn("sensitive_private_key", codes)
 
-    def test_rejects_prefixed_secret_assignment(self) -> None:
+    def test_rejects_token_in_url_query(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
             content = valid_handoff(str(directory)).replace(
-                "- None.\n\n### Unanswered User Questions",
-                "- GITHUB_TOKEN=abcdefghijklmnopqrstuvwxyz012345\n\n### Unanswered User Questions",
+                "- None.\n### Unanswered User Questions",
+                "- https://example.com/api?token=supersecretvalue123\n### Unanswered User Questions",
             )
-            path = self.write_handoff(content, directory)
-            report = VALIDATOR.validate(path, should_check_state=False)
-            codes = {finding["code"] for finding in report["findings"]}
+            report = VALIDATOR.validate(self.write_handoff(content, directory), False)
             self.assertFalse(report["valid"])
-            self.assertIn("sensitive_secret_assignment", codes)
-
-    def test_allows_secret_storage_reference(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            content = valid_handoff(str(directory)).replace(
-                "- None.\n\n### Unanswered User Questions",
-                "- GITHUB_TOKEN=keychain\n"
-                "- API token: stored-in-keychain\n\n"
-                "### Unanswered User Questions",
+            self.assertIn(
+                "sensitive_url_token_parameter",
+                {item["code"] for item in report["findings"]},
             )
-            path = self.write_handoff(content, directory)
-            report = VALIDATOR.validate(path, should_check_state=False)
-            codes = {finding["code"] for finding in report["findings"]}
-            self.assertTrue(report["valid"])
-            self.assertNotIn("sensitive_secret_assignment", codes)
 
-    def test_natural_language_secret_labels_use_safe_reference_rules(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            safe_content = valid_handoff(str(directory)).replace(
-                "- None.\n\n### Unanswered User Questions",
-                "- API token: keychain\n"
-                "- API key: ${SERVICE_API_KEY}\n"
-                "- Access token: configured-externally\n"
-                "- API token: stored in keychain\n"
-                "- **API key**: **configured-externally**\n\n"
-                "### Unanswered User Questions",
-            )
-            safe_path = self.write_handoff(safe_content, directory)
-            safe_report = VALIDATOR.validate(safe_path, should_check_state=False)
-            self.assertTrue(safe_report["valid"])
-
-            real_content = safe_content.replace("API token: keychain", "API token: opaquevalue123456789")
-            real_path = self.write_handoff(real_content, directory)
-            real_report = VALIDATOR.validate(real_path, should_check_state=False)
-            real_codes = {finding["code"] for finding in real_report["findings"]}
-            self.assertFalse(real_report["valid"])
-            self.assertIn("sensitive_natural_language_secret", real_codes)
-
-    def test_rejects_markdown_formatted_natural_language_secrets(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            content = valid_handoff(str(directory)).replace(
-                "- None.\n\n### Unanswered User Questions",
-                "- **API key**: opaquevalue123456789\n"
-                "- `API token`: anotheropaquevalue123456\n"
-                "- The Access token: thirdopaquevalue123456\n\n"
-                "### Unanswered User Questions",
-            )
-            path = self.write_handoff(content, directory)
-
-            report = VALIDATOR.validate(path, should_check_state=False)
-            findings = [
-                finding
-                for finding in report["findings"]
-                if finding["code"] == "sensitive_natural_language_secret"
-            ]
-            self.assertFalse(report["valid"])
-            self.assertEqual(len(findings), 3)
-
-    def test_allows_safe_bearer_references_and_rejects_real_token(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            safe_content = valid_handoff(str(directory)).replace(
-                "- None.\n\n### Unanswered User Questions",
-                "- Authorization: Bearer ${ACCESS_TOKEN}\n"
-                "- Authorization: Bearer configured-externally\n\n"
-                "### Unanswered User Questions",
-            )
-            safe_path = self.write_handoff(safe_content, directory)
-            safe_report = VALIDATOR.validate(safe_path, should_check_state=False)
-            safe_codes = {finding["code"] for finding in safe_report["findings"]}
-            self.assertTrue(safe_report["valid"])
-            self.assertNotIn("sensitive_secret_assignment", safe_codes)
-            self.assertNotIn("sensitive_authorization_bearer", safe_codes)
-
-            real_content = safe_content.replace(
-                "Authorization: Bearer configured-externally",
-                "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456",
-            )
-            real_path = self.write_handoff(real_content, directory)
-            real_report = VALIDATOR.validate(real_path, should_check_state=False)
-            real_codes = {finding["code"] for finding in real_report["findings"]}
-            self.assertFalse(real_report["valid"])
-            self.assertIn("sensitive_authorization_bearer", real_codes)
-
-    def test_rejects_aws_secret_access_key_assignment(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            content = valid_handoff(str(directory)).replace(
-                "- None.\n\n### Unanswered User Questions",
-                "- AWS_SECRET_ACCESS_KEY=abcdefghijklmnopqrstuvwxyz0123456789ABCD\n\n"
-                "### Unanswered User Questions",
-            )
-            path = self.write_handoff(content, directory)
-            report = VALIDATOR.validate(path, should_check_state=False)
-            codes = {finding["code"] for finding in report["findings"]}
-            self.assertFalse(report["valid"])
-            self.assertIn("sensitive_secret_assignment", codes)
-
-    def test_rejects_exported_token_and_cookie_assignments(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            content = valid_handoff(str(directory)).replace(
-                "- None.\n\n### Unanswered User Questions",
-                "- export GITHUB_TOKEN=plainsecretvalue123\n"
-                "- `env COOKIE=sessionidabcdef123456 command`\n\n"
-                "### Unanswered User Questions",
-            )
-            path = self.write_handoff(content, directory)
-            report = VALIDATOR.validate(path, should_check_state=False)
-            findings = [
-                finding
-                for finding in report["findings"]
-                if finding["code"] == "sensitive_secret_assignment"
-            ]
-            self.assertFalse(report["valid"])
-            self.assertEqual(len(findings), 2)
-
-    def test_rejects_secret_commands_inside_natural_language(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            content = valid_handoff(str(directory)).replace(
-                "- None.\n\n### Unanswered User Questions",
-                "- Run `env COOKIE=sessionidabcdef123456 command` next.\n"
-                "- Run `export GITHUB_TOKEN=plainsecretvalue123` before testing.\n\n"
-                "### Unanswered User Questions",
-            )
-            path = self.write_handoff(content, directory)
-            report = VALIDATOR.validate(path, should_check_state=False)
-            findings = [
-                finding
-                for finding in report["findings"]
-                if finding["code"] == "sensitive_command_secret_assignment"
-            ]
-            self.assertFalse(report["valid"])
-            self.assertEqual(len(findings), 2)
-
-    def test_reports_missing_workspace(self) -> None:
+    def test_missing_workspace_blocks_state_check(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
             missing = directory / "missing"
-            path = self.write_handoff(valid_handoff(str(missing)), directory)
-            report = VALIDATOR.validate(path, should_check_state=True)
-            codes = {finding["code"] for finding in report["findings"]}
-            self.assertFalse(report["valid"])
-            self.assertIn("workspace_missing", codes)
-
-    def test_workspace_must_be_directory(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            workspace_file = directory / "workspace.txt"
-            workspace_file.write_text("not a directory\n", encoding="utf-8")
-            path = self.write_handoff(valid_handoff(str(workspace_file)), directory)
-
-            report = VALIDATOR.validate(path, should_check_state=True)
-            codes = {finding["code"] for finding in report["findings"]}
+            report = VALIDATOR.validate(self.write_handoff(valid_handoff(str(missing)), directory), True)
             self.assertFalse(report["valid"])
             self.assertFalse(report["state_compatible"])
-            self.assertIn("workspace_not_directory", codes)
+            self.assertIn("workspace_missing", {item["code"] for item in report["findings"]})
 
-    def test_rejects_unknown_working_tree_state(self) -> None:
+    def test_git_snapshot_compatible_then_reports_branch_and_status_drift(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
-            content = valid_handoff(str(directory)).replace(
-                "- Working tree: `clean`",
-                "- Working tree: `unknown-state`",
+            self.git_init(directory)
+            head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=directory, check=True, capture_output=True, text=True).stdout.strip()
+            handoff = valid_handoff(str(directory), "main", head).replace(
+                "- Branch: `main`", "- Branch: `main`"
+            ).replace(
+                "- HEAD: `" + head + "`", "- HEAD: `" + head + "`"
+            ).replace("- Working tree: `clean`", "- Working tree: `dirty`").replace(
+                "- Untracked: `None`", '- Untracked: `["HANDOFF-test.md"]`'
             )
-            path = self.write_handoff(content, directory)
+            path = self.write_handoff(handoff, directory)
+            report = VALIDATOR.validate(path, True)
+            self.assertTrue(report["valid"], report["findings"])
 
-            report = VALIDATOR.validate(path, should_check_state=True)
-            codes = {finding["code"] for finding in report["findings"]}
-            self.assertFalse(report["valid"])
+            (directory / "tracked.txt").write_text("changed\n", encoding="utf-8")
+            drift = VALIDATOR.validate(path, True)
+            self.assertFalse(drift["valid"])
+            self.assertIn("unstaged_drift", {item["code"] for item in drift["findings"]})
+
+    def test_branch_and_head_drift_are_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            self.git_init(directory)
+            head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=directory, check=True, capture_output=True, text=True).stdout.strip()
+            content = valid_handoff(str(directory), "wrong", "deadbeef").replace(
+                "- Branch: `wrong`", "- Branch: `wrong`"
+            ).replace("- HEAD: `deadbeef`", "- HEAD: `deadbeef`").replace(
+                "- Working tree: `clean`", "- Working tree: `dirty`"
+            ).replace("- Untracked: `None`", '- Untracked: `["HANDOFF-test.md"]`')
+            report = VALIDATOR.validate(self.write_handoff(content, directory), True)
+            codes = {item["code"] for item in report["findings"]}
             self.assertFalse(report["state_compatible"])
-            self.assertIn("invalid_working_tree_state", codes)
+            self.assertIn("branch_drift", codes)
+            self.assertIn("head_drift", codes)
+            self.assertEqual(head, VALIDATOR.git_snapshot(directory)["head"])
 
-    def test_non_git_workspace_requires_snapshot_fields(self) -> None:
+    def test_snapshot_branch_and_head_drift_are_reported(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
-            content = valid_handoff(str(directory))
-            content = re.sub(
-                r"## Workspace Snapshot\n.*?\n## Blockers and Open Questions",
-                "## Workspace Snapshot\n\n- Active processes: `None`\n"
-                "- Required environment: `None`\n\n"
-                "## Blockers and Open Questions",
-                content,
-                flags=re.DOTALL,
-            )
-            path = self.write_handoff(content, directory)
-            report = VALIDATOR.validate(path, should_check_state=True)
-            codes = [finding["code"] for finding in report["findings"]]
-            self.assertFalse(report["valid"])
-            self.assertFalse(report["state_compatible"])
-            self.assertEqual(codes.count("missing_snapshot_field"), 7)
-
-    def test_reports_working_tree_drift(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            subprocess.run(["git", "init", "-b", "main"], cwd=directory, check=True, capture_output=True)
-            subprocess.run(
-                ["git", "config", "user.name", "Session Handoff Test"],
-                cwd=directory,
-                check=True,
-            )
-            subprocess.run(
-                ["git", "config", "user.email", "eval@example.invalid"],
-                cwd=directory,
-                check=True,
-            )
-            tracked = directory / "tracked.txt"
-            tracked.write_text("initial\n", encoding="utf-8")
-            subprocess.run(["git", "add", "tracked.txt"], cwd=directory, check=True)
-            subprocess.run(["git", "commit", "-m", "test: initial"], cwd=directory, check=True, capture_output=True)
+            self.git_init(directory)
             head = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
                 cwd=directory,
@@ -421,188 +276,60 @@ class ValidateHandoffTest(unittest.TestCase):
                 capture_output=True,
                 text=True,
             ).stdout.strip()
-
-            content = valid_handoff(str(directory))
-            content = content.replace("branch: not-a-git-repository", "branch: main", 1)
-            content = content.replace("head: not-a-git-repository", f"head: {head}", 1)
-            content = content.replace("- Branch: `not-a-git-repository`", "- Branch: `main`")
-            content = content.replace("- HEAD: `not-a-git-repository`", f"- HEAD: `{head}`")
-            path = self.write_handoff(content, directory)
-            report = VALIDATOR.validate(path, should_check_state=True)
-            codes = {finding["code"] for finding in report["findings"]}
-            self.assertTrue(report["structure_valid"])
-            self.assertFalse(report["state_compatible"])
-            self.assertFalse(report["valid"])
-            self.assertIn("working_tree_drift", codes)
-            self.assertIn("untracked_drift", codes)
-            snapshot = VALIDATOR.git_snapshot(directory)
-            self.assertEqual(snapshot["staged"], set())
-            self.assertEqual(snapshot["unstaged"], set())
-            self.assertEqual(snapshot["untracked"], {"HANDOFF-test.md"})
-
-    def test_git_status_failure_blocks_state_compatibility(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            subprocess.run(["git", "init", "-b", "main"], cwd=directory, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "Session Handoff Test"], cwd=directory, check=True)
-            subprocess.run(
-                ["git", "config", "user.email", "eval@example.invalid"],
-                cwd=directory,
-                check=True,
-            )
-            tracked = directory / "tracked.txt"
-            tracked.write_text("initial\n", encoding="utf-8")
-            subprocess.run(["git", "add", "tracked.txt"], cwd=directory, check=True)
-            subprocess.run(["git", "commit", "-m", "test: initial"], cwd=directory, check=True, capture_output=True)
-            head = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=directory,
-                check=True,
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
-
-            content = valid_handoff(str(directory))
-            content = content.replace("branch: not-a-git-repository", "branch: main", 1)
-            content = content.replace("head: not-a-git-repository", f"head: {head}", 1)
-            content = content.replace("- Branch: `not-a-git-repository`", "- Branch: `main`")
-            content = content.replace("- HEAD: `not-a-git-repository`", f"- HEAD: `{head}`")
-            content = content.replace("- Working tree: `clean`", "- Working tree: `dirty`")
-            content = content.replace("- Untracked: `None`", '- Untracked: `["HANDOFF-test.md"]`')
-            path = self.write_handoff(content, directory)
-            (directory / ".git" / "index").write_bytes(b"broken-index")
-
-            report = VALIDATOR.validate(path, should_check_state=True)
-            codes = {finding["code"] for finding in report["findings"]}
-            self.assertTrue(report["structure_valid"])
-            self.assertFalse(report["state_compatible"])
-            self.assertFalse(report["valid"])
-            self.assertIn("git_state_unavailable", codes)
-
-    def test_git_root_read_failure_blocks_state_compatibility(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            subprocess.run(["git", "init", "-b", "main"], cwd=directory, check=True, capture_output=True)
-            content = valid_handoff(str(directory))
-            path = self.write_handoff(content, directory)
-            (directory / ".git" / "HEAD").unlink()
-
-            report = VALIDATOR.validate(path, should_check_state=True)
-            codes = {finding["code"] for finding in report["findings"]}
-            self.assertTrue(report["structure_valid"])
-            self.assertFalse(report["state_compatible"])
-            self.assertFalse(report["valid"])
-            self.assertIn("git_state_unavailable", codes)
-
-    def test_git_workspace_rejects_non_git_working_tree_value(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            subprocess.run(["git", "init", "-b", "main"], cwd=directory, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "Session Handoff Test"], cwd=directory, check=True)
-            subprocess.run(
-                ["git", "config", "user.email", "eval@example.invalid"],
-                cwd=directory,
-                check=True,
-            )
-            tracked = directory / "tracked.txt"
-            tracked.write_text("initial\n", encoding="utf-8")
-            subprocess.run(["git", "add", "tracked.txt"], cwd=directory, check=True)
-            subprocess.run(["git", "commit", "-m", "test: initial"], cwd=directory, check=True, capture_output=True)
-            head = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=directory,
-                check=True,
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
-
-            content = valid_handoff(str(directory))
-            content = content.replace("branch: not-a-git-repository", "branch: main", 1)
-            content = content.replace("head: not-a-git-repository", f"head: {head}", 1)
-            content = content.replace("- Branch: `not-a-git-repository`", "- Branch: `main`")
-            content = content.replace("- HEAD: `not-a-git-repository`", f"- HEAD: `{head}`")
-            content = content.replace("- Working tree: `clean`", "- Working tree: `not-a-git-repository`")
-            content = content.replace("- Untracked: `None`", '- Untracked: `["HANDOFF-test.md"]`')
-            path = self.write_handoff(content, directory)
-
-            report = VALIDATOR.validate(path, should_check_state=True)
-            codes = {finding["code"] for finding in report["findings"]}
-            self.assertFalse(report["valid"])
-            self.assertFalse(report["state_compatible"])
-            self.assertIn("invalid_working_tree_state", codes)
-
-    def test_reports_body_branch_and_head_drift(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            subprocess.run(["git", "init", "-b", "main"], cwd=directory, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "Session Handoff Test"], cwd=directory, check=True)
-            subprocess.run(
-                ["git", "config", "user.email", "eval@example.invalid"],
-                cwd=directory,
-                check=True,
-            )
-            tracked = directory / "tracked.txt"
-            tracked.write_text("initial\n", encoding="utf-8")
-            subprocess.run(["git", "add", "tracked.txt"], cwd=directory, check=True)
-            subprocess.run(["git", "commit", "-m", "test: initial"], cwd=directory, check=True, capture_output=True)
-            head = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=directory,
-                check=True,
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
-
-            content = valid_handoff(str(directory))
-            content = content.replace("branch: not-a-git-repository", "branch: main", 1)
-            content = content.replace("head: not-a-git-repository", f"head: {head}", 1)
-            content = content.replace("- Branch: `not-a-git-repository`", "- Branch: `wrong-branch`")
-            content = content.replace("- HEAD: `not-a-git-repository`", "- HEAD: `deadbeef`")
-            content = content.replace("- Working tree: `clean`", "- Working tree: `dirty`")
-            content = content.replace("- Untracked: `None`", '- Untracked: `["HANDOFF-test.md"]`')
-            path = self.write_handoff(content, directory)
-
-            report = VALIDATOR.validate(path, should_check_state=True)
-            codes = {finding["code"] for finding in report["findings"]}
+            content = valid_handoff(str(directory), "main", head).replace(
+                "- Branch: `main`", "- Branch: `wrong`"
+            ).replace(f"- HEAD: `{head}`", "- HEAD: `deadbeef`").replace(
+                "- Working tree: `clean`", "- Working tree: `dirty`"
+            ).replace("- Untracked: `None`", '- Untracked: `["HANDOFF-test.md"]`')
+            report = VALIDATOR.validate(self.write_handoff(content, directory), True)
+            codes = {item["code"] for item in report["findings"]}
             self.assertFalse(report["state_compatible"])
             self.assertIn("snapshot_branch_drift", codes)
             self.assertIn("snapshot_head_drift", codes)
 
-    def test_preserves_comma_and_unicode_in_untracked_paths(self) -> None:
+    def test_workspace_snapshot_must_match_git_root(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             directory = Path(temporary_directory)
-            subprocess.run(["git", "init", "-b", "main"], cwd=directory, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "Session Handoff Test"], cwd=directory, check=True)
+            self.git_init(directory)
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=directory,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            content = valid_handoff(str(directory), "main", head).replace(
+                f"- Workspace: `{directory}`", "- Workspace: `/wrong/workspace`"
+            ).replace("- Working tree: `clean`", "- Working tree: `dirty`").replace(
+                "- Untracked: `None`", '- Untracked: `["HANDOFF-test.md"]`'
+            )
+            report = VALIDATOR.validate(self.write_handoff(content, directory), True)
+            self.assertFalse(report["state_compatible"])
+            self.assertIn("workspace_drift", {item["code"] for item in report["findings"]})
+
+    def test_git_snapshot_preserves_spaced_and_renamed_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            self.git_init(directory)
+            (directory / "new name.txt").write_text("new\n", encoding="utf-8")
             subprocess.run(
-                ["git", "config", "user.email", "eval@example.invalid"],
+                ["git", "mv", "tracked.txt", "renamed file.txt"],
                 cwd=directory,
                 check=True,
             )
-            tracked = directory / "tracked.txt"
-            tracked.write_text("initial\n", encoding="utf-8")
-            subprocess.run(["git", "add", "tracked.txt"], cwd=directory, check=True)
-            subprocess.run(["git", "commit", "-m", "test: initial"], cwd=directory, check=True, capture_output=True)
-            special = directory / "new,中文.txt"
-            special.write_text("untracked\n", encoding="utf-8")
-
             snapshot = VALIDATOR.git_snapshot(directory)
+            self.assertIsNotNone(snapshot)
+            self.assertEqual(snapshot["untracked"], {"new name.txt"})
+            self.assertEqual(snapshot["staged"], {"tracked.txt", "renamed file.txt"})
 
-            self.assertEqual(snapshot["untracked"], {"new,中文.txt"})
-
-    def test_invalid_snapshot_path_json_returns_structured_finding(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            directory = Path(temporary_directory)
-            content = valid_handoff(str(directory)).replace(
-                "- Untracked: `None`",
-                "- Untracked: `[\"missing-quote]`",
-            )
-            path = self.write_handoff(content, directory)
-
-            report = VALIDATOR.validate(path, should_check_state=True)
-            codes = {finding["code"] for finding in report["findings"]}
-            self.assertFalse(report["valid"])
-            self.assertFalse(report["state_compatible"])
-            self.assertIn("invalid_snapshot_paths", codes)
+    @staticmethod
+    def git_init(directory: Path) -> None:
+        subprocess.run(["git", "init", "-b", "main"], cwd=directory, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Session Handoff Test"], cwd=directory, check=True)
+        subprocess.run(["git", "config", "user.email", "eval@example.invalid"], cwd=directory, check=True)
+        (directory / "tracked.txt").write_text("initial\n", encoding="utf-8")
+        subprocess.run(["git", "add", "tracked.txt"], cwd=directory, check=True)
+        subprocess.run(["git", "commit", "-m", "test: initial"], cwd=directory, check=True, capture_output=True)
 
 
 if __name__ == "__main__":

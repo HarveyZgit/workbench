@@ -11,7 +11,7 @@ The repository is written primarily for a Chinese-speaking maintainer. User-faci
 - Read [README.md](README.md) for repository scope and development entry points.
 - Read [docs/architecture/markdown-comment.md](docs/architecture/markdown-comment.md) before changing `packages/markdown-comment`.
 - `packages/markdown-comment` contains the migrated VS Code implementation. It remains a legacy, VS Code-centred implementation while the editor-neutral core is extracted.
-- Skill source files live in `resources/skills/<skill-name>/SKILL.md`. See [resources/skills/README.md](resources/skills/README.md) for the two skill types (pure workflow vs package-bound `{{ }}`) and the install topology. Pure workflow skills are symlinked into `~/.agents/skills` (authoritative), `~/.trae/skills`, and `~/.claude/skills` via `scripts/link-skills.sh`; package-bound skills copy their Skill into `dist/resources/` during their build.
+- Skill source files live in `resources/skills/<skill-name>/SKILL.md`. See [resources/skills/README.md](resources/skills/README.md) for the two skill types (pure workflow vs package-bound `{{ }}`), the host-neutrality rules, and explicit-target installation. `resources/skills` is the source of truth; platform-specific discovery or publishing files are thin adapters only.
 
 ## Markdown Comment design
 
@@ -31,8 +31,17 @@ The repository is written primarily for a Chinese-speaking maintainer. User-faci
 - Do not edit the original tool repository under `~/Work/Code/corehr-fe-ai-kit` unless the task explicitly includes that repository. Its migration history and any untracked files belong to the user.
 - Keep changes narrow. Do not replace unrelated user changes or generated files.
 - Update the architecture document and relevant README when a public boundary, storage format, command, or adapter changes.
+- Keep reusable AI assets host-neutral: do not hard-code an Agent/CLI/vendor identity, email, proprietary tool invocation, runtime directory, or default install target. Put platform-specific wiring only in clearly named adapter files and keep it removable without changing the source asset.
 
 ## Verification
+
+Run the focused Agent-neutrality check when changing reusable AI assets,
+installation/distribution paths, or host adapters:
+
+```sh
+python3 scripts/test-agent-neutrality.py
+python3 scripts/check-agent-neutrality.py
+```
 
 Run the smallest relevant checks before handing off. For the current Markdown Comment package:
 

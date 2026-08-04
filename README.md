@@ -51,7 +51,7 @@ emo run check --filter './packages/markdown-comment'
 
 - 新资产优先做成边界明确、可单独验证的 package。
 - 面向 Agent 的能力同时提供简洁的人类文档和可执行的 Skill/CLI 入口。
-- 纯 workflow Skill 用 `scripts/link-skills.sh` 软链到本机各 Agent 目录，安装与约定见 [`resources/skills/README.md`](resources/skills/README.md)。
+- 纯 workflow Skill 用 `scripts/link-skills.sh --target <skill-dir>` 软链到用户显式指定的目录；源资产保持宿主中立，安装与约定见 [`resources/skills/README.md`](resources/skills/README.md)。
 - 不把个人运行时数据、构建产物或本机配置提交进仓库。
 - 变更应附带适当的测试或可复现验证命令。
 
@@ -59,4 +59,4 @@ emo run check --filter './packages/markdown-comment'
 
 - 统一沉淀并分发个人 Skills、Rules、CLI 与 MCP 服务。
 - 为各类工具提供一致的安装、测试与发布体验。
-- 让 VS Code、Codex 与未来的 IDE 入口共享同一套 AI 工作流与数据。
+- 让编辑器、CLI 与未来的 Agent 宿主通过薄适配器共享同一套 AI 工作流与数据。
