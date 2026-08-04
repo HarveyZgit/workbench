@@ -13,6 +13,8 @@ jobs:
          - emo install
      - name: Lint
        commands:
+         - python3 scripts/test-agent-neutrality.py
+         - python3 scripts/check-agent-neutrality.py
          - emo run lint
      - name: Format
        commands:
@@ -22,4 +24,6 @@ jobs:
          - emo run build
      - name: Test
        commands:
+         - bash scripts/test-link-skills.sh
+         - node scripts/test-markdown-comment-skill-install.mjs
          - emo run test

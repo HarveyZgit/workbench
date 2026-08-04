@@ -18,8 +18,8 @@ Markdown files + comment store
              │
      ┌───────┼──────────┬──────────────┐
      ▼       ▼          ▼              ▼
-    CLI   VS Code    local web       future IDEs
-                    / Codex view
+    CLI   VS Code    local web       future clients
+                    / agent view
      │       │          │              │
      └───────┴──────────┴──────────────┘
                  same threads
@@ -48,7 +48,7 @@ Adapters translate a client interaction into a core operation and display the re
 | CLI | Stable automation interface for people and Agents | its own data format or anchor algorithm |
 | VS Code extension | editor commands, rendered preview, source navigation, UI state | the only writable comment store |
 | Skill | tells an Agent how to use the public CLI/API | direct JSON mutation |
-| Local web / Codex view | browser UI and local transport | a forked thread model |
+| Local web / agent view | browser UI and local transport | a forked thread model |
 | Future IDE adapter | IDE-specific selection and navigation conversion | core business rules |
 
 ## Storage and compatibility
@@ -69,7 +69,7 @@ packages/markdown-comment/
   src/storage/       # portable store and migrations
   src/cli/           # public command-line adapter
   src/adapters/vscode/
-  src/adapters/web/  # optional local browser/Codex adapter
+  src/adapters/web/  # optional local browser/agent adapter
 resources/skills/markdown-comment/
   SKILL.md           # repository-level Agent instructions using the public CLI
 ```
@@ -82,7 +82,7 @@ Split these into published packages only when separate release cadence or reuse 
 2. Extract editor-neutral types, anchors, operations, and storage from the VS Code extension into the core.
 3. Make the CLI use the portable store directly; retain a one-time, safe import path for existing VS Code data.
 4. Convert the VS Code extension into an adapter over the core, preserving the rendered-preview experience.
-5. Add a local web/Codex adapter only after the core and storage boundaries are exercised by CLI and VS Code.
+5. Add a local web/agent adapter only after the core and storage boundaries are exercised by CLI and VS Code.
 
 Each step must leave a working tool. Avoid a flag-day rewrite or a storage-format break.
 

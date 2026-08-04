@@ -12,7 +12,7 @@
         "fixtures/resume-compatible/test/retry.test.mjs"
       ],
       "expectations": [
-        "Handoff 写入仓库根目录的 .tmp/HANDOFF-<topic>.md，而不是 .claude、全局目录或聊天回复正文。",
+        "Handoff 写入仓库根目录的 .tmp/HANDOFF-<topic>.md，而不是宿主专属隐藏目录、全局目录或聊天回复正文。",
         "文档包含 Mission、Done When、Decisions and Constraints、Work Remaining、Immediate Next Action、Validation、Workspace Snapshot 和 Resume Protocol。",
         "文档明确保留“不改 API schema”和“不放宽校验”两项用户约束。",
         "Workspace Snapshot 基于当前 Git 状态，区分 staged、unstaged 和 untracked，并记录 branch 与 HEAD。",
