@@ -70,8 +70,8 @@ packages/markdown-comment/
   src/cli/           # public command-line adapter
   src/adapters/vscode/
   src/adapters/web/  # optional local browser/agent adapter
-resources/skills/markdown-comment/
-  SKILL.md           # repository-level Agent instructions using the public CLI
+  resources/skills/markdown-comment/
+    SKILL.md         # package-managed Agent instructions using the public CLI
 ```
 
 Split these into published packages only when separate release cadence or reuse makes that worthwhile. Do not duplicate the core inside an extension, server, or Skill.

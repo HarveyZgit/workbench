@@ -6,10 +6,6 @@
 # Every target links directly to the repository source:
 #   <target-dir>/<name> -> <repo>/resources/skills/<name>
 #
-# Package-bound skills — those whose SKILL.md contains a "{{" placeholder (e.g.
-# markdown-comment, whose CLI path is injected at build time) — are SKIPPED here.
-# They are installed by their own package build; we must not clobber a real copy.
-#
 # Safety: only ever create/refresh symlinks that we manage. Never delete a real
 # file/dir or a symlink that points somewhere we don't recognize.
 #
@@ -92,18 +88,6 @@ run() {
   fi
 }
 
-# Is this skill a pure workflow skill? Package-bound skills use build-time
-# placeholders shaped like {{CLI}} / {{BIN_PATH}} (double-brace + UPPER_SNAKE
-# identifier). Match only that placeholder shape so ordinary Markdown such as
-# "{{ value }}" is not mistaken for a package-bound skill.
-PACKAGE_PLACEHOLDER_RE='\{\{[A-Z][A-Z0-9_]*\}\}'
-
-is_workflow_skill() {
-  local skill_md="$1/SKILL.md"
-  [[ -f "$skill_md" ]] || return 1
-  ! grep -Eq "$PACKAGE_PLACEHOLDER_RE" "$skill_md"
-}
-
 # Create/refresh a symlink at $dest pointing to $target, but only if it is safe.
 # Cases:
 #   - missing              -> create
@@ -161,11 +145,6 @@ for skill_path in "$SKILLS_SRC"/*/; do
 
   log ""
   log "skill: $name"
-
-  if ! is_workflow_skill "$skill_path"; then
-    step "SKIP (package-bound, has {{NAME}} placeholder — managed by its build)"
-    continue
-  fi
 
   for d in "${TARGET_DIRS[@]}"; do
     safe_link "$skill_path" "$d/$name"

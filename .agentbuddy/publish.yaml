@@ -4,6 +4,5 @@ registry:
   skills:
     - path: resources/skills
       items:
-        - markdown-comment
         - review-and-commit
         - session-handoff

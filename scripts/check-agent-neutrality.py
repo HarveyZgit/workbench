@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -17,8 +18,7 @@ ADAPTER_CONTENT = {
     ".agentbuddy/publish.yaml": (
         "schema_version: v1\n\nregistry:\n  skills:\n"
         "    - path: resources/skills\n      items:\n"
-        "        - markdown-comment\n        - review-and-commit\n"
-        "        - session-handoff\n"
+        "        - review-and-commit\n        - session-handoff\n"
     ),
     ".github/copilot-instructions.md": (
         "# AI Workbench instructions\n\nFollow [`AGENTS.md`](../AGENTS.md).\n"
@@ -29,7 +29,11 @@ ADAPTER_CONTENT = {
 
 # Reusable Skills are the source of truth. The additional files below define
 # their repository policy or installation boundary.
-SCAN_PREFIXES = ("resources/evals/", "resources/skills/")
+SCAN_PREFIXES = (
+    "packages/markdown-comment/resources/skills/",
+    "resources/evals/",
+    "resources/skills/",
+)
 SCAN_FILES = {
     "AGENTS.md",
     "README.md",
@@ -114,7 +118,7 @@ def should_scan(relative_path: Path) -> bool:
 def read_repository_text(relative_path: Path) -> str:
     absolute_path = REPO_ROOT / relative_path
     if absolute_path.is_symlink():
-        return absolute_path.readlink().as_posix()
+        return os.readlink(str(absolute_path))
     return absolute_path.read_text(encoding="utf-8")
 
 

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
-const skillSource = path.resolve(packageRoot, '../../resources/skills/markdown-comment/SKILL.md');
+const skillSource = path.join(packageRoot, 'resources/skills/markdown-comment/SKILL.md');
 const skillOutput = path.join(packageRoot, 'dist/resources/skills/markdown-comment/SKILL.md');
 
 async function copySkill() {

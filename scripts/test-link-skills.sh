@@ -27,11 +27,10 @@ expect_failure bash "$LINKER"
 expect_failure bash "$LINKER" --target --dry-run
 grep -q 'missing value for --target' "$TMP/failure.err" || fail 'missing target error is unclear'
 
-link_output="$(bash "$LINKER" --target "$TARGET_A" --target "$TARGET_B")"
-grep -q 'SKIP (package-bound, has {{NAME}} placeholder' <<<"$link_output" || fail 'package-bound placeholder was not detected'
+bash "$LINKER" --target "$TARGET_A" --target "$TARGET_B" >/dev/null
 [[ "$(readlink "$TARGET_A/review-and-commit")" == "$SKILLS_SRC/review-and-commit" ]] || fail 'target A link is wrong'
 [[ "$(readlink "$TARGET_B/session-handoff")" == "$SKILLS_SRC/session-handoff" ]] || fail 'target B link is wrong'
-[[ ! -e "$TARGET_A/markdown-comment" ]] || fail 'package-bound skill must not be linked'
+[[ ! -e "$TARGET_A/markdown-comment" ]] || fail 'package-managed skill must not be linked'
 
 # Idempotent rerun.
 bash "$LINKER" --target "$TARGET_A" >/dev/null

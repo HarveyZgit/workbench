@@ -1,6 +1,8 @@
 ---
 name: review-and-commit
 description: 完成一批代码改动后，先让独立审查者复核并协助修正问题，再向用户展示提交信息并等待明确确认后提交。当用户说“审查后提交/review 一下再提交/review-and-commit”，或刚做完多文件改动准备收尾时使用。只负责 review 和经确认的 commit，绝不 push。
+metadata:
+  version: 1.0.1
 ---
 
 # review-and-commit

@@ -1,6 +1,8 @@
 ---
 name: markdown-comment
 description: 读取并回复 Markdown Comment 里的划词或全文评论。当用户说“看看我在文档里的评论/批注”、“逐条回复我标注的问题”，或要求处理 Markdown 上的人工评论时使用。通过 markdown-comment（简写 mdc）CLI 的 list、reply、resolve 命令操作评论，输出精简、省 token。
+metadata:
+  version: 1.0.1
 ---
 
 # markdown-comment

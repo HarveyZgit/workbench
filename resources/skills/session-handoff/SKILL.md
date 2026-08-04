@@ -4,7 +4,7 @@ description: 在 Agent 会话之间可靠交接并立即续做任务。用于用
 compatibility: Requires filesystem access. Git-aware when used inside a Git repository. The bundled validator requires Python 3.10+ and only uses the standard library.
 license: MIT
 metadata:
-  version: 0.1.0
+  version: 1.0.1
 ---
 
 # Session Handoff

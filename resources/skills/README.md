@@ -1,6 +1,6 @@
 # resources/skills
 
-个人 Agent Skill 的统一家。这里放**跨宿主复用**的 Skill 源文件，一处维护、按需分发到用户显式指定的 skill 目录。
+独立 workflow Skill 的统一家。这里放不依赖某个 package 构建产物的 Skill 源文件，一处维护、按需分发到用户显式指定的 skill 目录。
 
 ## 宿主中立
 
@@ -9,14 +9,7 @@
 - 平台专属的发现或发布文件只能做薄适配器：指向这里的源文件，不复制工作流、不定义默认身份、不成为状态真源。
 - 安装目标由用户显式传入，不由 Skill 猜测宿主目录。
 
-## 两类 Skill
-
-| 类型 | 特征 | 安装方式 |
-| --- | --- | --- |
-| **纯 workflow skill** | `SKILL.md` 里没有 `{{UPPER_SNAKE}}` 占位符，纯操作指令 | `scripts/link-skills.sh` 软链，改完即生效 |
-| **包绑定型 skill** | `SKILL.md` 含 `{{CLI}}` 等大写占位符，需在所属包 build 时替换真实路径后拷贝安装 | 由所属 package 的 build 负责，`link-skills.sh` 会跳过 |
-
-例：`review-and-commit` 和 `session-handoff` 是纯 workflow skill；`markdown-comment` 是包绑定型（CLI 路径 build 时注入）。
+依赖 CLI 路径注入或其他 package 构建产物的 Skill 不放在这里，应随所属 package 维护并由该 package 安装。例如 `markdown-comment` 的 Skill 位于 `packages/markdown-comment/resources/skills/markdown-comment/`，由 `mdc init` 安装。
 
 ## 目录约定
 
@@ -52,5 +45,5 @@ scripts/link-skills.sh --target <skill-dir>
 ## 新增一个 skill
 
 1. 建 `resources/skills/<name>/SKILL.md`，写好 `name` / `description`（description 决定触发准确度，写清“做什么 + 什么时候用”）。
-2. 纯 workflow 就用 `scripts/link-skills.sh --target <skill-dir>` 安装；包绑定型交给所属包 build。
+2. 用 `scripts/link-skills.sh --target <skill-dir>` 安装。
 3. skill 通常在新会话或重新加载后才出现在 Agent 的 skills 列表里。
