@@ -140,11 +140,36 @@ function fileTextOf(absFile: string): string | null {
  * 失联判定：划词锚点的源码 quote 在当前文件文本里搜不到 —— 与预览 relocate 失败等价（原文已删/被完整替换）。
  * 失联评论原文已不在，回复也无意义，`list` 默认隐藏（同预览）。text=null（文件读不到）/ 空 quote / 全文评论 → 不算失联。
  */
-function isOrphaned(text: string | null, anchor: StoredThread['anchor']): boolean {
-  if (anchor.kind === 'document' || !anchor.quote || text === null) {
-    return false;
+function mermaidBlockAtOrNear(text: string, line: number): boolean {
+  const lines = text.split(/\r?\n/);
+  for (let candidate = Math.min(Math.max(0, line), lines.length - 1); candidate >= 0; candidate--) {
+    if (/^(?: {0,3})(`{3,}|~{3,})\s*mermaid(?:\s.*)?$/i.test(lines[candidate])) {
+      return true;
+    }
+    if (/^(?: {0,3})(`{3,}|~{3,})\s*$/.test(lines[candidate])) {
+      break;
+    }
   }
-  return !text.includes(anchor.quote);
+  return false;
+}
+
+function anchorState(
+  text: string | null,
+  anchor: StoredThread['anchor'],
+): { orphaned: boolean; diagramFallback: boolean } {
+  if (anchor.kind === 'document' || !anchor.quote || text === null) {
+    return { orphaned: false, diagramFallback: false };
+  }
+  if (text.includes(anchor.quote)) {
+    return { orphaned: false, diagramFallback: false };
+  }
+  if (
+    (anchor.target?.kind === 'mermaid-node' || anchor.target?.kind === 'mermaid-diagram') &&
+    mermaidBlockAtOrNear(text, anchor.startLine)
+  ) {
+    return { orphaned: false, diagramFallback: anchor.target.kind === 'mermaid-node' };
+  }
+  return { orphaned: true, diagramFallback: false };
 }
 
 function cmdList(): void {
@@ -172,7 +197,8 @@ function cmdList(): void {
         if (flags.has('--open') && t.status !== 'open') {
           continue;
         }
-        const orphaned = isOrphaned(text, t.anchor);
+        const state = anchorState(text, t.anchor);
+        const orphaned = state.orphaned;
         if (orphaned && !showHidden) {
           continue;
         }
@@ -185,6 +211,7 @@ function cmdList(): void {
           quote: t.anchor.quote,
           renderedQuote: t.anchor.rendered?.quote,
           target: t.anchor.target,
+          diagramFallback: state.diagramFallback,
           comments: t.comments.map((c) => ({ author: c.author, body: c.body })),
         });
       }
@@ -197,9 +224,10 @@ function cmdList(): void {
   const blocks: string[] = [];
   for (const { path: p, doc } of docs) {
     const text = fileTextOf(p);
-    const threads = doc.threads.filter(
-      (t) => (!flags.has('--open') || t.status === 'open') && (showHidden || !isOrphaned(text, t.anchor)),
-    );
+    const threads = doc.threads.filter((t) => {
+      const state = anchorState(text, t.anchor);
+      return (!flags.has('--open') || t.status === 'open') && (showHidden || !state.orphaned);
+    });
     if (threads.length === 0) {
       continue;
     }
@@ -210,8 +238,9 @@ function cmdList(): void {
     const lines = [displayPath(p)];
     for (const t of threads) {
       const status = t.status === 'resolved' ? ' [已解决]' : '';
-      const orphan = isOrphaned(text, t.anchor) ? ' [失联]' : '';
-      lines.push(`${headOf(p, t)}  #${shortId(t.id)}${status}${orphan}`); // headOf 用绝对路径读行内容
+      const state = anchorState(text, t.anchor);
+      const anchorStatus = state.orphaned ? ' [失联]' : state.diagramFallback ? ' [降级到整图]' : '';
+      lines.push(`${headOf(p, t)}  #${shortId(t.id)}${status}${anchorStatus}`); // headOf 用绝对路径读行内容
       for (const c of t.comments) {
         lines.push(`    - ${c.author}: ${oneLine(c.body)}`);
       }
@@ -373,7 +402,10 @@ async function cmdInit(): Promise<void> {
     if (!fs.existsSync(vsix)) {
       const vsce = path.join(pkgRoot, 'node_modules', '.bin', 'vsce');
       process.stdout.write('打包 vsix…\n');
-      execFileSync(vsce, ['package', '--no-dependencies', '-o', vsix], { cwd: pkgRoot, stdio: 'inherit' });
+      execFileSync(vsce, ['package', '--no-dependencies', '--ignoreFile', '.vscodeignore', '-o', vsix], {
+        cwd: pkgRoot,
+        stdio: 'inherit',
+      });
     }
     process.stdout.write('安装 VS Code 插件…\n');
     try {

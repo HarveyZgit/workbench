@@ -1,6 +1,6 @@
 # Markdown Comment package guide
 
-Read the repository-level [AGENTS.md](../../AGENTS.md) and the target [architecture](../../docs/architecture/markdown-comment.md) before working here.
+Read the repository-level [AGENTS.md](../../AGENTS.md) and this package's target [architecture](docs/architecture/markdown-comment.md) before working here.
 
 ## Current state
 

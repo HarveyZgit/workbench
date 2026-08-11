@@ -3,10 +3,14 @@
 src/
 node_modules/
 .vscode/
+AGENTS.md
+fixtures/
+resources/
 *.map
 *.ts
 esbuild.mjs
 tsconfig.json
+tsconfig.webview.json
 .vscodeignore
 .gitignore
 pnpm-lock.yaml

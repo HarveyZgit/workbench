@@ -50,23 +50,39 @@ function firstDeclarationLine(lines: readonly string[]): number {
   return -1;
 }
 
-function endpointNodeId(source: string): string | null {
-  return SIMPLE_ENDPOINT.exec(source.trim())?.[1] ?? null;
+interface ParsedEndpoint {
+  nodeId: string;
+  explicit: boolean;
+  declaration?: string;
 }
 
-function lineNodeIds(line: string): string[] | null {
+function parseEndpoint(source: string): ParsedEndpoint | null {
+  const trimmed = source.trim();
+  const match = SIMPLE_ENDPOINT.exec(trimmed);
+  if (!match) {
+    return null;
+  }
+  const declaration = trimmed.slice(match[1].length).replace(/\s+/g, ' ');
+  return {
+    nodeId: match[1],
+    explicit: declaration.length > 0,
+    declaration: declaration || undefined,
+  };
+}
+
+function lineEndpoints(line: string): ParsedEndpoint[] | null {
   const edgeParts = line.split('-->');
   if (edgeParts.length === 2) {
-    const from = endpointNodeId(edgeParts[0]);
-    const to = endpointNodeId(edgeParts[1]);
+    const from = parseEndpoint(edgeParts[0]);
+    const to = parseEndpoint(edgeParts[1]);
     return from && to ? [from, to] : null;
   }
   if (edgeParts.length > 2) {
     return null;
   }
 
-  const nodeId = endpointNodeId(line);
-  return nodeId ? [nodeId] : null;
+  const endpoint = parseEndpoint(line);
+  return endpoint ? [endpoint] : null;
 }
 
 export function parseMermaidFlowchartNodeSources(source: string): MermaidNodeSourceMap {
@@ -76,7 +92,10 @@ export function parseMermaidFlowchartNodeSources(source: string): MermaidNodeSou
     return new Map();
   }
 
-  const sourceLines = new Map<string, number[]>();
+  const sourceLines = new Map<
+    string,
+    { references: number[]; declarations: Map<string, number[]> }
+  >();
   let inDirective = false;
 
   for (let lineIndex = declarationLine + 1; lineIndex < lines.length; lineIndex++) {
@@ -100,14 +119,22 @@ export function parseMermaidFlowchartNodeSources(source: string): MermaidNodeSou
       continue;
     }
 
-    const nodeIds = lineNodeIds(line);
-    if (!nodeIds) {
+    const endpoints = lineEndpoints(line);
+    if (!endpoints) {
       return new Map();
     }
-    for (const nodeId of nodeIds) {
-      const locations = sourceLines.get(nodeId) ?? [];
-      locations.push(lineIndex);
-      sourceLines.set(nodeId, locations);
+    for (const endpoint of endpoints) {
+      const locations = sourceLines.get(endpoint.nodeId) ?? {
+        references: [],
+        declarations: new Map<string, number[]>(),
+      };
+      locations.references.push(lineIndex);
+      if (endpoint.explicit && endpoint.declaration) {
+        const declarationLines = locations.declarations.get(endpoint.declaration) ?? [];
+        declarationLines.push(lineIndex);
+        locations.declarations.set(endpoint.declaration, declarationLines);
+      }
+      sourceLines.set(endpoint.nodeId, locations);
     }
   }
 
@@ -117,10 +144,14 @@ export function parseMermaidFlowchartNodeSources(source: string): MermaidNodeSou
 
   const result = new Map<string, MermaidNodeSourceLocation>();
   for (const [nodeId, locations] of sourceLines) {
-    if (locations.length !== 1) {
+    if (locations.declarations.size > 1) {
       continue;
     }
-    const [startLine] = locations;
+    const declarationLines = locations.declarations.values().next().value as number[] | undefined;
+    const startLine = declarationLines?.[0] ?? locations.references[0];
+    if (startLine === undefined) {
+      continue;
+    }
     result.set(nodeId, { startLine, endLine: startLine + 1 });
   }
   return result;

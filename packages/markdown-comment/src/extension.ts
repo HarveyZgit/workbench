@@ -40,6 +40,8 @@ interface ThreadMeta {
   status: 'open' | 'resolved';
   rendered?: StoredAnchor['rendered'];
   target?: StoredAnchor['target'];
+  originalAnchor?: StoredAnchor;
+  anchorFailed?: boolean;
 }
 
 let controller: vscode.CommentController;
@@ -94,6 +96,9 @@ function buildAnchor(doc: vscode.TextDocument, thread: vscode.CommentThread, met
   const range = thread.range;
   if (meta.kind === 'document' || !range) {
     return buildAnchorFromRange(doc, new vscode.Range(0, 0, 0, 0), 'document');
+  }
+  if (meta.anchorFailed && meta.originalAnchor) {
+    return meta.originalAnchor;
   }
   const anchor = buildAnchorFromRange(doc, range, 'selection');
   anchor.rendered = meta.rendered;
@@ -181,6 +186,8 @@ function loadForDocument(doc: vscode.TextDocument): void {
       status: st.status,
       rendered: st.anchor.rendered,
       target: st.anchor.target,
+      originalAnchor: st.anchor,
+      anchorFailed: located === null,
     };
     threadMeta.set(thread, meta);
     thread.comments = st.comments.map((sc) => toMarkdownComment(sc, thread));

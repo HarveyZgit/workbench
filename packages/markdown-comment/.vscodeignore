@@ -1,8 +1,15 @@
+AGENTS.md
+.npmignore
 .vscode/**
+examples/**
+fixtures/**
+resources/**
+skill/**
 src/**
 node_modules/**
 esbuild.mjs
 tsconfig.json
+tsconfig.webview.json
 pnpm-lock.yaml
 .gitignore
 **/*.map

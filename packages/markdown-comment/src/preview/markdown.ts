@@ -19,6 +19,7 @@ import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
 import texmath from 'markdown-it-texmath';
 import { parseDocument } from 'yaml';
+import { headingSlug, headingTextFromInline } from './heading';
 import { sanitizeHtml, sanitizeInlineHtmlToken } from './sanitize';
 
 export type FrontMatterMode = 'table' | 'codeBlock' | 'hide';
@@ -157,30 +158,7 @@ function hashSource(source: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
-function headingSlug(source: string): string {
-  return source
-    .trim()
-    .toLowerCase()
-    .replace(/<[^>]*>/g, '')
-    .replace(/[^\p{Letter}\p{Number}\s_-]/gu, '')
-    .replace(/\s+/g, '-');
-}
-
 type MarkdownToken = ReturnType<MarkdownIt['parse']>[number];
-
-function inlineText(token: MarkdownToken): string {
-  if (!token.children) {
-    return token.content;
-  }
-  return token.children
-    .map((child: MarkdownToken) => {
-      if (child.type === 'text' || child.type === 'code_inline') {
-        return child.content;
-      }
-      return '';
-    })
-    .join('');
-}
 
 function createMarkdownIt(): MarkdownIt {
   const markdown = new MarkdownIt({
@@ -439,7 +417,7 @@ function createMarkdownIt(): MarkdownIt {
   markdown.renderer.rules.heading_open = (tokens, index, options, environment, renderer) => {
     const token = tokens[index];
     const env = environment as RenderEnvironment;
-    const base = headingSlug(inlineText(tokens[index + 1]));
+    const base = headingSlug(headingTextFromInline(tokens[index + 1]));
     const count = env.headingCounts.get(base) ?? 0;
     env.headingCounts.set(base, count + 1);
     token.attrSet('id', count === 0 ? base : `${base}-${count}`);

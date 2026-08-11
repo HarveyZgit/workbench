@@ -6,7 +6,7 @@ The migrated implementation keeps the existing VS Code rendered-preview workflow
 
 The Skill source is kept with the package at `resources/skills/markdown-comment/SKILL.md`. The build copies it into `dist/resources/` so `mdc init` and the packaged VSIX remain self-contained. It is installed only through this package and is not published with the repository's standalone workflow Skills.
 
-Before changing this package, read the repository-root `AGENTS.md` and `docs/architecture/markdown-comment.md`.
+Before changing this package, read `AGENTS.md` and `docs/architecture/markdown-comment.md` in this package.
 
 ## Comment preview
 
@@ -29,9 +29,6 @@ Preview settings:
 - `markdownComment.preview.breaks`, `typographer`, and `html`;
 - `markdownComment.preview.renderedDiff`;
 - `markdownComment.preview.mermaidNodeComments`.
-
-The interactive fixture is `fixtures/preview-p0-p1.md`. To test custom styles,
-add `./fixtures/preview-p2.css` to `markdownComment.preview.styles`.
 
 ## Install
 

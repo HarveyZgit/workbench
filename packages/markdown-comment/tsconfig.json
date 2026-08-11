@@ -19,6 +19,7 @@
     "dist",
     "src/preview/webview.ts",
     "src/preview/markdown.ts",
+    "src/preview/heading.ts",
     "src/preview/mermaid.ts",
     "src/preview/navigation.ts"
   ]

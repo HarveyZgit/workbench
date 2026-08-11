@@ -2,9 +2,14 @@
   "name": "vscode-markdown-comment",
   "displayName": "Markdown Comment",
   "description": "为 Markdown 文档建立可重定位评论线程，并提供 VS Code、CLI 与 Agent Skill 接入。",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "publisher": "corehr-fe",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@code.byted.org/zhanghang.harvey/workbench.git",
+    "directory": "packages/markdown-comment"
+  },
   "publishConfig": {
     "registry": "https://bnpm.byted.org/",
     "access": "public"
@@ -277,8 +282,8 @@
     "watch": "node esbuild.mjs --watch",
     "setup": "node esbuild.mjs --production && node dist/cli.js init",
     "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
-    "package": "vsce package --no-dependencies -o dist/vscode-markdown-comment.vsix",
-    "prepack": "node esbuild.mjs --production && vsce package --no-dependencies -o dist/vscode-markdown-comment.vsix"
+    "package": "vsce package --no-dependencies --ignoreFile .vscodeignore -o dist/vscode-markdown-comment.vsix",
+    "prepack": "node esbuild.mjs --production && vsce package --no-dependencies --ignoreFile .vscodeignore -o dist/vscode-markdown-comment.vsix"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",

@@ -10,6 +10,7 @@ import { isMarkdownDocument } from '../markdown-lang';
 import { buildAnchorFromRange, mapRenderedSelectionToRange, relocate } from '../anchor';
 import type { StoredDocument, StoredThread } from '../types';
 import { computePreviewLineChanges } from './diff';
+import { findHeadingLine } from './heading';
 import type {
   HostToWebview,
   PreviewLineChanges,
@@ -286,15 +287,6 @@ function isWebviewMessage(value: unknown): value is WebviewToHost {
   }
 }
 
-function headingSlug(text: string): string {
-  return text
-    .trim()
-    .toLowerCase()
-    .replace(/<[^>]*>/g, '')
-    .replace(/[^\p{Letter}\p{Number}\s_-]/gu, '')
-    .replace(/\s+/g, '-');
-}
-
 function lineForFragment(doc: vscode.TextDocument, fragment: string): number | null {
   let decoded = fragment;
   try {
@@ -302,22 +294,7 @@ function lineForFragment(doc: vscode.TextDocument, fragment: string): number | n
   } catch {
     // 无法解码时继续使用原 fragment。
   }
-  const wanted = decoded.toLowerCase();
-  const seen = new Map<string, number>();
-  for (let line = 0; line < doc.lineCount; line++) {
-    const match = /^(?: {0,3})(#{1,6})\s+(.+?)\s*#*\s*$/.exec(doc.lineAt(line).text);
-    if (!match) {
-      continue;
-    }
-    const base = headingSlug(match[2]);
-    const count = seen.get(base) ?? 0;
-    seen.set(base, count + 1);
-    const slug = count === 0 ? base : `${base}-${count}`;
-    if (slug.toLowerCase() === wanted) {
-      return line;
-    }
-  }
-  return null;
+  return findHeadingLine(doc.getText(), decoded);
 }
 
 function mermaidBlockEndLine(doc: vscode.TextDocument, startLine: number): number {
@@ -642,8 +619,12 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     const doc = await getDoc(uri);
     const text = doc?.getText() ?? '';
     const options = renderOptions(panel.webview, uri, doc);
+    const encoding =
+      doc && 'encoding' in doc && typeof (doc as vscode.TextDocument & { encoding?: unknown }).encoding === 'string'
+        ? (doc as vscode.TextDocument & { encoding: string }).encoding.toLowerCase()
+        : 'utf8';
     const changes =
-      options.renderedDiff && doc?.isDirty && doc.encoding.toLowerCase() === 'utf8'
+      options.renderedDiff && doc?.isDirty && encoding === 'utf8'
         ? readLineChanges(uri.fsPath, text)
         : undefined;
     post({
