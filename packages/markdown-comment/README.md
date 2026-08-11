@@ -47,6 +47,12 @@ mdc init --skill-dirs <skill-root-a,skill-root-b>
 subdirectory under it. Interactive use prompts for these roots, while
 non-interactive use must provide one of the flags or use `--no-skill`.
 
+Targets are canonicalized before writing. If multiple paths ultimately resolve
+to the same directory (for example one skill root is a symlink to another), the
+Skill is written once and duplicate targets are reported. The installed Skill
+always invokes this package's bundled CLI instead of trusting an unrelated
+global `mdc` command.
+
 The package `setup` script forwards arguments to `mdc init`. From the repository
 root, pass the target explicitly in non-interactive environments:
 

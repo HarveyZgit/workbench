@@ -259,14 +259,47 @@ function cmdResolve(): void {
   process.stdout.write('OK: 已标记已解决 #' + shortId(found.thread.id) + '\n');
 }
 
-/** mdc 是否已是全局命令（pnpm link --global / npm i -g 之后）。 */
-function hasGlobalCli(): boolean {
-  try {
-    execFileSync('which', ['mdc'], { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
+function nearestExistingAncestor(target: string): string {
+  let current = target;
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
   }
+  return current;
+}
+
+/**
+ * 返回安装目标的 canonical identity。
+ * 目标本身可能还不存在，因此先 realpath 最近的已存在祖先，再拼回剩余相对路径。
+ */
+function canonicalTarget(target: string): string {
+  const absolute = path.resolve(target);
+  const ancestor = nearestExistingAncestor(absolute);
+  try {
+    return path.join(fs.realpathSync.native(ancestor), path.relative(ancestor, absolute));
+  } catch {
+    return absolute;
+  }
+}
+
+function dedupeSkillTargets(targets: string[]): { targets: string[]; duplicates: Array<{ target: string; original: string }> } {
+  const seen = new Map<string, string>();
+  const unique: string[] = [];
+  const duplicates: Array<{ target: string; original: string }> = [];
+  for (const target of targets) {
+    const canonical = canonicalTarget(target);
+    const original = seen.get(canonical);
+    if (original) {
+      duplicates.push({ target, original });
+      continue;
+    }
+    seen.set(canonical, target);
+    unique.push(target);
+  }
+  return { targets: unique, duplicates };
 }
 
 function askLine(prompt: string): Promise<string> {
@@ -328,6 +361,11 @@ async function cmdInit(): Promise<void> {
         path.join(path.resolve(directory.replace(/^~(?=$|\/)/, os.homedir())), 'markdown-comment'),
       );
     }
+    const deduped = dedupeSkillTargets(skillTargets);
+    skillTargets = deduped.targets;
+    for (const duplicate of deduped.duplicates) {
+      process.stdout.write(`跳过重复 skill 目标：${duplicate.target} → ${duplicate.original}\n`);
+    }
   }
 
   if (!flags.has('--no-extension')) {
@@ -348,8 +386,8 @@ async function cmdInit(): Promise<void> {
   }
 
   if (skillTargets.length) {
-    // CLI 已全局可用就用 mdc，否则回退绝对路径，保证 Agent 一定能调用。
-    const cliCmd = hasGlobalCli() ? 'mdc' : `node ${shellQuote(path.join(pkgRoot, 'dist', 'cli.js'))}`;
+    // 始终绑定当前 package 的 CLI，避免 PATH 里的同名命令指向旧仓库或其他版本。
+    const cliCmd = `node ${shellQuote(path.join(pkgRoot, 'dist', 'cli.js'))}`;
     const body = fs
       .readFileSync(path.join(pkgRoot, 'dist', 'resources', 'skills', 'markdown-comment', 'SKILL.md'), 'utf8')
       .replaceAll('{{CLI}}', cliCmd);
