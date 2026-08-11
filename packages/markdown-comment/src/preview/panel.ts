@@ -9,8 +9,10 @@ import { loadDoc, saveDoc, fileHash } from '../storage';
 import { isMarkdownDocument } from '../markdown-lang';
 import { buildAnchorFromRange, mapRenderedSelectionToRange, relocate } from '../anchor';
 import type { StoredDocument, StoredThread } from '../types';
+import { computePreviewLineChanges } from './diff';
 import type {
   HostToWebview,
+  PreviewLineChanges,
   PreviewRenderOptions,
   RenderedSelection,
   ResolvedPreviewResource,
@@ -26,6 +28,11 @@ const MAX_SELECTION_QUOTE_LENGTH = 200_000;
 const MAX_SELECTION_CONTEXT_LENGTH = 1_000;
 const MAX_LABEL_LENGTH = 500;
 const MAX_LINK_LENGTH = 4_096;
+const MAX_STYLE_FILES = 10;
+const MAX_STYLE_FILE_SIZE = 1_000_000;
+const MAX_STYLE_TOTAL_SIZE = 2_000_000;
+const MAX_DIFF_DOCUMENT_SIZE = 200_000;
+const MAX_DIFF_DOCUMENT_LINES = 10_000;
 
 interface PreviewController {
   panel: vscode.WebviewPanel;
@@ -46,13 +53,26 @@ function docFor(uri: vscode.Uri): vscode.TextDocument | undefined {
   return vscode.workspace.textDocuments.find((d) => keyOf(d.uri) === keyOf(uri));
 }
 
-function renderOptions(uri: vscode.Uri): PreviewRenderOptions {
+function renderOptions(webview: vscode.Webview, uri: vscode.Uri, doc?: vscode.TextDocument): PreviewRenderOptions {
   const config = vscode.workspace.getConfiguration('markdownComment.preview', uri);
+  const rawFontFamily = config.get<string>('fontFamily', '').trim();
+  const fontSize = Math.min(40, Math.max(8, config.get<number>('fontSize', 14)));
+  const lineHeight = Math.min(3, Math.max(1, config.get<number>('lineHeight', 1.7)));
+  const renderedDiff = config.get<boolean>('renderedDiff', true);
   return {
     frontMatter: config.get<PreviewRenderOptions['frontMatter']>('frontMatter', 'table'),
     scrollPreviewWithEditor: config.get<boolean>('scrollPreviewWithEditor', true),
     scrollEditorWithPreview: config.get<boolean>('scrollEditorWithPreview', true),
     doubleClickToSwitchToEditor: config.get<boolean>('doubleClickToSwitchToEditor', true),
+    styles: resolvePreviewStyles(webview, uri, config.get<string[]>('styles', [])),
+    fontFamily: rawFontFamily && rawFontFamily.length <= 500 ? rawFontFamily : undefined,
+    fontSize,
+    lineHeight,
+    breaks: config.get<boolean>('breaks', false),
+    typographer: config.get<boolean>('typographer', false),
+    html: config.get<PreviewRenderOptions['html']>('html', 'strict'),
+    renderedDiff,
+    mermaidNodeComments: config.get<boolean>('mermaidNodeComments', false),
   };
 }
 
@@ -124,6 +144,55 @@ function resolveLocalReference(uri: vscode.Uri, source: string): vscode.Uri | nu
   });
 }
 
+function resolvePreviewStyles(webview: vscode.Webview, uri: vscode.Uri, sources: string[]): string[] {
+  if (!vscode.workspace.isTrusted || !Array.isArray(sources)) {
+    return [];
+  }
+  const styles: string[] = [];
+  let totalSize = 0;
+  for (const source of sources.slice(0, MAX_STYLE_FILES)) {
+    if (typeof source !== 'string' || source.length > MAX_LINK_LENGTH || path.extname(source).toLowerCase() !== '.css') {
+      continue;
+    }
+    const resolved = resolveLocalReference(uri, source);
+    if (!resolved) {
+      continue;
+    }
+    try {
+      const size = fs.statSync(resolved.fsPath).size;
+      if (size > MAX_STYLE_FILE_SIZE || totalSize + size > MAX_STYLE_TOTAL_SIZE) {
+        continue;
+      }
+      totalSize += size;
+      styles.push(webview.asWebviewUri(resolved).toString(true));
+    } catch {
+      // 文件不存在或不可读时忽略该样式。
+    }
+  }
+  return styles;
+}
+
+function readLineChanges(absPath: string, current: string): PreviewLineChanges | undefined {
+  if (
+    current.length > MAX_DIFF_DOCUMENT_SIZE ||
+    current.split(/\r?\n/, MAX_DIFF_DOCUMENT_LINES + 1).length > MAX_DIFF_DOCUMENT_LINES
+  ) {
+    return undefined;
+  }
+  try {
+    const baseline = fs.readFileSync(absPath, 'utf8');
+    if (
+      baseline.length > MAX_DIFF_DOCUMENT_SIZE ||
+      baseline.split(/\r?\n/, MAX_DIFF_DOCUMENT_LINES + 1).length > MAX_DIFF_DOCUMENT_LINES
+    ) {
+      return undefined;
+    }
+    return computePreviewLineChanges(baseline, current);
+  } catch {
+    return undefined;
+  }
+}
+
 function isWebviewMessage(value: unknown): value is WebviewToHost {
   if (!value || typeof value !== 'object' || !('type' in value) || typeof value.type !== 'string') {
     return false;
@@ -171,6 +240,16 @@ function isWebviewMessage(value: unknown): value is WebviewToHost {
         hasNonNegativeInteger('endLine') &&
         (message.endLine as number) > (message.startLine as number)
       );
+    case 'createMermaidNodeThread':
+      return (
+        hasComment('text') &&
+        hasBoundedString('label', MAX_LABEL_LENGTH) &&
+        hasBoundedString('nodeId', MAX_ID_LENGTH) &&
+        /^[A-Za-z_][A-Za-z0-9_-]*$/.test(message.nodeId as string) &&
+        hasNonNegativeInteger('startLine') &&
+        hasNonNegativeInteger('endLine') &&
+        (message.endLine as number) > (message.startLine as number)
+      );
     case 'createDocThread':
       return hasComment('text');
     case 'reply':
@@ -196,6 +275,9 @@ function isWebviewMessage(value: unknown): value is WebviewToHost {
       );
     case 'openLink':
       return hasBoundedString('href', MAX_LINK_LENGTH);
+    case 'copyImageFallback':
+    case 'openImage':
+      return hasBoundedString('source', MAX_LINK_LENGTH);
     case 'revealSourceLine':
     case 'previewScroll':
       return hasFiniteNumber('line');
@@ -254,6 +336,19 @@ function mermaidBlockEndLine(doc: vscode.TextDocument, startLine: number): numbe
   return doc.lineCount;
 }
 
+function mermaidBlockNear(doc: vscode.TextDocument, line: number): { startLine: number; endLine: number } | null {
+  const blocks: Array<{ startLine: number; endLine: number }> = [];
+  for (let candidate = 0; candidate < doc.lineCount; candidate++) {
+    if (!/^(?: {0,3})(`{3,}|~{3,})\s*mermaid(?:\s.*)?$/i.test(doc.lineAt(candidate).text)) {
+      continue;
+    }
+    const endLine = mermaidBlockEndLine(doc, candidate);
+    blocks.push({ startLine: candidate, endLine });
+    candidate = Math.max(candidate, endLine - 1);
+  }
+  return blocks.find((block) => block.startLine <= line && line < block.endLine) ?? null;
+}
+
 // 拿源文档：优先用已打开的，否则后台 openTextDocument 加载（不显示标签页）。
 // 关掉源码标签后预览仍能建评论/重渲；文件已删/读失败返回 undefined。
 async function getDoc(uri: vscode.Uri): Promise<vscode.TextDocument | undefined> {
@@ -280,10 +375,19 @@ function toWire(t: StoredThread, doc?: vscode.TextDocument): WireThread | null {
   if (doc && t.anchor.kind === 'selection') {
     const r = relocate(doc, t.anchor);
     if (!r) {
-      return null; // 原文已删/被完整替换 → 预览里隐藏
+      if (t.anchor.target?.kind !== 'mermaid-node') {
+        return null; // 原文已删/被完整替换 → 预览里隐藏
+      }
+      const block = mermaidBlockNear(doc, t.anchor.startLine);
+      if (!block) {
+        return null;
+      }
+      startLine = block.startLine;
+      endLine = block.endLine - 1;
+    } else {
+      startLine = r.start.line;
+      endLine = t.anchor.target?.kind === 'mermaid-diagram' ? mermaidBlockEndLine(doc, startLine) - 1 : r.end.line;
     }
-    startLine = r.start.line;
-    endLine = t.anchor.target?.kind === 'mermaid-diagram' ? mermaidBlockEndLine(doc, startLine) - 1 : r.end.line;
   }
   return {
     id: t.id,
@@ -303,9 +407,9 @@ const STYLE = `
 html, body { height: 100%; }
 body {
   margin: 0;
-  font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size, 14px);
-  line-height: 1.7;
+  font-family: var(--mdc-preview-font-family, var(--vscode-font-family));
+  font-size: var(--mdc-preview-font-size, var(--vscode-font-size, 14px));
+  line-height: var(--mdc-preview-line-height, 1.7);
   color: var(--vscode-foreground);
 }
 #app { display: flex; height: 100vh; }
@@ -460,6 +564,7 @@ function buildHtml(webview: vscode.Webview, scriptUri: vscode.Uri, styleUri: vsc
   const csp = [
     `default-src 'none'`,
     `img-src ${webview.cspSource} https: data:`,
+    `connect-src ${webview.cspSource} https:`,
     `style-src ${webview.cspSource} 'unsafe-inline'`,
     `script-src 'nonce-${n}'`,
     `font-src ${webview.cspSource}`,
@@ -535,7 +640,19 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
   const sendThreads = async () => post({ type: 'threads', threads: wireFor(await getDoc(uri)) });
   const sendRender = async () => {
     const doc = await getDoc(uri);
-    post({ type: 'render', text: doc?.getText() ?? '', threads: wireFor(doc), options: renderOptions(uri) });
+    const text = doc?.getText() ?? '';
+    const options = renderOptions(panel.webview, uri, doc);
+    const changes =
+      options.renderedDiff && doc?.isDirty && doc.encoding.toLowerCase() === 'utf8'
+        ? readLineChanges(uri.fsPath, text)
+        : undefined;
+    post({
+      type: 'render',
+      text,
+      threads: wireFor(doc),
+      options,
+      diff: changes ? { baseline: 'saved', changes } : undefined,
+    });
   };
 
   // 改 storage 后即时回推 webview（源码侧由 fs.watch 自行重载）。
@@ -602,6 +719,35 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     );
   };
 
+  const handleCreateNode = async (
+    startLine: number,
+    label: string,
+    nodeId: string,
+    text: string,
+  ) => {
+    if (!text.trim()) {
+      return;
+    }
+    const doc = await getDoc(uri);
+    const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
+    const range = doc ? doc.lineAt(safeStartLine).range : null;
+    if (!doc || !range) {
+      vscode.window.showWarningMessage('源 Markdown 文件无法读取，无法创建节点评论');
+      return;
+    }
+    const anchor = buildAnchorFromRange(doc, range, 'selection');
+    anchor.rendered = { quote: label, before: '', after: '' };
+    anchor.target = { kind: 'mermaid-node', nodeId };
+    mutate((stored) =>
+      stored.threads.push({
+        id: randomUUID(),
+        anchor,
+        status: 'open',
+        comments: [{ id: randomUUID(), author: 'user', body: text, createdAt: new Date().toISOString() }],
+      }),
+    );
+  };
+
   const resolveResources = (sources: string[]): ResolvedPreviewResource[] =>
     sources.map((source) => {
       if (/^https:/i.test(source) || /^data:image\//i.test(source)) {
@@ -657,6 +803,17 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     await vscode.commands.executeCommand('vscode.open', resolved);
   };
 
+  const openImage = async (source: string) => {
+    if (/^https:/i.test(source)) {
+      await vscode.env.openExternal(vscode.Uri.parse(source, true));
+      return;
+    }
+    const resolved = resolveLocalReference(uri, source);
+    if (resolved) {
+      await vscode.commands.executeCommand('vscode.open', resolved.with({ query: '', fragment: '' }));
+    }
+  };
+
   const revealSourceLine = async (line: number, preserveFocus = false) => {
     const doc = await getDoc(uri);
     if (!doc) {
@@ -690,7 +847,14 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
       return;
     }
-    const range = relocate(doc, t.anchor) ?? new vscode.Range(0, 0, 0, 0);
+    const range =
+      relocate(doc, t.anchor) ??
+      (t.anchor.target?.kind === 'mermaid-node'
+        ? (() => {
+            const block = mermaidBlockNear(doc, t.anchor.startLine);
+            return block ? doc.lineAt(block.startLine).range : new vscode.Range(0, 0, 0, 0);
+          })()
+        : new vscode.Range(0, 0, 0, 0));
     const shown = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One, preserveFocus: false });
     shown.selection = new vscode.Selection(range.start, range.end);
     shown.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
@@ -721,6 +885,9 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
           break;
         case 'createBlockThread':
           void handleCreateBlock(msg.startLine, msg.endLine, msg.label, msg.target, msg.text);
+          break;
+        case 'createMermaidNodeThread':
+          void handleCreateNode(msg.startLine, msg.label, msg.nodeId, msg.text);
           break;
         case 'createDocThread':
           if (msg.text) {
@@ -784,12 +951,18 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
         case 'openLink':
           void openLink(msg.href);
           break;
+        case 'openImage':
+          void openImage(msg.source);
+          break;
+        case 'copyImageFallback':
+          void vscode.env.clipboard.writeText(msg.source);
+          break;
         case 'revealSourceLine':
           suppressPreviewScrollUntil = Date.now() + 200;
           void revealSourceLine(msg.line);
           break;
         case 'previewScroll': {
-          if (!renderOptions(uri).scrollEditorWithPreview || Date.now() < suppressEditorScrollUntil) {
+          if (!renderOptions(panel.webview, uri).scrollEditorWithPreview || Date.now() < suppressEditorScrollUntil) {
             break;
           }
           const editor = vscode.window.visibleTextEditors.find((candidate) => keyOf(candidate.document.uri) === keyOf(uri));
@@ -808,6 +981,11 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
         scheduleRender();
       }
     }),
+    vscode.workspace.onDidSaveTextDocument((doc) => {
+      if (keyOf(doc.uri) === keyOf(uri)) {
+        void sendRender();
+      }
+    }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('markdownComment.preview', uri)) {
         void sendRender();
@@ -816,7 +994,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
       if (
         keyOf(e.textEditor.document.uri) !== keyOf(uri) ||
-        !renderOptions(uri).scrollPreviewWithEditor ||
+        !renderOptions(panel.webview, uri).scrollPreviewWithEditor ||
         Date.now() < suppressPreviewScrollUntil
       ) {
         return;

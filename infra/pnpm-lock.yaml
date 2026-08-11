@@ -90,6 +90,12 @@ importers:
 
   ../../packages/markdown-comment:
     dependencies:
+      diff:
+        specifier: ^8.0.4
+        version: 8.0.4
+      dompurify:
+        specifier: ^3.4.13
+        version: 3.4.13
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1
@@ -2099,6 +2105,10 @@ packages:
 
   diff@4.0.4:
     resolution: {integrity: sha512-X07nttJQkwkfKfvTPG/KSnE2OMdcUCao6+eXF3wmnIQRn2aPAHH3VxDbDOdegkd6JbPsXqShpvEOHfAT+nCNwQ==}
+    engines: {node: '>=0.3.1'}
+
+  diff@8.0.4:
+    resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
     engines: {node: '>=0.3.1'}
 
   dir-glob@3.0.1:
@@ -6783,6 +6793,8 @@ snapshots:
     optional: true
 
   diff@4.0.4: {}
+
+  diff@8.0.4: {}
 
   dir-glob@3.0.1:
     dependencies:

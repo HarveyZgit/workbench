@@ -58,3 +58,12 @@ flowchart LR
 
 [返回顶部](#preview-fixture)
 
+## Safe HTML
+
+<section class="preview-safe-html">
+  <strong>Safe HTML content</strong>
+  <a href="#preview-fixture">Safe fragment link</a>
+  <img src="./preview-p0-p1.svg" alt="HTML local image">
+  <script>window.__unsafe = true</script>
+</section>
+

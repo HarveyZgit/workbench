@@ -208,6 +208,66 @@
           "type": "boolean",
           "default": true,
           "description": "双击评论预览中的内容时打开源码并定位到对应行。"
+        },
+        "markdownComment.preview.styles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "为 Markdown 评论预览加载 workspace 内的本地 CSS 文件。"
+        },
+        "markdownComment.preview.fontFamily": {
+          "type": "string",
+          "default": "",
+          "description": "Markdown 评论预览字体；留空时使用 VS Code 字体。"
+        },
+        "markdownComment.preview.fontSize": {
+          "type": "number",
+          "default": 14,
+          "minimum": 8,
+          "maximum": 40,
+          "description": "Markdown 评论预览字号（px）。"
+        },
+        "markdownComment.preview.lineHeight": {
+          "type": "number",
+          "default": 1.7,
+          "minimum": 1,
+          "maximum": 3,
+          "description": "Markdown 评论预览行高。"
+        },
+        "markdownComment.preview.breaks": {
+          "type": "boolean",
+          "default": false,
+          "description": "将段落内换行渲染为换行标签。"
+        },
+        "markdownComment.preview.typographer": {
+          "type": "boolean",
+          "default": false,
+          "description": "启用 markdown-it 的排版替换。"
+        },
+        "markdownComment.preview.html": {
+          "type": "string",
+          "default": "strict",
+          "enum": [
+            "strict",
+            "safe"
+          ],
+          "enumDescriptions": [
+            "不渲染 Markdown 原始 HTML。",
+            "渲染经过严格清洗的静态 HTML。"
+          ],
+          "description": "控制 Markdown 评论预览中的原始 HTML。"
+        },
+        "markdownComment.preview.renderedDiff": {
+          "type": "boolean",
+          "default": true,
+          "description": "在预览中标记当前未保存文本相对磁盘版本的增删改行。"
+        },
+        "markdownComment.preview.mermaidNodeComments": {
+          "type": "boolean",
+          "default": false,
+          "description": "实验功能：允许评论 Mermaid Flowchart 中具有显式且唯一 ID 的节点。"
         }
       }
     }
@@ -229,6 +289,8 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "diff": "^8.0.4",
+    "dompurify": "^3.4.13",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.47",
     "markdown-it": "^14.2.0",

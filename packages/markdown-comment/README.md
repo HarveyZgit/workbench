@@ -13,9 +13,10 @@ Before changing this package, read the repository-root `AGENTS.md` and `docs/arc
 Run **Markdown 评论：打开评论预览** from a Markdown editor. The preview opens beside the source file and supports:
 
 - rendered-text selection comments and whole-document comments;
-- Mermaid diagrams with whole-diagram comments, pan, zoom, reset, and source copy;
+- Mermaid diagrams with whole-diagram comments, pan, zoom, reset, source copy, and optional explicit Flowchart-node comments;
 - YAML front matter, syntax-highlighted code blocks, local images, links, and KaTeX formulas;
 - editor/preview scroll synchronization and double-click source navigation;
+- optional sanitized HTML, local custom CSS, image copy/open actions, and unsaved rendered-diff markers;
 - comment threads shared with the `mdc` CLI.
 
 Preview settings:
@@ -23,9 +24,14 @@ Preview settings:
 - `markdownComment.preview.frontMatter`: `table`, `codeBlock`, or `hide`;
 - `markdownComment.preview.scrollPreviewWithEditor`;
 - `markdownComment.preview.scrollEditorWithPreview`;
-- `markdownComment.preview.doubleClickToSwitchToEditor`.
+- `markdownComment.preview.doubleClickToSwitchToEditor`;
+- `markdownComment.preview.styles`, `fontFamily`, `fontSize`, and `lineHeight`;
+- `markdownComment.preview.breaks`, `typographer`, and `html`;
+- `markdownComment.preview.renderedDiff`;
+- `markdownComment.preview.mermaidNodeComments`.
 
-The interactive P0/P1 fixture is `fixtures/preview-p0-p1.md`.
+The interactive fixture is `fixtures/preview-p0-p1.md`. To test custom styles,
+add `./fixtures/preview-p2.css` to `markdownComment.preview.styles`.
 
 ## Install
 

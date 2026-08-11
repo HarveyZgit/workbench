@@ -3,7 +3,14 @@
 import './webview.css';
 import { createMarkdownRenderer } from './markdown';
 import { createMermaidRuntime, type MermaidCommentIntent, type MermaidViewStates } from './mermaid';
-import type { HostToWebview, PreviewRenderOptions, RenderedSelection, WebviewToHost, WireThread } from './messages';
+import type {
+  HostToWebview,
+  PreviewLineChanges,
+  PreviewRenderOptions,
+  RenderedSelection,
+  WebviewToHost,
+  WireThread,
+} from './messages';
 import { createPreviewNavigation, type PreviewNavigation, type PreviewNavigationState } from './navigation';
 
 const CONTEXT_LEN = 40;
@@ -29,6 +36,14 @@ let renderOptions: PreviewRenderOptions = {
   scrollPreviewWithEditor: true,
   scrollEditorWithPreview: true,
   doubleClickToSwitchToEditor: true,
+  styles: [],
+  fontSize: 14,
+  lineHeight: 1.7,
+  breaks: false,
+  typographer: false,
+  html: 'strict',
+  renderedDiff: true,
+  mermaidNodeComments: false,
 };
 let navigation: PreviewNavigation | undefined;
 let renderGeneration = 0;
@@ -42,6 +57,36 @@ const mermaidRuntime = createMermaidRuntime({
     renderBlockDraft(intent.label);
   },
 });
+
+const customStyleLinks = new Map<string, HTMLLinkElement>();
+
+function applyPreviewAppearance(options: PreviewRenderOptions): void {
+  document.documentElement.style.setProperty('--mdc-preview-font-size', `${options.fontSize}px`);
+  document.documentElement.style.setProperty('--mdc-preview-line-height', String(options.lineHeight));
+  if (options.fontFamily) {
+    document.documentElement.style.setProperty('--mdc-preview-font-family', options.fontFamily);
+  } else {
+    document.documentElement.style.removeProperty('--mdc-preview-font-family');
+  }
+  const nextStyles = new Set(options.styles);
+  for (const [uri, link] of customStyleLinks) {
+    if (!nextStyles.has(uri)) {
+      link.remove();
+      customStyleLinks.delete(uri);
+    }
+  }
+  for (const uri of nextStyles) {
+    if (customStyleLinks.has(uri)) {
+      continue;
+    }
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = uri;
+    link.dataset.mdcCustomStyle = 'true';
+    document.head.append(link);
+    customStyleLinks.set(uri, link);
+  }
+}
 
 // ─── 小工具 ─────────────────────────────────────────────────────────
 function esc(s: string): string {
@@ -203,6 +248,12 @@ function clearHighlights(): void {
   content?.querySelectorAll('.mdc-block-hl').forEach((el) => {
     el.classList.remove('mdc-block-hl');
     el.removeAttribute('data-thread-id');
+    el.removeAttribute('data-thread-ids');
+  });
+  content?.querySelectorAll('.mdc-mermaid-node-hl').forEach((el) => {
+    el.classList.remove('mdc-mermaid-node-hl', 'resolved', 'active');
+    el.removeAttribute('data-thread-id');
+    el.removeAttribute('data-thread-ids');
   });
 }
 
@@ -222,6 +273,33 @@ function blocksInRange(startLine: number, endLineExcl: number): HTMLElement[] {
 function applyHighlights(threads: WireThread[]): void {
   for (const t of threads) {
     if (t.kind === 'document') {
+      continue;
+    }
+    if (t.target?.kind === 'mermaid-node') {
+      const diagram = findBlock(t.blockStartLine)?.closest<HTMLElement>('.mdc-mermaid') ?? findBlock(t.blockStartLine);
+      const node = diagram?.querySelector<HTMLElement>(
+        `.mdc-mermaid-commentable-node[data-mdc-node-id="${CSS.escape(t.target.nodeId)}"]`,
+      );
+      if (node) {
+        node.classList.add('mdc-mermaid-node-hl');
+        const ids = new Set((node.dataset.threadIds ?? '').split(',').filter(Boolean));
+        ids.add(t.id);
+        node.dataset.threadIds = [...ids].join(',');
+        const openIds = new Set((node.dataset.openThreadIds ?? '').split(',').filter(Boolean));
+        if (t.status === 'open') {
+          openIds.add(t.id);
+        }
+        node.dataset.openThreadIds = [...openIds].join(',');
+        node.classList.toggle('resolved', openIds.size === 0);
+        continue;
+      }
+      const fallback = diagram?.closest<HTMLElement>('.mdc-mermaid') ?? diagram;
+      if (fallback) {
+        fallback.classList.add('mdc-block-hl');
+        const ids = new Set((fallback.dataset.threadIds ?? '').split(',').filter(Boolean));
+        ids.add(t.id);
+        fallback.dataset.threadIds = [...ids].join(',');
+      }
       continue;
     }
     // 单块内能原样找到渲染 quote → 选词级精确高亮。
@@ -372,14 +450,25 @@ function submitDraft(): void {
   if (draftIsDoc) {
     post({ type: 'createDocThread', text });
   } else if (pendingMermaidComment) {
-    post({
-      type: 'createBlockThread',
-      startLine: pendingMermaidComment.startLine,
-      endLine: pendingMermaidComment.endLine,
-      label: pendingMermaidComment.label,
-      target: pendingMermaidComment.target,
-      text,
-    });
+    if (pendingMermaidComment.target === 'mermaid-node') {
+      post({
+        type: 'createMermaidNodeThread',
+        startLine: pendingMermaidComment.startLine,
+        endLine: pendingMermaidComment.endLine,
+        label: pendingMermaidComment.label,
+        nodeId: pendingMermaidComment.nodeId,
+        text,
+      });
+    } else {
+      post({
+        type: 'createBlockThread',
+        startLine: pendingMermaidComment.startLine,
+        endLine: pendingMermaidComment.endLine,
+        label: pendingMermaidComment.label,
+        target: pendingMermaidComment.target,
+        text,
+      });
+    }
   } else if (draftSelection) {
     post({ type: 'createThread', selection: draftSelection, text });
   } else {
@@ -453,19 +542,29 @@ function selectThread(id: string, scrollTo: 'content' | 'sidebar'): void {
   const sel = CSS.escape(id);
   const target =
     scrollTo === 'content'
-      ? content?.querySelector<HTMLElement>(`[data-thread-id="${sel}"]`)
+      ? content?.querySelector<HTMLElement>(`[data-thread-id="${sel}"]`) ??
+        Array.from(content?.querySelectorAll<HTMLElement>('[data-thread-ids]') ?? []).find((element) =>
+          (element.dataset.threadIds ?? '').split(',').includes(id),
+        )
       : sidebar?.querySelector<HTMLElement>(`.mdc-card[data-thread-id="${sel}"]`);
   target?.scrollIntoView({ behavior: 'smooth', block: scrollTo === 'content' ? 'center' : 'nearest' });
 }
 
 function applySelected(): void {
-  content?.querySelectorAll('.mdc-hl.active, .mdc-block-hl.active').forEach((e) => e.classList.remove('active'));
+  content
+    ?.querySelectorAll('.mdc-hl.active, .mdc-block-hl.active, .mdc-mermaid-node-hl.active')
+    .forEach((e) => e.classList.remove('active'));
   sidebar?.querySelectorAll('.mdc-card.active').forEach((e) => e.classList.remove('active'));
   if (!selectedId) {
     return;
   }
   const sel = CSS.escape(selectedId);
   content?.querySelectorAll(`[data-thread-id="${sel}"]`).forEach((e) => e.classList.add('active'));
+  content?.querySelectorAll<HTMLElement>('[data-thread-ids]').forEach((element) => {
+    if ((element.dataset.threadIds ?? '').split(',').includes(selectedId ?? '')) {
+      element.classList.add('active');
+    }
+  });
   sidebar?.querySelector(`.mdc-card[data-thread-id="${sel}"]`)?.classList.add('active');
 }
 
@@ -550,6 +649,128 @@ function requestLocalResources(): void {
   }
 }
 
+function imageActionButton(action: string, label: string): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'mdc-image-action';
+  button.dataset.imageAction = action;
+  button.textContent = label;
+  return button;
+}
+
+function addImageTools(): void {
+  content?.querySelectorAll<HTMLImageElement>('img[data-src]').forEach((image) => {
+    if (image.closest('.mdc-image-wrap')) {
+      return;
+    }
+    const source = image.dataset.src ?? '';
+    const wrapper = document.createElement('span');
+    wrapper.className = 'mdc-image-wrap';
+    image.replaceWith(wrapper);
+    wrapper.append(image);
+    const toolbar = document.createElement('span');
+    toolbar.className = 'mdc-image-tools';
+    toolbar.append(imageActionButton('copy', '复制图片'));
+    if (!/^(?:data:|http:)/i.test(source)) {
+      toolbar.append(imageActionButton('open', '打开源文件'));
+    }
+    toolbar.addEventListener('click', async (event) => {
+      const action = (event.target as HTMLElement).closest<HTMLElement>('[data-image-action]')?.dataset.imageAction;
+      if (action === 'open') {
+        post({ type: 'openImage', source });
+        return;
+      }
+      if (action !== 'copy') {
+        return;
+      }
+      try {
+        const response = await fetch(image.src);
+        const blob = await response.blob();
+        const png =
+          blob.type === 'image/png'
+            ? blob
+            : await new Promise<Blob>((resolve, reject) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = image.naturalWidth;
+                canvas.height = image.naturalHeight;
+                const context = canvas.getContext('2d');
+                if (!context) {
+                  reject(new Error('Canvas is unavailable'));
+                  return;
+                }
+                context.drawImage(image, 0, 0);
+                canvas.toBlob((value) => (value ? resolve(value) : reject(new Error('Image conversion failed'))), 'image/png');
+              });
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+      } catch {
+        post({ type: 'copyImageFallback', source });
+      }
+    });
+    wrapper.append(toolbar);
+  });
+}
+
+function normalizeRenderedResources(): void {
+  content?.querySelectorAll<HTMLImageElement>('img[src]').forEach((image) => {
+    image.dataset.src = image.getAttribute('src') ?? '';
+  });
+  content?.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((link) => {
+    link.dataset.href = link.getAttribute('href') ?? '';
+  });
+}
+
+function rangesOverlap(start: number, end: number, rangeStart: number, rangeEnd: number): boolean {
+  return start < rangeEnd && rangeStart < end;
+}
+
+function applyLineChanges(changes?: PreviewLineChanges): void {
+  content
+    ?.querySelectorAll('.mdc-diff-added, .mdc-diff-modified, .mdc-diff-deleted-marker')
+    .forEach((element) => {
+      element.classList.remove('mdc-diff-added', 'mdc-diff-modified');
+      if (element.classList.contains('mdc-diff-deleted-marker')) {
+        element.remove();
+      }
+    });
+  if (!content || !changes) {
+    return;
+  }
+  content.querySelectorAll<HTMLElement>(':scope > .mdc-source-block[data-line][data-end-line]').forEach((element) => {
+    const start = Number(element.dataset.line);
+    const end = Number(element.dataset.endLine);
+    if (changes.modified.some((range) => rangesOverlap(start, end, range.startLine, range.endLine))) {
+      element.classList.add('mdc-diff-modified');
+    }
+    if (changes.added.some((range) => rangesOverlap(start, end, range.startLine, range.endLine))) {
+      element.classList.add('mdc-diff-added');
+    }
+  });
+  for (const deletion of changes.deleted) {
+    const blocks = Array.from(
+      content.querySelectorAll<HTMLElement>(':scope > .mdc-source-block[data-line][data-end-line]'),
+    );
+    const containing = blocks.find(
+      (element) =>
+        Number(element.dataset.line) < deletion.atLine &&
+        deletion.atLine < Number(element.dataset.endLine),
+    );
+    const target =
+      containing ??
+      blocks.find((element) => Number(element.dataset.line) >= deletion.atLine) ??
+      null;
+    const marker = document.createElement('div');
+    marker.className = 'mdc-diff-deleted-marker';
+    marker.textContent = `删除 ${deletion.count} 行`;
+    marker.dataset.line = String(deletion.atLine);
+    if (containing) {
+      marker.classList.add('inside');
+      containing.prepend(marker);
+    } else {
+      target ? target.before(marker) : content.append(marker);
+    }
+  }
+}
+
 function setupNavigation(state?: PreviewNavigationState): void {
   navigation?.dispose();
   if (!content) {
@@ -587,7 +808,12 @@ function restoreNavigationLater(state: PreviewNavigationState | undefined, gener
   });
 }
 
-function render(text: string, threads: WireThread[], options: PreviewRenderOptions): void {
+function render(
+  text: string,
+  threads: WireThread[],
+  options: PreviewRenderOptions,
+  lineChanges?: PreviewLineChanges,
+): void {
   const navigationState = navigation?.captureState();
   const mermaidStates: MermaidViewStates = mermaidRuntime.captureViewState(content ?? document);
   const generation = ++renderGeneration;
@@ -596,21 +822,35 @@ function render(text: string, threads: WireThread[], options: PreviewRenderOptio
   }
   lastText = text;
   renderOptions = options;
+  applyPreviewAppearance(options);
   if (content) {
-    content.innerHTML = markdownRenderer.render(text, { frontMatter: options.frontMatter });
+    content.innerHTML = markdownRenderer.render(text, {
+      frontMatter: options.frontMatter,
+      breaks: options.breaks,
+      typographer: options.typographer,
+      html: options.html,
+    });
   }
   setupNavigation(navigationState);
   addCodeCopyButtons();
+  normalizeRenderedResources();
+  addImageTools();
   requestLocalResources();
+  applyLineChanges(lineChanges);
   refreshThreads(threads);
   hideButton();
-  void mermaidRuntime.render(content ?? document, { viewStates: mermaidStates }).then(() => {
+  void mermaidRuntime
+    .render(content ?? document, {
+      viewStates: mermaidStates,
+      nodeCommentsEnabled: options.mermaidNodeComments,
+    })
+    .then(() => {
     if (generation !== renderGeneration) {
       return;
     }
     refreshThreads(lastThreads);
     restoreNavigationLater(navigationState, generation);
-  });
+    });
 }
 
 // ─── 浮动「评论」按钮 ───────────────────────────────────────────────
@@ -672,7 +912,10 @@ function onSelect(): void {
     return;
   }
 
-  const spansMultipleBlocks = startBlock !== endBlock;
+  const spansMultipleBlocks =
+    startBlock !== endBlock ||
+    startBlock.classList.contains('mdc-safe-html-block') ||
+    endBlock.classList.contains('mdc-safe-html-block');
   const blockStartLine = Number(startBlock.getAttribute('data-line'));
   const blockEndLine = Number((spansMultipleBlocks ? endBlock : startBlock).getAttribute('data-end-line'));
 
@@ -713,9 +956,14 @@ document.addEventListener('scroll', hideButton, true);
 
 // ─── 事件：正文点高亮 → 边栏；边栏点卡片/按钮 ───────────────────────
 content?.addEventListener('click', (e) => {
-  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-thread-id]');
+  const el = (e.target as HTMLElement).closest<HTMLElement>('[data-thread-id], [data-thread-ids]');
   if (el && content.contains(el)) {
-    selectThread(el.getAttribute('data-thread-id') ?? '', 'sidebar');
+    const directId = el.getAttribute('data-thread-id');
+    const ids = (el.dataset.threadIds ?? '').split(',').filter(Boolean);
+    const id = directId ?? (selectedId && ids.includes(selectedId) ? selectedId : ids[0]);
+    if (id) {
+      selectThread(id, 'sidebar');
+    }
   }
 });
 
@@ -840,7 +1088,7 @@ sidebar?.addEventListener('keydown', (e) => {
 window.addEventListener('message', (e: MessageEvent) => {
   const msg = e.data as HostToWebview;
   if (msg.type === 'render') {
-    render(msg.text, msg.threads, msg.options);
+    render(msg.text, msg.threads, msg.options, msg.diff?.changes);
   } else if (msg.type === 'threads') {
     refreshThreads(msg.threads);
   } else if (msg.type === 'revealThread') {

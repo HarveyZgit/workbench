@@ -19,11 +19,15 @@ import MarkdownIt from 'markdown-it';
 import taskLists from 'markdown-it-task-lists';
 import texmath from 'markdown-it-texmath';
 import { parseDocument } from 'yaml';
+import { sanitizeHtml, sanitizeInlineHtmlToken } from './sanitize';
 
 export type FrontMatterMode = 'table' | 'codeBlock' | 'hide';
 
 export interface MarkdownRenderOptions {
   frontMatter?: FrontMatterMode;
+  breaks?: boolean;
+  typographer?: boolean;
+  html?: 'strict' | 'safe';
 }
 
 export interface MarkdownRenderer {
@@ -33,10 +37,14 @@ export interface MarkdownRenderer {
 interface RenderEnvironment {
   frontMatter: FrontMatterMode;
   headingCounts: Map<string, number>;
+  safeHtml: boolean;
 }
 
 const DEFAULT_RENDER_OPTIONS: Required<MarkdownRenderOptions> = {
   frontMatter: 'table',
+  breaks: false,
+  typographer: false,
+  html: 'strict',
 };
 
 hljs.registerLanguage('javascript', javascript);
@@ -304,13 +312,38 @@ function createMarkdownIt(): MarkdownIt {
   });
 
   markdown.core.ruler.push('source_map', (state) => {
-    for (const token of state.tokens) {
+    for (let index = 0; index < state.tokens.length; index++) {
+      const token = state.tokens[index];
       if (!token.map || token.nesting === -1) {
         continue;
       }
       token.attrJoin('class', 'mdc-source-block');
       token.attrSet('data-line', String(token.map[0]));
       token.attrSet('data-end-line', String(token.map[1]));
+      if (
+        token.type === 'html_block' ||
+        (token.type.endsWith('_open') &&
+          state.tokens[index + 1]?.type === 'inline' &&
+          state.tokens[index + 1]?.children?.some((child) => child.type === 'html_inline'))
+      ) {
+        let target = token;
+        if (token.hidden) {
+          for (let parentIndex = index - 1; parentIndex >= 0; parentIndex--) {
+            const candidate = state.tokens[parentIndex];
+            if (
+              candidate.nesting === 1 &&
+              candidate.map &&
+              candidate.map[0] <= token.map[0] &&
+              token.map[1] <= candidate.map[1] &&
+              !candidate.hidden
+            ) {
+              target = candidate;
+              break;
+            }
+          }
+        }
+        target.attrJoin('class', 'mdc-safe-html-block');
+      }
     }
   });
 
@@ -394,6 +427,14 @@ function createMarkdownIt(): MarkdownIt {
     return renderer.renderToken(tokens, index, options);
   };
 
+  markdown.renderer.rules.html_block = (tokens, index, _options, environment, renderer) => {
+    const token = tokens[index];
+    token.attrJoin('class', 'mdc-safe-html-block');
+    const sanitized = sanitizeHtml(token.content);
+    return sanitized ? `<div${renderer.renderAttrs(token)}>${sanitized}</div>\n` : '';
+  };
+  markdown.renderer.rules.html_inline = (tokens, index) => sanitizeInlineHtmlToken(tokens[index].content);
+
   const renderHeadingOpen = markdown.renderer.rules.heading_open;
   markdown.renderer.rules.heading_open = (tokens, index, options, environment, renderer) => {
     const token = tokens[index];
@@ -419,9 +460,19 @@ export function createMarkdownRenderer(defaultOptions: MarkdownRenderOptions = {
 
   return {
     render(source, options = {}) {
+      const resolvedOptions = {
+        ...resolvedDefaults,
+        ...options,
+      };
+      markdown.set({
+        breaks: resolvedOptions.breaks,
+        typographer: resolvedOptions.typographer,
+        html: resolvedOptions.html === 'safe',
+      });
       const environment: RenderEnvironment = {
-        frontMatter: options.frontMatter ?? resolvedDefaults.frontMatter,
+        frontMatter: resolvedOptions.frontMatter,
         headingCounts: new Map(),
+        safeHtml: resolvedOptions.html === 'safe',
       };
       return markdown.render(source, environment);
     },

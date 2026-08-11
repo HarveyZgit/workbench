@@ -1,4 +1,5 @@
 import mermaid from 'mermaid';
+import { parseMermaidFlowchartNodeSources, resolveMermaidNodeId } from './mermaid-node';
 
 const CONTAINER_SELECTOR = '.mdc-mermaid';
 const CANVAS_SELECTOR = '.mdc-mermaid-canvas';
@@ -18,13 +19,24 @@ export interface MermaidViewState {
 
 export type MermaidViewStates = Record<string, MermaidViewState>;
 
-export interface MermaidCommentIntent {
+export interface MermaidDiagramCommentIntent {
   diagramKey: string;
   startLine: number;
   endLine: number;
   label: 'Mermaid 图';
   target: 'mermaid-diagram';
 }
+
+export interface MermaidNodeCommentIntent {
+  diagramKey: string;
+  startLine: number;
+  endLine: number;
+  label: string;
+  target: 'mermaid-node';
+  nodeId: string;
+}
+
+export type MermaidCommentIntent = MermaidDiagramCommentIntent | MermaidNodeCommentIntent;
 
 export interface MermaidRuntimeOptions {
   onComment?: (intent: MermaidCommentIntent) => void;
@@ -34,6 +46,7 @@ export interface MermaidRuntimeOptions {
 export interface MermaidRenderOptions {
   signal?: AbortSignal;
   viewStates?: MermaidViewStates;
+  nodeCommentsEnabled?: boolean;
 }
 
 export interface MermaidRuntime {
@@ -51,6 +64,7 @@ interface DiagramElements {
 }
 
 interface DiagramController {
+  signal: AbortSignal;
   capture(): MermaidViewState;
   dispose(): void;
 }
@@ -329,6 +343,92 @@ function emitComment(
   );
 }
 
+function isFlowchartDiagramType(diagramType: string | undefined): boolean {
+  return diagramType === 'flowchart' || diagramType === 'flowchart-v2' || diagramType === 'flowchart-elk';
+}
+
+function installNodeComments(
+  elements: DiagramElements,
+  diagramType: string | undefined,
+  key: string,
+  source: string,
+  options: MermaidRuntimeOptions,
+  signal: AbortSignal,
+): void {
+  if (!isFlowchartDiagramType(diagramType)) {
+    return;
+  }
+  const sourceMap = parseMermaidFlowchartNodeSources(source);
+  if (sourceMap.size === 0) {
+    return;
+  }
+  const fenceStartLine = finiteNumber(elements.container.dataset.line, 0);
+  elements.canvas.querySelectorAll<SVGGElement>('g.node[id]').forEach((node) => {
+    const nodeId = resolveMermaidNodeId({ id: node.id, domId: node.getAttribute('data-id') }, sourceMap);
+    const location = nodeId ? sourceMap.get(nodeId) : undefined;
+    if (!nodeId || !location) {
+      return;
+    }
+    const labelText =
+      node.querySelector<HTMLElement>('.nodeLabel, .label')?.textContent?.replace(/\s+/g, ' ').trim() || nodeId;
+    node.classList.add('mdc-mermaid-commentable-node');
+    node.dataset.mdcNodeId = nodeId;
+    node.setAttribute('tabindex', '0');
+    node.setAttribute('role', 'button');
+    node.setAttribute('aria-label', `评论 Mermaid 节点 ${nodeId}`);
+    if (!node.querySelector(':scope > title')) {
+      const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      title.textContent = `评论节点 ${nodeId}`;
+      node.prepend(title);
+    }
+    let pointerStart: { x: number; y: number } | undefined;
+    const emit = (): void => {
+      options.onComment?.({
+        diagramKey: key,
+        startLine: fenceStartLine + 1 + location.startLine,
+        endLine: fenceStartLine + 1 + location.endLine,
+        label: labelText || nodeId,
+        target: 'mermaid-node',
+        nodeId,
+      });
+    };
+    node.addEventListener(
+      'pointerdown',
+      (event) => {
+        pointerStart = { x: event.clientX, y: event.clientY };
+      },
+      { signal },
+    );
+    node.addEventListener(
+      'click',
+      (event) => {
+        const moved =
+          pointerStart &&
+          Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 4;
+        pointerStart = undefined;
+        if (moved) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        emit();
+      },
+      { signal },
+    );
+    node.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          event.stopPropagation();
+          emit();
+        }
+      },
+      { signal },
+    );
+  });
+}
+
 function installToolbarActions(
   elements: DiagramElements,
   toolbar: HTMLElement,
@@ -366,6 +466,7 @@ function installFallbackInteractions(
   const controller = new AbortController();
   installToolbarActions(elements, toolbar, key, options, controller.signal);
   return {
+    signal: controller.signal,
     capture: () => ({ scale: 1, translateX: 0, translateY: 0 }),
     dispose: () => controller.abort(),
   };
@@ -466,6 +567,7 @@ function installInteractions(
     });
 
   return {
+    signal,
     capture: () => ({
       ...transform,
       height: elements.canvas.style.height ? elements.canvas.getBoundingClientRect().height : undefined,
@@ -565,6 +667,9 @@ export function createMermaidRuntime(options: MermaidRuntimeOptions = {}): Merma
           );
           if (controller) {
             controllers.set(container, controller);
+            if (renderOptions.nodeCommentsEnabled) {
+              installNodeComments(elements, result.diagramType, key, source, options, controller.signal);
+            }
           }
           elements.canvas.classList.add('mdc-mermaid-ready');
         } catch (error) {

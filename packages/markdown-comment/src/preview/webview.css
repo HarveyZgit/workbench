@@ -56,6 +56,64 @@ body.vscode-high-contrast {
   position: relative;
 }
 
+.mdc-image-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.mdc-image-tools {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.mdc-image-wrap:hover .mdc-image-tools,
+.mdc-image-wrap:focus-within .mdc-image-tools {
+  opacity: 1;
+}
+
+.mdc-image-action {
+  padding: 3px 7px;
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+  border-radius: 4px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.mdc-source-block.mdc-diff-added {
+  box-shadow: inset 3px 0 0 var(--vscode-gitDecoration-addedResourceForeground, #3fb950);
+}
+
+.mdc-source-block.mdc-diff-modified {
+  box-shadow: inset 3px 0 0 var(--vscode-gitDecoration-modifiedResourceForeground, #58a6ff);
+}
+
+.mdc-source-block.mdc-diff-added.mdc-diff-modified {
+  box-shadow:
+    inset 3px 0 0 var(--vscode-gitDecoration-modifiedResourceForeground, #58a6ff),
+    inset 6px 0 0 var(--vscode-gitDecoration-addedResourceForeground, #3fb950);
+}
+
+.mdc-diff-deleted-marker {
+  margin: 6px 0;
+  padding: 2px 8px;
+  border-left: 3px solid var(--vscode-gitDecoration-deletedResourceForeground, #f85149);
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.mdc-diff-deleted-marker.inside {
+  margin-top: 0;
+}
+
 .mdc-code-copy {
   position: absolute;
   top: 7px;
@@ -163,6 +221,28 @@ body.vscode-high-contrast {
 .mdc-mermaid-panning,
 .mdc-mermaid-panning * {
   cursor: grabbing !important;
+}
+
+.mdc-mermaid-commentable-node {
+  cursor: pointer;
+}
+
+.mdc-mermaid-commentable-node:hover,
+.mdc-mermaid-commentable-node:focus-visible {
+  filter: drop-shadow(0 0 4px var(--vscode-focusBorder));
+  outline: none;
+}
+
+.mdc-mermaid-node-hl {
+  filter: drop-shadow(0 0 5px rgba(255, 209, 102, 0.9));
+}
+
+.mdc-mermaid-node-hl.resolved {
+  filter: drop-shadow(0 0 4px rgba(140, 140, 140, 0.75));
+}
+
+.mdc-mermaid-node-hl.active {
+  filter: drop-shadow(0 0 6px rgba(255, 167, 38, 1));
 }
 
 .mdc-mermaid-error {

@@ -18,7 +18,7 @@ export interface StoredAnchor {
    */
   rendered?: { quote: string; before: string; after: string };
   /** 特殊渲染块的可选语义；旧客户端可安全忽略。 */
-  target?: { kind: 'mermaid-diagram' };
+  target?: { kind: 'mermaid-diagram' } | { kind: 'mermaid-node'; nodeId: string };
 }
 
 export interface StoredComment {
