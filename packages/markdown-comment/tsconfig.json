@@ -14,5 +14,12 @@
     "types": ["node"]
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "src/preview/webview.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/preview/webview.ts",
+    "src/preview/markdown.ts",
+    "src/preview/mermaid.ts",
+    "src/preview/navigation.ts"
+  ]
 }

@@ -8,6 +8,25 @@ The Skill source is kept with the package at `resources/skills/markdown-comment/
 
 Before changing this package, read the repository-root `AGENTS.md` and `docs/architecture/markdown-comment.md`.
 
+## Comment preview
+
+Run **Markdown 评论：打开评论预览** from a Markdown editor. The preview opens beside the source file and supports:
+
+- rendered-text selection comments and whole-document comments;
+- Mermaid diagrams with whole-diagram comments, pan, zoom, reset, and source copy;
+- YAML front matter, syntax-highlighted code blocks, local images, links, and KaTeX formulas;
+- editor/preview scroll synchronization and double-click source navigation;
+- comment threads shared with the `mdc` CLI.
+
+Preview settings:
+
+- `markdownComment.preview.frontMatter`: `table`, `codeBlock`, or `hide`;
+- `markdownComment.preview.scrollPreviewWithEditor`;
+- `markdownComment.preview.scrollEditorWithPreview`;
+- `markdownComment.preview.doubleClickToSwitchToEditor`.
+
+The interactive P0/P1 fixture is `fixtures/preview-p0-p1.md`.
+
 ## Install
 
 `mdc init` does not assume a particular Agent host or skill directory. Pass the target explicitly:

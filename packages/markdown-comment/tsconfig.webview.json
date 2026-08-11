@@ -12,5 +12,12 @@
     "noEmit": true,
     "types": []
   },
-  "include": ["src/preview/webview.ts", "src/preview/messages.ts", "src/preview/shims.d.ts"]
+  "include": [
+    "src/preview/webview.ts",
+    "src/preview/markdown.ts",
+    "src/preview/mermaid.ts",
+    "src/preview/navigation.ts",
+    "src/preview/messages.ts",
+    "src/preview/shims.d.ts"
+  ]
 }

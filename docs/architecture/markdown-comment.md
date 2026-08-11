@@ -51,6 +51,14 @@ Adapters translate a client interaction into a core operation and display the re
 | Local web / agent view | browser UI and local transport | a forked thread model |
 | Future IDE adapter | IDE-specific selection and navigation conversion | core business rules |
 
+The VS Code rendered preview remains adapter code. Markdown parsing, Mermaid,
+KaTeX, resource URI translation, and editor scroll synchronization may depend on
+Webview and VS Code APIs, but comments created from those rendered elements must
+still resolve to portable source anchors. A rendered Mermaid diagram therefore
+uses the opening fence line as its source anchor and optional display metadata;
+the stored thread never depends on generated SVG ids, layout coordinates, or a
+Mermaid runtime object.
+
 ## Storage and compatibility
 
 The default storage location belongs to Markdown Comment itself, not to a host editor. It must be usable by the CLI before any editor extension has been launched, with `MARKDOWN_COMMENT_STORAGE_DIR` available as an explicit override.

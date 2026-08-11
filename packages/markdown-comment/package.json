@@ -178,6 +178,36 @@
           "type": "boolean",
           "default": false,
           "description": "在 Markdown 源文件里启用内联（行）评论：编辑器左侧 + 号添加、Cmd/Ctrl+Alt+M、右键菜单。默认关闭——推荐用「打开评论预览」在渲染视图里评论。开关更改后需重载窗口生效。"
+        },
+        "markdownComment.preview.frontMatter": {
+          "type": "string",
+          "default": "table",
+          "enum": [
+            "table",
+            "codeBlock",
+            "hide"
+          ],
+          "enumDescriptions": [
+            "以键值表格渲染 YAML Front Matter。",
+            "以 YAML 代码块渲染 Front Matter。",
+            "隐藏 Front Matter。"
+          ],
+          "description": "控制 Markdown 评论预览如何显示文档开头的 YAML Front Matter。"
+        },
+        "markdownComment.preview.scrollPreviewWithEditor": {
+          "type": "boolean",
+          "default": true,
+          "description": "滚动 Markdown 源码编辑器时，同步滚动评论预览。"
+        },
+        "markdownComment.preview.scrollEditorWithPreview": {
+          "type": "boolean",
+          "default": true,
+          "description": "滚动评论预览时，同步滚动 Markdown 源码编辑器。"
+        },
+        "markdownComment.preview.doubleClickToSwitchToEditor": {
+          "type": "boolean",
+          "default": true,
+          "description": "双击评论预览中的内容时打开源码并定位到对应行。"
         }
       }
     }
@@ -199,7 +229,12 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "highlight.js": "^11.11.1",
+    "katex": "^0.16.47",
     "markdown-it": "^14.2.0",
-    "markdown-it-task-lists": "^2.1.1"
+    "markdown-it-task-lists": "^2.1.1",
+    "markdown-it-texmath": "^1.0.0",
+    "mermaid": "^11.16.1",
+    "yaml": "^2.9.0"
   }
 }

@@ -1,25 +1,16 @@
 // 跑在 webview iframe 里：markdown-it 渲染 + data-line 标注 + 划词建评论 +
 // 高亮 + 右侧边栏评论 UI + 正文↔边栏联动。host 独占数据，这里只发意图、画视图。
-import MarkdownIt from 'markdown-it';
-import taskLists from 'markdown-it-task-lists';
-import type { HostToWebview, RenderedSelection, WebviewToHost, WireThread } from './messages';
+import './webview.css';
+import { createMarkdownRenderer } from './markdown';
+import { createMermaidRuntime, type MermaidCommentIntent, type MermaidViewStates } from './mermaid';
+import type { HostToWebview, PreviewRenderOptions, RenderedSelection, WebviewToHost, WireThread } from './messages';
+import { createPreviewNavigation, type PreviewNavigation, type PreviewNavigationState } from './navigation';
 
 const CONTEXT_LEN = 40;
+const RESOURCE_BATCH_SIZE = 100;
 
 const vscode = acquireVsCodeApi();
-
-const md = new MarkdownIt({ html: false, linkify: true, breaks: false });
-md.use(taskLists, { enabled: false });
-
-// 给每个块级开标签打源码行号（token.map=[起始行, 排他末行]，0 基），供选区翻译与高亮定位用。
-md.core.ruler.push('source_line', (state) => {
-  for (const token of state.tokens) {
-    if (token.map && token.nesting !== -1) {
-      token.attrSet('data-line', String(token.map[0]));
-      token.attrSet('data-end-line', String(token.map[1]));
-    }
-  }
-});
+const markdownRenderer = createMarkdownRenderer();
 
 function post(msg: WebviewToHost): void {
   vscode.postMessage(msg);
@@ -33,6 +24,24 @@ const submitKey = navigator.platform.toLowerCase().includes('mac') ? 'Cmd' : 'Ct
 
 let lastText = '';
 let lastThreads: WireThread[] = [];
+let renderOptions: PreviewRenderOptions = {
+  frontMatter: 'table',
+  scrollPreviewWithEditor: true,
+  scrollEditorWithPreview: true,
+  doubleClickToSwitchToEditor: true,
+};
+let navigation: PreviewNavigation | undefined;
+let renderGeneration = 0;
+let resourceRequestGeneration = 0;
+const pendingResourceRequests = new Set<string>();
+let pendingMermaidComment: MermaidCommentIntent | undefined;
+
+const mermaidRuntime = createMermaidRuntime({
+  onComment(intent) {
+    pendingMermaidComment = intent;
+    renderBlockDraft(intent.label);
+  },
+});
 
 // ─── 小工具 ─────────────────────────────────────────────────────────
 function esc(s: string): string {
@@ -134,7 +143,14 @@ function markText(block: HTMLElement, t: WireThread): boolean {
     return false;
   }
   const nodes: { node: Text; start: number }[] = [];
-  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      return parent?.closest('.katex-mathml, [aria-hidden="true"], template')
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT;
+    },
+  });
   let acc = '';
   let n = walker.nextNode();
   while (n) {
@@ -286,7 +302,7 @@ function renderSidebar(threads: WireThread[]): void {
 }
 
 // ─── 新建评论草稿（webview 内多行编辑器，替代 showInputBox）─────────
-// 两种模式：划词（带 selection）/ 全文（draftIsDoc）。
+// 三种模式：划词（带 selection）/ Mermaid 整图 / 全文。
 let draftSelection: RenderedSelection | null = null;
 let draftIsDoc = false;
 
@@ -317,18 +333,27 @@ function renderDraft(labelHtml: string): void {
 function openSelDraft(sel: RenderedSelection): void {
   draftIsDoc = false;
   draftSelection = sel;
+  pendingMermaidComment = undefined;
   renderDraft(sel.spansMultipleBlocks ? '跨段落' : esc(clip(sel.quote, CONTEXT_LEN)));
 }
 
 function openDocDraft(): void {
   draftIsDoc = true;
   draftSelection = null;
+  pendingMermaidComment = undefined;
   renderDraft('📄 全文评论');
+}
+
+function renderBlockDraft(label: string): void {
+  draftIsDoc = false;
+  draftSelection = null;
+  renderDraft(esc(label));
 }
 
 function closeDraft(): void {
   draftSelection = null;
   draftIsDoc = false;
+  pendingMermaidComment = undefined;
   if (draftEl) {
     draftEl.innerHTML = '';
   }
@@ -346,6 +371,15 @@ function submitDraft(): void {
   }
   if (draftIsDoc) {
     post({ type: 'createDocThread', text });
+  } else if (pendingMermaidComment) {
+    post({
+      type: 'createBlockThread',
+      startLine: pendingMermaidComment.startLine,
+      endLine: pendingMermaidComment.endLine,
+      label: pendingMermaidComment.label,
+      target: pendingMermaidComment.target,
+      text,
+    });
   } else if (draftSelection) {
     post({ type: 'createThread', selection: draftSelection, text });
   } else {
@@ -454,13 +488,129 @@ function refreshThreads(threads: WireThread[]): void {
   applySelected();
 }
 
-function render(text: string, threads: WireThread[]): void {
-  lastText = text;
-  if (content) {
-    content.innerHTML = md.render(text);
+function addCodeCopyButtons(): void {
+  content?.querySelectorAll<HTMLElement>('pre > code').forEach((code) => {
+    const block = code.parentElement;
+    if (!block || block.querySelector(':scope > .mdc-code-copy')) {
+      return;
+    }
+    block.classList.add('mdc-code-block');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'mdc-code-copy';
+    button.textContent = '复制';
+    button.setAttribute('aria-label', '复制代码块');
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(code.textContent ?? '');
+        button.textContent = '已复制';
+        window.setTimeout(() => {
+          button.textContent = '复制';
+        }, 1600);
+      } catch {
+        const selection = window.getSelection();
+        if (!selection) {
+          return;
+        }
+        const range = document.createRange();
+        range.selectNodeContents(code);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.execCommand('copy');
+        selection.removeAllRanges();
+      }
+    });
+    block.append(button);
+  });
+}
+
+function requestLocalResources(): void {
+  if (!content) {
+    return;
   }
+  const sources = new Set<string>();
+  content.querySelectorAll<HTMLImageElement>('img[data-src]').forEach((image) => {
+    const source = image.dataset.src?.trim();
+    if (!source || /^https:/i.test(source) || /^data:image\//i.test(source)) {
+      return;
+    }
+    image.removeAttribute('src');
+    sources.add(source);
+  });
+  if (sources.size === 0) {
+    pendingResourceRequests.clear();
+    return;
+  }
+  pendingResourceRequests.clear();
+  const allSources = [...sources];
+  for (let index = 0; index < allSources.length; index += RESOURCE_BATCH_SIZE) {
+    const requestId = `resources-${++resourceRequestGeneration}`;
+    pendingResourceRequests.add(requestId);
+    post({ type: 'resolveResources', requestId, sources: allSources.slice(index, index + RESOURCE_BATCH_SIZE) });
+  }
+}
+
+function setupNavigation(state?: PreviewNavigationState): void {
+  navigation?.dispose();
+  if (!content) {
+    navigation = undefined;
+    return;
+  }
+  navigation = createPreviewNavigation(content, {
+    onPreviewScroll(line) {
+      if (renderOptions.scrollEditorWithPreview) {
+        post({ type: 'previewScroll', line });
+      }
+    },
+    onRevealSourceLine(line) {
+      if (renderOptions.doubleClickToSwitchToEditor) {
+        post({ type: 'revealSourceLine', line });
+      }
+    },
+    onOpenLink(href) {
+      post({ type: 'openLink', href });
+    },
+  });
+  if (state) {
+    navigation.restoreState(state);
+  }
+}
+
+function restoreNavigationLater(state: PreviewNavigationState | undefined, generation: number): void {
+  if (!state) {
+    return;
+  }
+  requestAnimationFrame(() => {
+    if (generation === renderGeneration) {
+      navigation?.restoreState(state);
+    }
+  });
+}
+
+function render(text: string, threads: WireThread[], options: PreviewRenderOptions): void {
+  const navigationState = navigation?.captureState();
+  const mermaidStates: MermaidViewStates = mermaidRuntime.captureViewState(content ?? document);
+  const generation = ++renderGeneration;
+  if (lastText && text !== lastText) {
+    closeDraft();
+  }
+  lastText = text;
+  renderOptions = options;
+  if (content) {
+    content.innerHTML = markdownRenderer.render(text, { frontMatter: options.frontMatter });
+  }
+  setupNavigation(navigationState);
+  addCodeCopyButtons();
+  requestLocalResources();
   refreshThreads(threads);
   hideButton();
+  void mermaidRuntime.render(content ?? document, { viewStates: mermaidStates }).then(() => {
+    if (generation !== renderGeneration) {
+      return;
+    }
+    refreshThreads(lastThreads);
+    restoreNavigationLater(navigationState, generation);
+  });
 }
 
 // ─── 浮动「评论」按钮 ───────────────────────────────────────────────
@@ -503,7 +653,8 @@ function onSelect(): void {
     hideButton();
     return;
   }
-  const quote = sel.toString().trim();
+  const rawQuote = sel.toString();
+  const quote = rawQuote.trim();
   if (!quote) {
     hideButton();
     return;
@@ -529,7 +680,10 @@ function onSelect(): void {
   let after = '';
   if (!spansMultipleBlocks) {
     const blockText = startBlock.textContent ?? '';
-    const idx = blockText.indexOf(quote);
+    const prefixRange = document.createRange();
+    prefixRange.selectNodeContents(startBlock);
+    prefixRange.setEnd(range.startContainer, range.startOffset);
+    const idx = prefixRange.toString().length + (rawQuote.length - rawQuote.trimStart().length);
     if (idx >= 0) {
       before = blockText.slice(Math.max(0, idx - CONTEXT_LEN), idx);
       after = blockText.slice(idx + quote.length, idx + quote.length + CONTEXT_LEN);
@@ -686,11 +840,28 @@ sidebar?.addEventListener('keydown', (e) => {
 window.addEventListener('message', (e: MessageEvent) => {
   const msg = e.data as HostToWebview;
   if (msg.type === 'render') {
-    render(msg.text, msg.threads);
+    render(msg.text, msg.threads, msg.options);
   } else if (msg.type === 'threads') {
     refreshThreads(msg.threads);
   } else if (msg.type === 'revealThread') {
     selectThread(msg.threadId, 'content');
+  } else if (msg.type === 'revealLine') {
+    if (renderOptions.scrollPreviewWithEditor) {
+      navigation?.scrollToSourceLine(msg.line);
+    }
+  } else if (msg.type === 'resolvedResources' && pendingResourceRequests.delete(msg.requestId)) {
+    const resources = new Map(msg.resources.map((resource) => [resource.source, resource]));
+    content?.querySelectorAll<HTMLImageElement>('img[data-src]').forEach((image) => {
+      const source = image.dataset.src;
+      const resolved = source ? resources.get(source) : undefined;
+      if (resolved?.uri) {
+        image.src = resolved.uri;
+        image.removeAttribute('title');
+      } else if (resolved?.error) {
+        image.removeAttribute('src');
+        image.title = resolved.error;
+      }
+    });
   }
 });
 
