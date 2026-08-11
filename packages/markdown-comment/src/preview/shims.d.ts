@@ -5,6 +5,23 @@ declare module 'markdown-it-task-lists' {
   export default plugin;
 }
 
+declare module 'markdown-it-texmath' {
+  import type { KatexOptions } from 'katex';
+  import type MarkdownIt from 'markdown-it';
+
+  interface TexmathOptions {
+    delimiters?: string | string[];
+    engine?: {
+      renderToString(source: string, options?: KatexOptions): string;
+    };
+    katexOptions?: KatexOptions;
+    outerSpace?: boolean;
+  }
+
+  const plugin: (md: MarkdownIt, options?: TexmathOptions) => void;
+  export default plugin;
+}
+
 // Webview 沙箱注入的全局：拿 postMessage 通道。
 declare function acquireVsCodeApi(): {
   postMessage(msg: unknown): void;

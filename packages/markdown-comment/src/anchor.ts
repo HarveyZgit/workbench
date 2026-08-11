@@ -34,23 +34,42 @@ export function relocate(doc: vscode.TextDocument, a: StoredAnchor): vscode.Rang
   if (a.kind === 'document') {
     return new vscode.Range(0, 0, 0, 0);
   }
+  const text = doc.getText();
   const lastLine = Math.max(0, doc.lineCount - 1);
   if (a.startLine <= lastLine && a.endLine <= lastLine) {
     const orig = new vscode.Range(a.startLine, a.startChar, a.endLine, a.endChar);
     if (a.quote.length > 0 && doc.getText(orig) === a.quote) {
-      return orig;
+      const offset = doc.offsetAt(orig.start);
+      const before = text.slice(Math.max(0, offset - a.before.length), offset);
+      const after = text.slice(offset + a.quote.length, offset + a.quote.length + a.after.length);
+      const beforeMatches = !a.before || before.endsWith(a.before);
+      const afterMatches = !a.after || after.startsWith(a.after);
+      if (beforeMatches && afterMatches) {
+        return orig;
+      }
     }
   }
   if (a.quote.length === 0) {
     return new vscode.Range(Math.min(a.startLine, lastLine), 0, Math.min(a.startLine, lastLine), 0);
   }
-  const text = doc.getText();
   let best = -1;
-  let bestDist = Number.POSITIVE_INFINITY;
+  let bestScore = Number.NEGATIVE_INFINITY;
   for (let i = text.indexOf(a.quote); i >= 0; i = text.indexOf(a.quote, i + 1)) {
     const dist = Math.abs(doc.positionAt(i).line - a.startLine);
-    if (dist < bestDist) {
-      bestDist = dist;
+    const before = text.slice(Math.max(0, i - a.before.length), i);
+    const after = text.slice(i + a.quote.length, i + a.quote.length + a.after.length);
+    let score = -dist;
+    const beforeMatches = !!a.before && before.endsWith(a.before);
+    const afterMatches = !!a.after && after.startsWith(a.after);
+    if (beforeMatches && afterMatches) {
+      score += 1_000_000;
+    } else if (afterMatches) {
+      score += 10_000;
+    } else if (beforeMatches) {
+      score += 1_000;
+    }
+    if (score > bestScore) {
+      bestScore = score;
       best = i;
     }
   }
@@ -105,30 +124,38 @@ function trimmedRange(doc: vscode.TextDocument, range: vscode.Range): vscode.Ran
   return new vscode.Range(doc.positionAt(startOffset), doc.positionAt(endOffset));
 }
 
+/** 把渲染块的源码行范围转换成实体 Range。endLineExclusive 为排他行号。 */
+export function blockLinesToRange(doc: vscode.TextDocument, startLine: number, endLineExclusive: number): vscode.Range | null {
+  if (doc.lineCount === 0) {
+    return null;
+  }
+  const lastLine = doc.lineCount - 1;
+  const safeStartLine = Math.min(Math.max(0, startLine), lastLine);
+  const safeEndLineExclusive = Math.min(Math.max(endLineExclusive, safeStartLine + 1), doc.lineCount);
+  const start = new vscode.Position(safeStartLine, 0);
+  const end =
+    safeEndLineExclusive >= doc.lineCount ? doc.lineAt(lastLine).range.end : new vscode.Position(safeEndLineExclusive, 0);
+  return trimmedRange(doc, new vscode.Range(start, end));
+}
+
 /**
  * 把 webview 上报的渲染选区翻译成源码 Range。
  * 单块内且块源码能原样搜到 renderedQuote → 精确锚（选词级）；
  * 跨块 / 子串夹了 **、链接符号搜不到 → 退回整块范围。
  */
 export function mapRenderedSelectionToRange(doc: vscode.TextDocument, sel: RenderedSelection): vscode.Range | null {
-  if (doc.lineCount === 0) {
+  const blockRange = blockLinesToRange(doc, sel.blockStartLine, sel.blockEndLine);
+  if (!blockRange) {
     return null;
   }
-  const lastLine = doc.lineCount - 1;
-  const startLine = Math.min(Math.max(0, sel.blockStartLine), lastLine);
-  const endLineExclusive = Math.min(Math.max(sel.blockEndLine, startLine + 1), doc.lineCount);
-  const blockStartPos = new vscode.Position(startLine, 0);
-  const blockEndPos =
-    endLineExclusive >= doc.lineCount ? doc.lineAt(lastLine).range.end : new vscode.Position(endLineExclusive, 0);
-  const blockRange = new vscode.Range(blockStartPos, blockEndPos);
 
   if (!sel.spansMultipleBlocks && sel.quote) {
     const blockText = doc.getText(blockRange);
     const idx = locate(blockText, sel.quote, sel.before, sel.after);
     if (idx >= 0) {
-      const startOffset = doc.offsetAt(blockStartPos) + idx;
+      const startOffset = doc.offsetAt(blockRange.start) + idx;
       return new vscode.Range(doc.positionAt(startOffset), doc.positionAt(startOffset + sel.quote.length));
     }
   }
-  return trimmedRange(doc, blockRange);
+  return blockRange;
 }

@@ -1,13 +1,13 @@
 ---
 name: markdown-comment
-description: 读取并回复 Markdown Comment 里的划词或全文评论。当用户说“看看我在文档里的评论/批注”、“逐条回复我标注的问题”，或要求处理 Markdown 上的人工评论时使用。通过 markdown-comment（简写 mdc）CLI 的 list、reply、resolve 命令操作评论，输出精简、省 token。
+description: 读取并回复 Markdown Comment 里的划词、全文、Mermaid 整图或节点评论。当用户说“看看我在文档里的评论/批注”、“逐条回复我标注的问题”，或要求处理 Markdown / Mermaid 上的人工评论时使用。通过 markdown-comment（简写 mdc）CLI 的 list、reply、resolve 命令操作评论，输出精简、省 token。
 metadata:
-  version: 1.0.1
+  version: 1.1.0
 ---
 
 # markdown-comment
 
-Markdown Comment 为 Markdown 提供划词和全文评论。本 skill 让你读取评论、逐条在原处回复并标记已解决，无需把整篇文档读进上下文。
+Markdown Comment 为 Markdown 提供划词、全文和 Mermaid 图表评论。本 skill 让你读取评论、逐条在原处回复并标记已解决，无需把整篇文档读进上下文。
 
 ## CLI
 
@@ -35,11 +35,15 @@ Markdown Comment 为 Markdown 提供划词和全文评论。本 skill 让你读�
     - user: 这条没讲清
     - agent: 已补充第 3 节
 - [整行] L17 「该行整行内容」  #2173d966
+- [Mermaid 图] L22 「Mermaid 图」  #5dc21f70
+- [Mermaid 节点:Review] L25 「Review」  #901cb538
 - [全文] #88ff00aa [已解决]
     - user: 整体结构调一下
 ```
 
-- `[划词]/[整行]/[全文]`：评论锚定类型。划词=锚到选中文本（显示 quote）；整行=锚到整行（显示该行内容）；全文=锚到整篇文档。
+- `[划词]/[整行]/[全文]`：普通 Markdown 评论类型。
+- `[Mermaid 图]`：评论锚在整个 Mermaid fenced block。
+- `[Mermaid 节点:<nodeId>]`：评论锚在 Flowchart 显式节点；优先结合 `nodeId` 和引用理解问题，节点定位失效时仍按对应 Mermaid 图及源码行处理，不要把它误当普通文本划词。
 - `L<行号>`：1-based 行号，跨行选区显示 `L起-止`（全文评论无行号）。
 - `#xxxxxxxx`：threadId 前 8 位短 id，`reply`/`resolve` 用它定位（支持前缀匹配，歧义会报错）。
 - 缩进 `- <author>: <body>`：`user` 是用户提的问，`agent` 是你已回的。
@@ -50,7 +54,7 @@ Markdown Comment 为 Markdown 提供划词和全文评论。本 skill 让你读�
 ## 工作流程
 
 1. 用户让你处理评论时，先 `{{CLI}} list --open` 拿到所有未解决线程。
-2. 按 `[类型]` 和 `「引用」` 理解每条问的是哪段；需要更多上下文时，再用行号去读对应 Markdown 的局部，不要整篇读入。
+2. 按 `[类型]` 和 `「引用」` 理解每条问的是哪段；Mermaid 节点评论同时参考 `nodeId`。需要更多上下文时，再用行号去读对应 Markdown 的局部，不要整篇读入。
 3. 逐条 `{{CLI}} reply <短id> "<回复>"`。回复以 `author: agent` 写回，用户在 VS Code 里即时看到（插件监听存储变化自动刷新）。
 4. 已答复且无需跟进的，`{{CLI}} resolve <短id>`。
 

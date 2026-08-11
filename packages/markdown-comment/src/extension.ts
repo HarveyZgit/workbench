@@ -38,6 +38,10 @@ interface ThreadMeta {
   id: string;
   kind: 'selection' | 'document';
   status: 'open' | 'resolved';
+  rendered?: StoredAnchor['rendered'];
+  target?: StoredAnchor['target'];
+  originalAnchor?: StoredAnchor;
+  anchorFailed?: boolean;
 }
 
 let controller: vscode.CommentController;
@@ -93,7 +97,13 @@ function buildAnchor(doc: vscode.TextDocument, thread: vscode.CommentThread, met
   if (meta.kind === 'document' || !range) {
     return buildAnchorFromRange(doc, new vscode.Range(0, 0, 0, 0), 'document');
   }
-  return buildAnchorFromRange(doc, range, 'selection');
+  if (meta.anchorFailed && meta.originalAnchor) {
+    return meta.originalAnchor;
+  }
+  const anchor = buildAnchorFromRange(doc, range, 'selection');
+  anchor.rendered = meta.rendered;
+  anchor.target = meta.target;
+  return anchor;
 }
 
 function applyThreadState(thread: vscode.CommentThread, meta: ThreadMeta): void {
@@ -170,7 +180,15 @@ function loadForDocument(doc: vscode.TextDocument): void {
     const located = relocate(doc, st.anchor);
     const range = located ?? new vscode.Range(0, 0, 0, 0);
     const thread = controller.createCommentThread(doc.uri, range, []);
-    const meta: ThreadMeta = { id: st.id, kind: st.anchor.kind, status: st.status };
+    const meta: ThreadMeta = {
+      id: st.id,
+      kind: st.anchor.kind,
+      status: st.status,
+      rendered: st.anchor.rendered,
+      target: st.anchor.target,
+      originalAnchor: st.anchor,
+      anchorFailed: located === null,
+    };
     threadMeta.set(thread, meta);
     thread.comments = st.comments.map((sc) => toMarkdownComment(sc, thread));
     thread.collapsibleState = vscode.CommentThreadCollapsibleState.Collapsed;

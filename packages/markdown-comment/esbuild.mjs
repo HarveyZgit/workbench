@@ -40,6 +40,12 @@ const webviewOptions = {
   platform: 'browser',
   target: 'es2022',
   outfile: 'dist/webview.js',
+  loader: {
+    '.woff': 'file',
+    '.woff2': 'file',
+    '.ttf': 'file',
+  },
+  assetNames: 'assets/[name]-[hash]',
   sourcemap: !production,
   minify: production,
   logLevel: 'info',

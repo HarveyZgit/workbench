@@ -5,6 +5,7 @@ export interface WireThread {
   id: string;
   status: 'open' | 'resolved';
   kind: 'selection' | 'document';
+  target?: { kind: 'mermaid-diagram' } | { kind: 'mermaid-node'; nodeId: string };
   /** 锚定起点的源码行（0 基）；webview 用它定位渲染块。 */
   blockStartLine: number;
   /** 锚定终点行 + 1（排他），辅助定位跨行块。 */
@@ -30,18 +31,80 @@ export interface RenderedSelection {
   spansMultipleBlocks: boolean;
 }
 
+export interface PreviewRenderOptions {
+  frontMatter: 'table' | 'codeBlock' | 'hide';
+  scrollPreviewWithEditor: boolean;
+  scrollEditorWithPreview: boolean;
+  doubleClickToSwitchToEditor: boolean;
+  styles: string[];
+  fontFamily?: string;
+  fontSize: number;
+  lineHeight: number;
+  breaks: boolean;
+  typographer: boolean;
+  html: 'strict' | 'safe';
+  renderedDiff: boolean;
+  mermaidNodeComments: boolean;
+}
+
+export interface PreviewLineRange {
+  startLine: number;
+  endLine: number;
+}
+
+export interface PreviewLineChanges {
+  added: PreviewLineRange[];
+  modified: PreviewLineRange[];
+  deleted: Array<{ atLine: number; count: number }>;
+}
+
+export interface PreviewDiff {
+  baseline: 'saved';
+  changes: PreviewLineChanges;
+}
+
+export interface ResolvedPreviewResource {
+  source: string;
+  uri?: string;
+  error?: string;
+}
+
 export type HostToWebview =
-  | { type: 'render'; text: string; threads: WireThread[] }
+  | { type: 'render'; text: string; threads: WireThread[]; options: PreviewRenderOptions; diff?: PreviewDiff }
   | { type: 'threads'; threads: WireThread[] }
-  | { type: 'revealThread'; threadId: string };
+  | { type: 'revealThread'; threadId: string }
+  | { type: 'revealLine'; line: number }
+  | { type: 'resolvedResources'; requestId: string; resources: ResolvedPreviewResource[] };
 
 export type WebviewToHost =
   | { type: 'ready' }
   | { type: 'createThread'; selection: RenderedSelection; text: string }
+  | {
+      type: 'createBlockThread';
+      startLine: number;
+      endLine: number;
+      label: string;
+      target: 'mermaid-diagram';
+      text: string;
+    }
+  | {
+      type: 'createMermaidNodeThread';
+      startLine: number;
+      endLine: number;
+      nodeId: string;
+      label: string;
+      text: string;
+    }
   | { type: 'createDocThread'; text: string }
   | { type: 'reply'; threadId: string; text: string }
   | { type: 'editComment'; threadId: string; commentId: string; text: string }
   | { type: 'resolve'; threadId: string; resolved: boolean }
   | { type: 'deleteComment'; threadId: string; commentId: string }
   | { type: 'deleteThread'; threadId: string }
-  | { type: 'revealSource'; threadId: string };
+  | { type: 'revealSource'; threadId: string }
+  | { type: 'resolveResources'; requestId: string; sources: string[] }
+  | { type: 'openLink'; href: string }
+  | { type: 'copyImageFallback'; source: string }
+  | { type: 'openImage'; source: string }
+  | { type: 'revealSourceLine'; line: number }
+  | { type: 'previewScroll'; line: number };

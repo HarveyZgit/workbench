@@ -17,6 +17,8 @@ export interface StoredAnchor {
    * webview 用它在渲染 DOM 里精确画高亮（即便源码锚点退回了整块）；CLI 也可优先显示它。
    */
   rendered?: { quote: string; before: string; after: string };
+  /** 特殊渲染块的可选语义；旧客户端可安全忽略。 */
+  target?: { kind: 'mermaid-diagram' } | { kind: 'mermaid-node'; nodeId: string };
 }
 
 export interface StoredComment {

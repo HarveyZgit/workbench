@@ -22,7 +22,7 @@
 
 VS Code 扩展、CLI、Skill 和未来的其他 IDE / 本地 Web 页面，都是围绕同一评论核心的接入方式，而不是产品边界。这样评论数据、锚点和自动化流程不会被某一个编辑器绑定。
 
-目标架构、层级边界与迁移原则见 [`docs/architecture/markdown-comment.md`](docs/architecture/markdown-comment.md)。现有 VS Code 实现已迁入；编辑器无关核心的抽取是下一阶段工作。
+现有 VS Code 实现已迁入；编辑器无关核心的抽取是下一阶段工作。具体架构与开发约定由 `packages/markdown-comment` 自身维护。
 
 ## 开发
 
