@@ -93,7 +93,7 @@ function readLine(absFile: string, lineIdx: number): string {
   }
 }
 
-/** 线程标题：用 [划词]/[整行]/[全文] 前置标类型；划词显示 quote，整行回退读该行内容。 */
+/** 线程标题：区分全文、Mermaid 整图/节点、普通划词和整行评论。 */
 function headOf(absFile: string, t: StoredThread): string {
   if (t.anchor.kind === 'document') {
     return '- [全文]';
@@ -103,6 +103,13 @@ function headOf(absFile: string, t: StoredThread): string {
   const loc = end > start ? `L${start}-${end}` : `L${start}`;
   // 渲染态引用（preview 划词时所选）更贴近人看到的文字，优先展示。
   const quote = t.anchor.rendered?.quote || t.anchor.quote;
+  if (t.anchor.target?.kind === 'mermaid-node') {
+    const label = quote.trim() || t.anchor.target.nodeId;
+    return `- [Mermaid 节点:${t.anchor.target.nodeId}] ${loc} 「${clip(label)}」`;
+  }
+  if (t.anchor.target?.kind === 'mermaid-diagram') {
+    return `- [Mermaid 图] ${loc} 「${clip(quote || 'Mermaid 图')}」`;
+  }
   if (quote.trim()) {
     return `- [划词] ${loc} 「${clip(quote)}」`;
   }
@@ -177,6 +184,7 @@ function cmdList(): void {
           line: t.anchor.kind === 'document' ? null : t.anchor.startLine + 1,
           quote: t.anchor.quote,
           renderedQuote: t.anchor.rendered?.quote,
+          target: t.anchor.target,
           comments: t.comments.map((c) => ({ author: c.author, body: c.body })),
         });
       }
