@@ -8,10 +8,33 @@ import { isMarkdownDocument } from './markdown-lang';
 import type { StoredAnchor, StoredComment, StoredThread } from './types';
 import { buildAnchorFromRange, relocate } from './anchor';
 import { openPreview } from './preview/panel';
+import {
+  SKILL_NAME,
+  canonicalDir,
+  detectAgentSkillRoots,
+  installSkill,
+  normalizeRoot,
+  readState,
+  reconcile,
+  removeSkill,
+  resolveSkillBody,
+} from './skill-install';
 
 const CONTROLLER_ID = 'markdownComment';
 const AUTHOR_USER = 'user';
 const PERSIST_DEBOUNCE_MS = 250;
+
+// 常见 Agent 宿主的 skill 根目录种子（相对主目录）。这是「安装 skill」命令的候选补充，
+// 即便目录尚不存在也让用户可选中创建。仅本 VS Code 适配层使用的可移除数据，删掉不影响核心能力。
+const CURATED_SKILL_ROOTS = [
+  '.agents/skills',
+  '.claude/skills',
+  '.trae/skills',
+  '.trae-cn/skills',
+  '.codex/skills',
+  '.gemini/skills',
+  '.cursor/skills',
+] as const;
 
 /** 我们自己的 Comment 实现，额外携带 id / parent / 持久化字段。 */
 class MarkdownComment implements vscode.Comment {
@@ -420,6 +443,137 @@ function deleteThread(thread: vscode.CommentThread): void {
   schedulePersist(uri);
 }
 
+// ─── Skill 安装 / 卸载（命令面板）─────────────────────────────────
+
+/** 单引号安全包裹，供 skill 里注入的 CLI 命令使用（同 cli.ts 的 shellQuote）。 */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/** 解析后的 SKILL.md 正文：把 `{{CLI}}` 替换为「node <本扩展 dist/cli.js>」的绝对路径。 */
+function resolvedSkillBody(context: vscode.ExtensionContext): string {
+  const cliCmd = `node ${shellQuote(path.join(context.extensionPath, 'dist', 'cli.js'))}`;
+  const bundled = path.join(context.extensionPath, 'dist', 'resources', 'skills', SKILL_NAME, 'SKILL.md');
+  return resolveSkillBody(bundled, cliCmd);
+}
+
+/** activate 时对账：刷新真源内容、修复升级后失效的软链、剪除被用户改动的落点。绝不打断激活。 */
+function reconcileSkillInstall(context: vscode.ExtensionContext): void {
+  try {
+    reconcile(context.globalStorageUri.fsPath, resolvedSkillBody(context));
+  } catch {
+    // 对账失败不影响插件其余功能；用户可随时用命令重新安装。
+  }
+}
+
+const CUSTOM_DIR_PICK = '$(add) 自定义目录…';
+
+/** 「安装 Agent Skill」命令：多选候选目录 → 建软链指向 globalStorage 真源。 */
+async function cmdInstallSkill(context: vscode.ExtensionContext): Promise<void> {
+  const globalStorageDir = context.globalStorageUri.fsPath;
+  const canonical = canonicalDir(globalStorageDir);
+  const installed = new Set(readState(globalStorageDir).roots);
+
+  // 候选 = 已安装 ∪ 探测到的 ~/.*/skills ∪ 常见宿主种子；按绝对路径去重。
+  const seeds = CURATED_SKILL_ROOTS.map((rel) => path.join(os.homedir(), rel));
+  const candidates = [...new Set([...installed, ...detectAgentSkillRoots(), ...seeds].map(normalizeRoot))].sort();
+
+  const items: vscode.QuickPickItem[] = candidates.map((dir) => {
+    const already = installed.has(dir);
+    return {
+      label: dir.replace(os.homedir(), '~'),
+      description: already ? '已安装' : fs.existsSync(dir) ? '' : '（将创建）',
+      picked: already,
+    };
+  });
+  items.push({ label: CUSTOM_DIR_PICK, description: '手动输入一个 skill 根目录', alwaysShow: true });
+
+  const picks = await vscode.window.showQuickPick(items, {
+    canPickMany: true,
+    title: 'Markdown 评论：安装 Agent Skill',
+    placeHolder: '选择要安装到的 Agent skill 根目录（可多选），每个目录下会创建 markdown-comment 软链',
+  });
+  if (!picks || picks.length === 0) {
+    return;
+  }
+
+  const roots: string[] = [];
+  for (const pick of picks) {
+    if (pick.label === CUSTOM_DIR_PICK) {
+      const input = await vscode.window.showInputBox({
+        title: '自定义 skill 根目录',
+        prompt: '输入一个 skill 根目录的绝对路径（支持 ~），其下会创建 markdown-comment 软链',
+        ignoreFocusOut: true,
+      });
+      if (input && input.trim()) {
+        roots.push(input.trim());
+      }
+      continue;
+    }
+    roots.push(pick.label.replace(/^~/, os.homedir()));
+  }
+  if (roots.length === 0) {
+    return;
+  }
+
+  let outcome;
+  try {
+    outcome = installSkill(globalStorageDir, roots, resolvedSkillBody(context));
+  } catch (error) {
+    void vscode.window.showErrorMessage(`Markdown 评论：安装 skill 失败：${String(error)}`);
+    return;
+  }
+
+  const parts: string[] = [];
+  if (outcome.installed.length) {
+    parts.push(`已安装 ${outcome.installed.length} 处 → 均指向 ${canonical}`);
+  }
+  for (const skip of outcome.skipped) {
+    parts.push(`跳过 ${skip.root.replace(os.homedir(), '~')}：${skip.reason}`);
+  }
+  void vscode.window.showInformationMessage(`Markdown 评论：${parts.join('；') || '没有变更'}`);
+}
+
+/** 「移除 Agent Skill」命令：从安装记录里多选 → 只删我们自己建的软链。 */
+async function cmdCleanupSkill(context: vscode.ExtensionContext): Promise<void> {
+  const globalStorageDir = context.globalStorageUri.fsPath;
+  const roots = readState(globalStorageDir).roots;
+  if (roots.length === 0) {
+    void vscode.window.showInformationMessage('Markdown 评论：没有已记录的 skill 安装。');
+    return;
+  }
+
+  const picks = await vscode.window.showQuickPick(
+    roots.map((dir) => ({ label: dir.replace(os.homedir(), '~'), picked: true })),
+    {
+      canPickMany: true,
+      title: 'Markdown 评论：移除 Agent Skill',
+      placeHolder: '选择要移除的安装（只会删除本插件创建的软链）',
+    },
+  );
+  if (!picks || picks.length === 0) {
+    return;
+  }
+
+  const targets = picks.map((pick) => pick.label.replace(/^~/, os.homedir()));
+  let outcome;
+  try {
+    outcome = removeSkill(globalStorageDir, targets);
+  } catch (error) {
+    void vscode.window.showErrorMessage(`Markdown 评论：移除 skill 失败：${String(error)}`);
+    return;
+  }
+
+  const parts: string[] = [];
+  if (outcome.removed.length) {
+    parts.push(`已移除 ${outcome.removed.length} 处软链`);
+  }
+  for (const skip of outcome.skipped) {
+    parts.push(`跳过 ${skip.root.replace(os.homedir(), '~')}：${skip.reason}`);
+  }
+  void vscode.window.showInformationMessage(`Markdown 评论：${parts.join('；') || '没有变更'}`);
+}
+
 // ─── 激活 ──────────────────────────────────────────────────────────
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -505,6 +659,11 @@ export function activate(context: vscode.ExtensionContext): void {
   register('markdownComment.cancelEdit', (comment: MarkdownComment) => cancelEdit(comment));
   register('markdownComment.deleteComment', (comment: MarkdownComment) => deleteComment(comment));
   register('markdownComment.deleteThread', (thread: vscode.CommentThread) => deleteThread(thread));
+  register('markdownComment.installSkill', () => cmdInstallSkill(context));
+  register('markdownComment.cleanupSkill', () => cmdCleanupSkill(context));
+
+  // 对账放在命令注册之后：升级换目录后自动重指软链、剪除被改动的落点。
+  reconcileSkillInstall(context);
 }
 
 export function deactivate(): void {

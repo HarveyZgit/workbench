@@ -32,6 +32,33 @@ Preview settings:
 
 ## Install
 
+### From VS Code (command palette)
+
+After the extension is installed, install the Agent Skill without touching a
+terminal. Open the command palette and run:
+
+- **Markdown 评论：安装 Agent Skill** — pick one or more Agent skill root
+  directories (multi-select). The list combines already-installed targets,
+  skill roots auto-detected under your home directory, and a few common host
+  seeds; you can also add a custom directory. Each selected root gets a
+  `markdown-comment` symlink pointing at the extension's resolved Skill copy in
+  its stable global storage, so the link keeps working across extension
+  upgrades.
+- **Markdown 评论：移除 Agent Skill** — select recorded installs to remove. It
+  only deletes the symlinks this extension created and never touches real files
+  or foreign links.
+
+Symlinks target a canonical Skill copy in the extension's global storage rather
+than the versioned extension directory, which VS Code renames on every upgrade.
+The extension reconciles these links on activation, repairing them after an
+upgrade and dropping records whose target was replaced by hand.
+
+> VS Code has no uninstall hook, so the extension cannot self-clean when it is
+> removed. Run **移除 Agent Skill** before uninstalling. If a dangling link is
+> left behind, that command (or a manual delete) clears it.
+
+### From the CLI
+
 `mdc init` does not assume a particular Agent host or skill directory. Pass the target explicitly:
 
 ```sh

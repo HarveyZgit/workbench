@@ -48,6 +48,14 @@
         "icon": "$(preview)"
       },
       {
+        "command": "markdownComment.installSkill",
+        "title": "Markdown 评论：安装 Agent Skill"
+      },
+      {
+        "command": "markdownComment.cleanupSkill",
+        "title": "Markdown 评论：移除 Agent Skill"
+      },
+      {
         "command": "markdownComment.createThread",
         "title": "评论"
       },
