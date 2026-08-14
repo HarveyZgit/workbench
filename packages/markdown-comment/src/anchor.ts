@@ -53,7 +53,7 @@ export function relocate(doc: vscode.TextDocument, a: StoredAnchor): vscode.Rang
     return new vscode.Range(Math.min(a.startLine, lastLine), 0, Math.min(a.startLine, lastLine), 0);
   }
   let best = -1;
-  let bestScore = Number.NEGATIVE_INFINITY;
+  let bestScore = -1;
   for (let i = text.indexOf(a.quote); i >= 0; i = text.indexOf(a.quote, i + 1)) {
     const dist = Math.abs(doc.positionAt(i).line - a.startLine);
     const before = text.slice(Math.max(0, i - a.before.length), i);
@@ -68,7 +68,7 @@ export function relocate(doc: vscode.TextDocument, a: StoredAnchor): vscode.Rang
     } else if (beforeMatches) {
       score += 1_000;
     }
-    if (score > bestScore) {
+    if ((beforeMatches || afterMatches) && score > bestScore) {
       bestScore = score;
       best = i;
     }

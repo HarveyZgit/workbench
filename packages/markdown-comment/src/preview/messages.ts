@@ -14,6 +14,8 @@ export interface WireThread {
   quote: string;
   /** 渲染态引用，用来在渲染 DOM 里精确画高亮；无则退回整块高亮。 */
   rendered?: { quote: string; before: string; after: string };
+  /** 原文已删除、锚点失联，预览中不画高亮仅展示评论卡片。 */
+  orphaned?: boolean;
   comments: { id: string; author: string; body: string; createdAt: string }[];
 }
 

@@ -35,7 +35,7 @@ let renderOptions: PreviewRenderOptions = {
   frontMatter: 'table',
   scrollPreviewWithEditor: true,
   scrollEditorWithPreview: true,
-  doubleClickToSwitchToEditor: true,
+  doubleClickToSwitchToEditor: false,
   styles: [],
   fontSize: 14,
   lineHeight: 1.7,
@@ -272,7 +272,7 @@ function blocksInRange(startLine: number, endLineExcl: number): HTMLElement[] {
 
 function applyHighlights(threads: WireThread[]): void {
   for (const t of threads) {
-    if (t.kind === 'document') {
+    if (t.orphaned || t.kind === 'document') {
       continue;
     }
     if (t.target?.kind === 'mermaid-node') {
@@ -349,12 +349,13 @@ function cardHtml(t: WireThread): string {
     )
     .join('');
   const resolved = t.status === 'resolved';
-  return `<div class="mdc-card ${resolved ? 'resolved' : ''}" data-thread-id="${t.id}" data-status="${t.status}">
+  const orphaned = t.orphaned === true;
+  return `<div class="mdc-card ${resolved ? 'resolved' : ''} ${orphaned ? 'orphaned' : ''}" data-thread-id="${t.id}" data-status="${t.status}">
   <div class="mdc-card-head">
-    <div class="mdc-card-quote">${label}</div>
+    <div class="mdc-card-quote">${orphaned ? '<span class="mdc-orphaned-tag">原文已删除</span> ' : ''}${label}</div>
     <div class="mdc-card-tools">
-      <button class="mdc-icon mdc-tip" data-act="reveal" data-tip="${t.kind === 'document' ? '打开文档' : '在源码中显示'}">${ICON_SOURCE}</button>
-      <button class="mdc-icon mdc-tip resolve ${resolved ? 'on' : ''}" data-act="resolve" data-tip="${resolved ? '重新打开' : '标记已解决'}">${ICON_RESOLVE}</button>
+      ${orphaned ? '' : `<button class="mdc-icon mdc-tip" data-act="reveal" data-tip="${t.kind === 'document' ? '打开文档' : '在源码中显示'}">${ICON_SOURCE}</button>
+      <button class="mdc-icon mdc-tip resolve ${resolved ? 'on' : ''}" data-act="resolve" data-tip="${resolved ? '重新打开' : '标记已解决'}">${ICON_RESOLVE}</button>`}
     </div>
   </div>
   <div class="mdc-card-comments">${comments}</div>
