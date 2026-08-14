@@ -322,7 +322,7 @@ function startWatch(context: vscode.ExtensionContext): void {
 function startThread(kind: 'selection' | 'document'): void {
   if (!sourceCommentsEnabled()) {
     vscode.window.showInformationMessage(
-      '源码内联评论已关闭。可在设置开启 markdownComment.sourceComments.enabled，或用「打开评论预览」在渲染视图里评论。',
+      '源码内联评论已关闭。可在设置中开启 markdownComment.sourceComments.enabled，或使用「Markdown Comment：打开评论预览」在渲染视图中评论。',
     );
     return;
   }
@@ -468,7 +468,7 @@ function reconcileSkillInstall(context: vscode.ExtensionContext): void {
 
 const CUSTOM_DIR_PICK = '$(add) 自定义目录…';
 
-/** 「安装 Agent Skill」命令：多选候选目录 → 建软链指向 globalStorage 真源。 */
+/** 「安装 / 更新 Agent Skill」命令：多选候选目录 → 建软链指向 globalStorage 真源，已安装的会被刷新/迁移到最新。 */
 async function cmdInstallSkill(context: vscode.ExtensionContext): Promise<void> {
   const globalStorageDir = context.globalStorageUri.fsPath;
   const canonical = canonicalDir(globalStorageDir);
@@ -482,16 +482,16 @@ async function cmdInstallSkill(context: vscode.ExtensionContext): Promise<void> 
     const already = installed.has(dir);
     return {
       label: dir.replace(os.homedir(), '~'),
-      description: already ? '已安装' : fs.existsSync(dir) ? '' : '（将创建）',
+      description: already ? '已安装' : fs.existsSync(dir) ? '' : '（目录不存在，将自动创建）',
       picked: already,
     };
   });
-  items.push({ label: CUSTOM_DIR_PICK, description: '手动输入一个 skill 根目录', alwaysShow: true });
+  items.push({ label: CUSTOM_DIR_PICK, description: '手动输入其他目录', alwaysShow: true });
 
   const picks = await vscode.window.showQuickPick(items, {
     canPickMany: true,
-    title: 'Markdown 评论：安装 Agent Skill',
-    placeHolder: '选择要安装到的 Agent skill 根目录（可多选），每个目录下会创建 markdown-comment 软链',
+    title: 'Markdown Comment：安装 / 更新 Agent Skill',
+    placeHolder: '选择要安装到的 Agent（可多选），Markdown Comment Skill 将注册到对应的 Agent 中',
   });
   if (!picks || picks.length === 0) {
     return;
@@ -501,8 +501,8 @@ async function cmdInstallSkill(context: vscode.ExtensionContext): Promise<void> 
   for (const pick of picks) {
     if (pick.label === CUSTOM_DIR_PICK) {
       const input = await vscode.window.showInputBox({
-        title: '自定义 skill 根目录',
-        prompt: '输入一个 skill 根目录的绝对路径（支持 ~），其下会创建 markdown-comment 软链',
+        title: '自定义 Skill 目录',
+        prompt: '输入目标 Agent 的 skills 目录绝对路径（支持 ~）',
         ignoreFocusOut: true,
       });
       if (input && input.trim()) {
@@ -520,26 +520,35 @@ async function cmdInstallSkill(context: vscode.ExtensionContext): Promise<void> 
   try {
     outcome = installSkill(globalStorageDir, roots, resolvedSkillBody(context));
   } catch (error) {
-    void vscode.window.showErrorMessage(`Markdown 评论：安装 skill 失败：${String(error)}`);
+    void vscode.window.showErrorMessage(`Markdown Comment：安装失败：${String(error)}`);
     return;
   }
 
   const parts: string[] = [];
+  const totalOk = outcome.installed.length + outcome.migrated.length + outcome.refreshed.length;
   if (outcome.installed.length) {
-    parts.push(`已安装 ${outcome.installed.length} 处 → 均指向 ${canonical}`);
+    parts.push(`已安装到 ${outcome.installed.length} 个 Agent`);
+  }
+  if (outcome.migrated.length) {
+    parts.push(`已更新 ${outcome.migrated.length} 个旧版本`);
+  }
+  if (outcome.refreshed.length && !outcome.installed.length && !outcome.migrated.length) {
+    parts.push(`已是最新版本（${outcome.refreshed.length} 个 Agent）`);
   }
   for (const skip of outcome.skipped) {
     parts.push(`跳过 ${skip.root.replace(os.homedir(), '~')}：${skip.reason}`);
   }
-  void vscode.window.showInformationMessage(`Markdown 评论：${parts.join('；') || '没有变更'}`);
+  void vscode.window.showInformationMessage(
+    `Markdown Comment：${parts.join('；') || '安装完成'}`,
+  );
 }
 
-/** 「移除 Agent Skill」命令：从安装记录里多选 → 只删我们自己建的软链。 */
+/** 「移除 Agent Skill」命令：从安装记录里多选 → 只删我们自己注册的内容。 */
 async function cmdCleanupSkill(context: vscode.ExtensionContext): Promise<void> {
   const globalStorageDir = context.globalStorageUri.fsPath;
   const roots = readState(globalStorageDir).roots;
   if (roots.length === 0) {
-    void vscode.window.showInformationMessage('Markdown 评论：没有已记录的 skill 安装。');
+    void vscode.window.showInformationMessage('Markdown Comment：当前没有已安装的 Agent Skill。');
     return;
   }
 
@@ -547,8 +556,8 @@ async function cmdCleanupSkill(context: vscode.ExtensionContext): Promise<void> 
     roots.map((dir) => ({ label: dir.replace(os.homedir(), '~'), picked: true })),
     {
       canPickMany: true,
-      title: 'Markdown 评论：移除 Agent Skill',
-      placeHolder: '选择要移除的安装（只会删除本插件创建的软链）',
+      title: 'Markdown Comment：移除 Agent Skill',
+      placeHolder: '选择要从哪些 Agent 中移除（只会移除本插件创建的内容）',
     },
   );
   if (!picks || picks.length === 0) {
@@ -560,18 +569,18 @@ async function cmdCleanupSkill(context: vscode.ExtensionContext): Promise<void> 
   try {
     outcome = removeSkill(globalStorageDir, targets);
   } catch (error) {
-    void vscode.window.showErrorMessage(`Markdown 评论：移除 skill 失败：${String(error)}`);
+    void vscode.window.showErrorMessage(`Markdown Comment：移除失败：${String(error)}`);
     return;
   }
 
   const parts: string[] = [];
   if (outcome.removed.length) {
-    parts.push(`已移除 ${outcome.removed.length} 处软链`);
+    parts.push(`已从 ${outcome.removed.length} 个 Agent 移除`);
   }
   for (const skip of outcome.skipped) {
     parts.push(`跳过 ${skip.root.replace(os.homedir(), '~')}：${skip.reason}`);
   }
-  void vscode.window.showInformationMessage(`Markdown 评论：${parts.join('；') || '没有变更'}`);
+  void vscode.window.showInformationMessage(`Markdown Comment：${parts.join('；') || '没有变更'}`);
 }
 
 // ─── 激活 ──────────────────────────────────────────────────────────
@@ -581,7 +590,7 @@ export function activate(context: vscode.ExtensionContext): void {
   fs.mkdirSync(storageDir, { recursive: true });
   writePointer(storageDir);
 
-  controller = vscode.comments.createCommentController(CONTROLLER_ID, 'Markdown 评论');
+  controller = vscode.comments.createCommentController(CONTROLLER_ID, 'Markdown Comment');
   controller.options = {
     prompt: '评论',
     placeHolder: '写下你的评论…',
@@ -634,9 +643,9 @@ export function activate(context: vscode.ExtensionContext): void {
       // 源码内联评论开关切换：提示重载，避免「已渲染线程未拆 / 新开关未挂」的半开状态。
       if (e.affectsConfiguration('markdownComment.sourceComments.enabled')) {
         void vscode.window
-          .showInformationMessage('Markdown 评论：源码内联评论开关已更改，重载窗口后生效。', '重载窗口')
+          .showInformationMessage('Markdown Comment：源码内联评论设置已更改，重新加载窗口后生效。', '重新加载窗口')
           .then((pick) => {
-            if (pick === '重载窗口') {
+            if (pick === '重新加载窗口') {
               void vscode.commands.executeCommand('workbench.action.reloadWindow');
             }
           });
@@ -647,20 +656,20 @@ export function activate(context: vscode.ExtensionContext): void {
   const register = (id: string, handler: (...args: any[]) => unknown) =>
     context.subscriptions.push(vscode.commands.registerCommand(id, handler));
 
-  register('markdownComment.addComment', () => startThread('selection'));
-  register('markdownComment.addDocumentComment', () => startThread('document'));
-  register('markdownComment.openPreview', () => openPreview(context));
-  register('markdownComment.createThread', (reply: vscode.CommentReply) => addReply(reply));
-  register('markdownComment.reply', (reply: vscode.CommentReply) => addReply(reply));
-  register('markdownComment.resolve', (thread: vscode.CommentThread) => setResolved(thread, true));
-  register('markdownComment.reopen', (thread: vscode.CommentThread) => setResolved(thread, false));
-  register('markdownComment.editComment', (comment: MarkdownComment) => editComment(comment));
-  register('markdownComment.saveEdit', (comment: MarkdownComment) => saveEdit(comment));
-  register('markdownComment.cancelEdit', (comment: MarkdownComment) => cancelEdit(comment));
-  register('markdownComment.deleteComment', (comment: MarkdownComment) => deleteComment(comment));
-  register('markdownComment.deleteThread', (thread: vscode.CommentThread) => deleteThread(thread));
-  register('markdownComment.installSkill', () => cmdInstallSkill(context));
-  register('markdownComment.cleanupSkill', () => cmdCleanupSkill(context));
+  register('markdown-comment.add-comment', () => startThread('selection'));
+  register('markdown-comment.add-document-comment', () => startThread('document'));
+  register('markdown-comment.open-preview', () => openPreview(context));
+  register('markdown-comment.create-thread', (reply: vscode.CommentReply) => addReply(reply));
+  register('markdown-comment.reply', (reply: vscode.CommentReply) => addReply(reply));
+  register('markdown-comment.resolve', (thread: vscode.CommentThread) => setResolved(thread, true));
+  register('markdown-comment.reopen', (thread: vscode.CommentThread) => setResolved(thread, false));
+  register('markdown-comment.edit-comment', (comment: MarkdownComment) => editComment(comment));
+  register('markdown-comment.save-edit', (comment: MarkdownComment) => saveEdit(comment));
+  register('markdown-comment.cancel-edit', (comment: MarkdownComment) => cancelEdit(comment));
+  register('markdown-comment.delete-comment', (comment: MarkdownComment) => deleteComment(comment));
+  register('markdown-comment.delete-thread', (thread: vscode.CommentThread) => deleteThread(thread));
+  register('markdown-comment.install-or-update-skill', () => cmdInstallSkill(context));
+  register('markdown-comment.cleanup-skill', () => cmdCleanupSkill(context));
 
   // 对账放在命令注册之后：升级换目录后自动重指软链、剪除被改动的落点。
   reconcileSkillInstall(context);
