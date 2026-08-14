@@ -14,16 +14,16 @@ async function copySkill() {
   await copyFile(skillSource, skillOutput);
 }
 
-/** Node 侧：extension.js 由 VS Code 宿主加载；cli.js 作为 markdown-comment 命令给 Agent 用。 */
+/** Node 侧：extension.js 由 VS Code 宿主加载；cli.js 作为 markdown-comment 命令给 Agent 用；skill-install.js 供纯 node 测试/脚本调用。 */
 /** @type {import('esbuild').BuildOptions} */
 const nodeOptions = {
-  entryPoints: ['src/extension.ts', 'src/cli.ts'],
+  entryPoints: ['src/extension.ts', 'src/cli.ts', 'src/skill-install.ts'],
   bundle: true,
   format: 'cjs',
   platform: 'node',
   target: 'node22',
   outdir: 'dist',
-  // vscode 由宿主在运行时注入，不能打进包里（cli.ts 不引用它）。
+  // vscode 由宿主在运行时注入，不能打进包里（cli.ts / skill-install.ts 不引用它）。
   external: ['vscode'],
   banner: { js: '#!/usr/bin/env node' },
   sourcemap: !production,

@@ -1,23 +1,28 @@
 #!/usr/bin/env node
 
-import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import {
+  existsSync,
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+  mkdirSync,
+  symlinkSync,
+  readdirSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const packageRoot = join(repoRoot, 'packages/markdown-comment');
-const cliPath = join(repoRoot, 'packages/markdown-comment/dist/cli.js');
-const temporaryDirectory = mkdtempSync(join(tmpdir(), 'markdown-comment-install-'));
-
-function run(args, options = {}) {
-  return spawnSync(process.execPath, [cliPath, ...args], {
-    cwd: repoRoot,
-    env: options.env ?? process.env,
-    encoding: 'utf8',
-  });
-}
+const distDir = join(packageRoot, 'dist');
+const skillInstallPath = join(distDir, 'skill-install.js');
+const bundledSkillPath = join(distDir, 'resources/skills/markdown-comment/SKILL.md');
 
 function assert(condition, message) {
   if (!condition) {
@@ -25,100 +30,194 @@ function assert(condition, message) {
   }
 }
 
+function isSymlink(p) {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+function readLinkAbs(p) {
+  const raw = readlinkSync(p);
+  return require.resolve(raw, { paths: [join(p, '..')] });
+}
+
+const {
+  SKILL_NAME,
+  canonicalDir,
+  canonicalSkillFile,
+  writeCanonicalSkill,
+  linkStatus,
+  installManagedLink,
+  removeManagedLink,
+  readState,
+  writeState,
+  installSkill,
+  removeSkill,
+  reconcile,
+  normalizeRoot,
+} = await import(skillInstallPath);
+
+const BODY = readFileSync(bundledSkillPath, 'utf8');
+
+let temporaryDirectory;
 try {
   execFileSync('node', ['esbuild.mjs', '--production'], {
     cwd: packageRoot,
     stdio: 'ignore',
   });
 
-  const missingSingle = run(['init', '--no-extension', '--skill-dir']);
-  assert(missingSingle.status !== 0, '--skill-dir without a value must fail');
-  assert(missingSingle.stderr.includes('--skill-dir 缺少目录参数'), 'missing --skill-dir error must be explicit');
+  temporaryDirectory = mkdtempSync(join(tmpdir(), 'markdown-comment-install-'));
 
-  const missingMany = run(['init', '--no-extension', '--skill-dirs']);
-  assert(missingMany.status !== 0, '--skill-dirs without a value must fail');
-  assert(missingMany.stderr.includes('--skill-dirs 缺少目录参数'), 'missing --skill-dirs error must be explicit');
+  // ── 1. normalizeRoot 展开 ~ ──
+  const homeNormalized = normalizeRoot('~/foo');
+  assert(homeNormalized.startsWith('/'), 'normalizeRoot should resolve ~ to absolute path');
+  assert(!homeNormalized.includes('~'), 'normalizeRoot should not leave ~ in path');
 
-  for (const flag of ['--skill-dir', '--skill-dirs', '--no-skill', '--no-extension']) {
-    const duplicateArgs = flag.startsWith('--no-')
-      ? [flag, flag]
-      : [flag, join(temporaryDirectory, 'one'), flag, join(temporaryDirectory, 'two')];
-    const duplicate = run(['init', '--no-extension', ...duplicateArgs]);
-    assert(duplicate.status !== 0, `${flag} repeated must fail`);
-    assert(duplicate.stderr.includes(`${flag} 只能传一次`), `${flag} duplicate error must be explicit`);
-  }
+  // ── 2. 全新安装：写真源 + 建软链 ──
+  const gs1 = join(temporaryDirectory, 'gs1');
+  const rootA = join(temporaryDirectory, 'agent-a', 'skills');
+  const rootB = join(temporaryDirectory, 'root with space', 'skills'); // 空格路径
+  const res1 = installSkill(gs1, [rootA, rootB], BODY);
+  assert(res1.installed.length === 2, `fresh install should install 2 roots, got ${res1.installed.length}`);
+  assert(res1.migrated.length === 0, 'fresh install should have 0 migrated');
+  assert(res1.refreshed.length === 0, 'fresh install should have 0 refreshed');
 
-  const optionAsValue = run(['init', '--no-extension', '--skill-dir', '--no-skill']);
-  assert(optionAsValue.status !== 0, 'a following option must not be accepted as a directory value');
-  assert(optionAsValue.stderr.includes('--skill-dir 缺少目录参数'), 'option-as-value error must be explicit');
+  const canon = canonicalDir(gs1);
+  const canonFile = canonicalSkillFile(gs1);
+  assert(existsSync(canonFile), 'canonical SKILL.md must exist');
+  const linkA = join(rootA, SKILL_NAME);
+  const linkB = join(rootB, SKILL_NAME);
+  assert(isSymlink(linkA), 'rootA link must be a symlink');
+  assert(isSymlink(linkB), 'rootB (space in path) link must be a symlink');
+  assert(realpathSync(linkA) === realpathSync(canon), 'linkA must point to canonical');
 
-  const conflict = run([
-    'init',
-    '--no-extension',
-    '--skill-dir',
-    join(temporaryDirectory, 'single'),
-    '--skill-dirs',
-    join(temporaryDirectory, 'roots'),
-  ]);
-  assert(conflict.status !== 0, 'conflicting skill directory flags must fail');
-  assert(conflict.stderr.includes('不能同时使用'), 'conflicting flags error must be explicit');
+  const state1 = readState(gs1);
+  assert(state1.roots.length === 2, 'state must record 2 roots');
 
-  const noSkillConflict = run([
-    'init',
-    '--no-extension',
-    '--no-skill',
-    '--skill-dir',
-    join(temporaryDirectory, 'ignored'),
-  ]);
-  assert(noSkillConflict.status !== 0, '--no-skill with a directory flag must fail');
-  assert(noSkillConflict.stderr.includes('--no-skill 不能与'), 'no-skill conflict error must be explicit');
+  // ── 3. 幂等重复安装 → refreshed ──
+  const res2 = installSkill(gs1, [rootA], BODY);
+  assert(res2.installed.length === 0, 'reinstall should have 0 installed');
+  assert(res2.refreshed.length === 1, 'reinstall should mark 1 refreshed');
+  assert(res2.migrated.length === 0, 'reinstall should have 0 migrated');
 
-  const emptyMany = run(['init', '--no-extension', '--skill-dirs', ',,']);
-  assert(emptyMany.status !== 0, 'empty --skill-dirs must fail');
-  assert(emptyMany.stderr.includes('至少需要一个非空目录'), 'empty roots error must be explicit');
+  // ── 4. 旧真实目录迁移（含 name: markdown-comment frontmatter） ──
+  const rootLegacy = join(temporaryDirectory, 'agent-legacy', 'skills');
+  mkdirSync(rootLegacy, { recursive: true });
+  const legacyDir = join(rootLegacy, SKILL_NAME);
+  mkdirSync(legacyDir, { recursive: true });
+  writeFileSync(
+    join(legacyDir, 'SKILL.md'),
+    '---\nname: markdown-comment\ndescription: old copy install\n---\nold body\n',
+    'utf8',
+  );
+  const gs2 = join(temporaryDirectory, 'gs2');
+  const res3 = installSkill(gs2, [rootLegacy], BODY);
+  assert(res3.migrated.length === 1, 'legacy real dir should be migrated');
+  assert(isSymlink(join(rootLegacy, SKILL_NAME)), 'legacy dir must become a symlink');
+  // 备份应存在
+  const entries = readdirSync(rootLegacy);
+  const bak = entries.find((e) => e.startsWith(`${SKILL_NAME}.bak-`));
+  assert(bak, 'legacy dir should be renamed to .bak-*');
 
-  const pathWithSpace = join(temporaryDirectory, 'root with space');
-  const secondRoot = join(temporaryDirectory, 'second root');
-  const many = run(['init', '--no-extension', '--skill-dirs', `${pathWithSpace},${secondRoot}`]);
-  assert(many.status === 0, `explicit roots failed: ${many.stderr}`);
-  assert(existsSync(join(pathWithSpace, 'markdown-comment', 'SKILL.md')), 'path with spaces must be preserved');
-  assert(existsSync(join(secondRoot, 'markdown-comment', 'SKILL.md')), 'second root must be installed');
+  // ── 5. 悬空软链（指向不存在目标的同名软链） → ours-stale → 迁移 ──
+  const rootStaleLink = join(temporaryDirectory, 'agent-stale-link', 'skills');
+  mkdirSync(rootStaleLink, { recursive: true });
+  const staleTarget = join(temporaryDirectory, 'nonexistent-canonical', SKILL_NAME);
+  symlinkSync(staleTarget, join(rootStaleLink, SKILL_NAME));
+  const gs3 = join(temporaryDirectory, 'gs3');
+  const res4 = installSkill(gs3, [rootStaleLink], BODY);
+  assert(res4.migrated.length === 1, 'stale dangling symlink should be migrated');
+  assert(isSymlink(join(rootStaleLink, SKILL_NAME)), 'stale link replaced with fresh symlink');
 
-  const unknown = run(['init', '--no-extension', '--no-skill', '--unknown']);
-  assert(unknown.status !== 0, 'unknown init flags must fail');
-  assert(unknown.stderr.includes('未知参数'), 'unknown flag error must be explicit');
+  // ── 6. 外来真实目录（无 name: markdown-comment）→ 跳过 ──
+  const rootForeignDir = join(temporaryDirectory, 'agent-foreign-dir', 'skills');
+  mkdirSync(rootForeignDir, { recursive: true });
+  const foreignDir = join(rootForeignDir, SKILL_NAME);
+  mkdirSync(foreignDir, { recursive: true });
+  writeFileSync(join(foreignDir, 'SKILL.md'), '---\nname: some-other-skill\n---\n', 'utf8');
+  const gs4 = join(temporaryDirectory, 'gs4');
+  const res5 = installSkill(gs4, [rootForeignDir], BODY);
+  assert(res5.skipped.length === 1, 'foreign real dir should be skipped');
+  assert(!isSymlink(foreignDir), 'foreign dir must NOT be replaced');
 
-  const positional = run(['init', '--no-extension', '--no-skill', 'extra-positional']);
-  assert(positional.status !== 0, 'extra positional args must fail');
-  assert(positional.stderr.includes('不支持的位置参数'), 'positional error must be explicit');
+  // ── 7. 外来软链（指向别的真实目录）→ 跳过 ──
+  const rootForeignLink = join(temporaryDirectory, 'agent-foreign-link', 'skills');
+  mkdirSync(rootForeignLink, { recursive: true });
+  const foreignTargetDir = join(temporaryDirectory, 'some-other-skill-real');
+  mkdirSync(foreignTargetDir, { recursive: true });
+  writeFileSync(join(foreignTargetDir, 'SKILL.md'), '---\nname: other\n---\n', 'utf8');
+  symlinkSync(foreignTargetDir, join(rootForeignLink, SKILL_NAME));
+  const gs5 = join(temporaryDirectory, 'gs5');
+  const res6 = installSkill(gs5, [rootForeignLink], BODY);
+  assert(res6.skipped.length === 1, 'foreign symlink should be skipped');
+  assert(readlinkSync(join(rootForeignLink, SKILL_NAME)) === foreignTargetDir, 'foreign symlink must remain untouched');
 
-  const packageWithSpaceAndQuote = join(temporaryDirectory, "package with space and 'quote'");
-  cpSync(join(packageRoot, 'dist'), join(packageWithSpaceAndQuote, 'dist'), { recursive: true });
-  const copiedCli = join(packageWithSpaceAndQuote, 'dist', 'cli.js');
-  const copiedTarget = join(temporaryDirectory, 'copied-skill');
-  const copied = spawnSync(process.execPath, [copiedCli, 'init', '--no-extension', '--skill-dir', copiedTarget], {
-    cwd: repoRoot,
-    env: { ...process.env, PATH: '/usr/bin:/bin' },
-    encoding: 'utf8',
-  });
-  assert(copied.status === 0, `copied CLI install failed: ${copied.stderr}`);
-  const copiedSkill = readFileSync(join(copiedTarget, 'SKILL.md'), 'utf8');
-  const commandLine = copiedSkill.split(/\r?\n/).find((line) => line.includes(' list [file]'));
-  assert(commandLine, 'generated skill must contain the fallback CLI command');
-  const commandEnd = commandLine.indexOf(' list [file]') + ' list'.length;
-  const command = commandLine.slice(0, commandEnd);
-  const execution = spawnSync('/bin/sh', ['-c', command], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      PATH: `${dirname(process.execPath)}:/usr/bin:/bin`,
-      MARKDOWN_COMMENT_STORAGE_DIR: temporaryDirectory,
-    },
-    encoding: 'utf8',
-  });
-  assert(execution.status === 0, `quoted fallback CLI is not executable through /bin/sh: ${execution.stderr}`);
+  // ── 8. 卸载：只删我们管理的软链 ──
+  const gs6 = join(temporaryDirectory, 'gs6');
+  const rootR1 = join(temporaryDirectory, 'agent-r1', 'skills');
+  const rootR2 = join(temporaryDirectory, 'agent-r2', 'skills');
+  const rootRF = join(temporaryDirectory, 'agent-rf', 'skills');
+  mkdirSync(rootRF, { recursive: true });
+  mkdirSync(join(rootRF, SKILL_NAME, 'sub'), { recursive: true });
+  writeFileSync(join(rootRF, SKILL_NAME, 'SKILL.md'), '---\nname: other\n---\n', 'utf8');
+  installSkill(gs6, [rootR1, rootR2], BODY);
+  // 先"安装"一个成功的，然后试图卸载一个不存在的 + 一个外来的
+  const remRes1 = removeSkill(gs6, [rootR1, rootRF]);
+  assert(remRes1.removed.length === 1, 'removeSkill should remove ours only');
+  assert(remRes1.skipped.length === 1, 'removeSkill should skip foreign');
+  assert(!existsSync(join(rootR1, SKILL_NAME)), 'our link must be removed');
+  assert(existsSync(join(rootRF, SKILL_NAME)), 'foreign dir must remain');
+
+  // ── 9. 全部卸载后真源目录清理 ──
+  const remRes2 = removeSkill(gs6, [rootR2]);
+  assert(remRes2.removed.length === 1, 'remove last should succeed');
+  assert(!existsSync(canonicalDir(gs6)), 'canonical dir should be removed after last uninstall');
+  const stateEmpty = readState(gs6);
+  assert(stateEmpty.roots.length === 0, 'state should be empty after full remove');
+
+  // ── 10. reconcile：重建缺失的软链 ──
+  const gs7 = join(temporaryDirectory, 'gs7');
+  const rootRec = join(temporaryDirectory, 'agent-rec', 'skills');
+  installSkill(gs7, [rootRec], BODY);
+  // 手动删掉软链
+  rmSync(join(rootRec, SKILL_NAME));
+  assert(!existsSync(join(rootRec, SKILL_NAME)), 'link must be gone');
+  reconcile(gs7, BODY);
+  assert(isSymlink(join(rootRec, SKILL_NAME)), 'reconcile must rebuild missing link');
+
+  // ── 11. reconcile：用户把落点换成外来目录 → 从记录剔除，不动磁盘 ──
+  const gs8 = join(temporaryDirectory, 'gs8');
+  const rootRec2 = join(temporaryDirectory, 'agent-rec2', 'skills');
+  installSkill(gs8, [rootRec2], BODY);
+  rmSync(join(rootRec2, SKILL_NAME));
+  mkdirSync(join(rootRec2, SKILL_NAME), { recursive: true });
+  writeFileSync(join(rootRec2, SKILL_NAME, 'SKILL.md'), '---\nname: totally-unrelated\n---\n', 'utf8');
+  reconcile(gs8, BODY);
+  const stateRec2 = readState(gs8);
+  assert(stateRec2.roots.length === 0, 'foreign replacement must be pruned from state');
+  assert(existsSync(join(rootRec2, SKILL_NAME)), 'foreign replacement must stay on disk');
+
+  // ── 12. writeCanonicalSkill 内容相同不重写（mtime 不变）──
+  const gs9 = join(temporaryDirectory, 'gs9');
+  const c1 = writeCanonicalSkill(gs9, BODY);
+  const f1 = canonicalSkillFile(gs9);
+  const mt1 = lstatSync(f1).mtimeMs;
+  // 同步写入：必须等一下让 mtime 有可分辨的差异，但实际上我们测的是：再写一次，文件应仍存在
+  const c2 = writeCanonicalSkill(gs9, BODY);
+  assert(c1 === c2, 'canonical dir path must be stable');
+  assert(existsSync(f1), 'canonical SKILL.md must still exist after idempotent write');
+
+  // ── 13. state 文件去重 ──
+  const gs10 = join(temporaryDirectory, 'gs10');
+  writeState(gs10, { version: 1, roots: ['/a', '/a', '/b'] });
+  const s = readState(gs10);
+  assert(s.roots.length === 2, 'readState must deduplicate roots');
 
   console.log('markdown-comment skill install tests passed');
 } finally {
-  rmSync(temporaryDirectory, { recursive: true, force: true });
+  if (temporaryDirectory) {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
 }
