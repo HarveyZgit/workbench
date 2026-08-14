@@ -64,7 +64,7 @@ function renderOptions(webview: vscode.Webview, uri: vscode.Uri, doc?: vscode.Te
     frontMatter: config.get<PreviewRenderOptions['frontMatter']>('frontMatter', 'table'),
     scrollPreviewWithEditor: config.get<boolean>('scrollPreviewWithEditor', true),
     scrollEditorWithPreview: config.get<boolean>('scrollEditorWithPreview', true),
-    doubleClickToSwitchToEditor: config.get<boolean>('doubleClickToSwitchToEditor', true),
+    doubleClickToSwitchToEditor: config.get<boolean>('doubleClickToSwitchToEditor', false),
     styles: resolvePreviewStyles(webview, uri, config.get<string[]>('styles', [])),
     fontFamily: rawFontFamily && rawFontFamily.length <= 500 ? rawFontFamily : undefined,
     fontSize,
@@ -346,21 +346,24 @@ async function getDoc(uri: vscode.Uri): Promise<vscode.TextDocument | undefined>
  * relocate 失败（原文被完整删除/替换、全文都搜不到）→ 返回 null，预览里隐藏这条评论。
  * 数据仍留在 storage；若原文恢复，下次 relocate 成功会重新出现并定位。引用文本始终用冻结快照。
  */
-function toWire(t: StoredThread, doc?: vscode.TextDocument): WireThread | null {
+function toWire(t: StoredThread, doc?: vscode.TextDocument): WireThread {
   let startLine = t.anchor.startLine;
   let endLine = t.anchor.endLine;
+  let orphaned = false;
   if (doc && t.anchor.kind === 'selection') {
     const r = relocate(doc, t.anchor);
     if (!r) {
-      if (t.anchor.target?.kind !== 'mermaid-node') {
-        return null; // 原文已删/被完整替换 → 预览里隐藏
+      if (t.anchor.target?.kind === 'mermaid-node') {
+        const block = mermaidBlockNear(doc, t.anchor.startLine);
+        if (!block) {
+          orphaned = true;
+        } else {
+          startLine = block.startLine;
+          endLine = block.endLine - 1;
+        }
+      } else {
+        orphaned = true;
       }
-      const block = mermaidBlockNear(doc, t.anchor.startLine);
-      if (!block) {
-        return null;
-      }
-      startLine = block.startLine;
-      endLine = block.endLine - 1;
     } else {
       startLine = r.start.line;
       endLine = t.anchor.target?.kind === 'mermaid-diagram' ? mermaidBlockEndLine(doc, startLine) - 1 : r.end.line;
@@ -375,6 +378,7 @@ function toWire(t: StoredThread, doc?: vscode.TextDocument): WireThread | null {
     quote: t.anchor.quote,
     rendered: t.anchor.rendered,
     target: t.anchor.target,
+    orphaned: orphaned || undefined,
     comments: t.comments.map((c) => ({ id: c.id, author: c.author, body: c.body, createdAt: c.createdAt })),
   };
 }
@@ -464,6 +468,13 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 .mdc-card { transition: border-color .15s, box-shadow .15s; }
 .mdc-card.resolved { opacity: 0.6; }
 .mdc-card.active { opacity: 1; border-color: var(--vscode-focusBorder); box-shadow: inset 3px 0 0 var(--vscode-focusBorder); }
+.mdc-card.orphaned { opacity: 0.7; }
+.mdc-orphaned-tag {
+  display: inline-block; font-size: 0.75em; padding: 1px 6px; border-radius: 3px;
+  background: var(--vscode-inputValidation-warningBackground, rgba(255,204,0,0.15));
+  color: var(--vscode-inputValidation-warningForeground, #cc0);
+  vertical-align: middle; margin-right: 4px;
+}
 .mdc-card-head { display: flex; align-items: flex-start; gap: 6px; margin-bottom: 8px; }
 .mdc-card-quote {
   flex: 1; min-width: 0; font-size: 0.8em; opacity: 0.75; padding-left: 6px; line-height: 22px;
@@ -595,7 +606,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
   const panel = vscode.window.createWebviewPanel(
     'markdownCommentPreview',
     `评论预览：${path.basename(uri.fsPath)}`,
-    vscode.ViewColumn.Beside,
+    vscode.ViewColumn.Active,
     // enableFindWidget：让 webview 支持 Cmd/Ctrl+F 唤起 VS Code 查找框，在渲染预览文本里搜索。
     {
       enableScripts: true,
@@ -611,8 +622,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
   const post = (msg: HostToWebview) => void panel.webview.postMessage(msg);
   const wireFor = (doc?: vscode.TextDocument) =>
     loadDoc(storageDir, uri.fsPath)
-      .threads.map((t) => toWire(t, doc))
-      .filter((w): w is WireThread => w !== null);
+      .threads.map((t) => toWire(t, doc));
   // 取当前文本来 relocate（源码 tab 没开则后台加载），保证回推 webview 的行号是最新的。
   const sendThreads = async () => post({ type: 'threads', threads: wireFor(await getDoc(uri)) });
   const sendRender = async () => {

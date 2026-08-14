@@ -218,7 +218,7 @@
         },
         "markdownComment.preview.doubleClickToSwitchToEditor": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "双击评论预览中的内容时打开源码并定位到对应行。"
         },
         "markdownComment.preview.styles": {
