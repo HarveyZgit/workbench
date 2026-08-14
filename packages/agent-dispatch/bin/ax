@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# ax —— 把一次性执行任务转发给本机其他 CLI agent。
+#
+#   ax list [<agent>]
+#   ax <agent> [--model M] [--effort E] [--write|--plan] [--resume] [--dry-run] <prompt>
+#
+# 这一层只负责三件事：知道有哪些 agent、怎么传模型、怎么传 effort。
+# 不做路由、不做后台、不做工作区隔离。
+
+# 不用 set -e：脚本里大量 `[ -n "$x" ] && argv+=(...)` 形式，条件不成立时整条
+# AND 列表返回非零，set -e 会误判成失败退出。失败路径一律走显式 die。
+set -o pipefail
+
+AX_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+AX_ADAPTERS="$AX_ROOT/adapters"
+
+# 本机可能用 shell function 包装 CLI（代理检查等）。存在就先加载，这样调用时
+# 走的是包装而不是裸 binary。注意：因此**不能**用 exec 调用——exec 只做 execve，
+# 从不查 shell function 表，会静默绕过包装。
+# 用 `-` 而非 `:-`，所以 AX_PRELUDE= 可以显式关闭。
+AX_PRELUDE="${AX_PRELUDE-$HOME/.cliproxyrc}"
+
+die() { printf 'ax: %s\n' "$*" >&2; exit 1; }
+
+load_prelude() { [ -n "$AX_PRELUDE" ] && [ -f "$AX_PRELUDE" ] && . "$AX_PRELUDE"; return 0; }
+
+agents() {
+  local f
+  for f in "$AX_ADAPTERS"/*.sh; do
+    [ -e "$f" ] || continue
+    basename "$f" .sh
+  done
+}
+
+load_adapter() {
+  local file="$AX_ADAPTERS/$1.sh"
+  [ -f "$file" ] || die "未知 agent '$1'。可用：$(agents | tr '\n' ' ')"
+  AX_CMD=""; AX_CMD_FALLBACK=""; AX_EFFORT_STYLE=""; AX_EFFORT_VALUES=""; AX_NOTE=""
+  unset -f ax_models ax_argv
+  # shellcheck disable=SC1090
+  . "$file"
+}
+
+# 打印可用的命令名；找不到返回 1 交给调用方 die（这里不能自己 die，
+# 因为总是在 $( ) 子 shell 里被调用，exit 只会退出子 shell）。
+resolve_cmd() {
+  if declare -F "$AX_CMD" >/dev/null 2>&1 || command -v "$AX_CMD" >/dev/null 2>&1; then
+    printf '%s' "$AX_CMD"
+  elif [ -n "$AX_CMD_FALLBACK" ] && command -v "$AX_CMD_FALLBACK" >/dev/null 2>&1; then
+    printf '%s' "$AX_CMD_FALLBACK"
+  else
+    return 1
+  fi
+}
+
+# 解析出可用命令名放进 AX_RUN，失败就带中文报错退出。list 和 run 两条路径共用，
+# adapter 的 ax_models/ax_argv 都可以直接用 "$AX_RUN"。
+resolve_run() {
+  AX_RUN="$(resolve_cmd)" && return 0
+  # 变量名紧跟中文标点时必须用花括号定界：bash 3.2 会把多字节字符的
+  # 首字节当成变量名的一部分，导致展开成空。
+  if [ -n "$AX_CMD_FALLBACK" ]; then
+    die "找不到 ${AX_CMD}，也没有 ${AX_CMD_FALLBACK}"
+  fi
+  die "找不到 ${AX_CMD}"
+}
+
+# 打印一个可以安全粘回 shell 的 token：白名单之外一律加单引号。
+shquote() {
+  case "$1" in
+    ""|*[!A-Za-z0-9_.,:=@%+/-]*) printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")" ;;
+    *)                           printf '%s' "$1" ;;
+  esac
+}
+
+usage() {
+  cat <<'EOF'
+用法:
+  ax list [<agent>]                            列出 agent，或列出某个 agent 的模型
+  ax <agent> [选项] <prompt>                    执行一次性任务
+
+选项:
+  --model <id>    模型编号。不确定就先 ax list <agent>
+  --effort <lvl>  推理档位。仅部分 agent 支持传参，其余把档位编在模型编号里
+  --write         允许改文件（默认档见 ax list，各后端不同）
+  --plan          只分析不动手
+  --resume        接着上一次会话
+  --dry-run       只打印将要执行的命令，不真跑
+  --              其后所有内容一律当字面 prompt，即使以 - 开头
+EOF
+}
+
+# ---------- list ----------
+case "${1-}" in
+  ""|-h|--help) usage; exit 0 ;;
+esac
+
+if [ "$1" = "list" ]; then
+  if [ -n "${2-}" ]; then
+    case "$2" in -h|--help) usage; exit 0 ;; esac
+    load_adapter "$2"
+    load_prelude          # ax_models 要调真 CLI，得先有包装
+    resolve_run           # 失败要给中文报错，不能让 ax_models 撞上空命令名
+    ax_models
+    exit $?
+  fi
+  # 这里不 source prelude：枚举不需要它，而它是用户可写的任意 shell，
+  # 提前 source 可能改掉 IFS 之类的东西影响下面的解析。
+  while IFS= read -r a; do
+    [ -n "$a" ] || continue
+    load_adapter "$a"
+    case "$AX_EFFORT_STYLE" in
+      native)   e="--effort ${AX_EFFORT_VALUES}" ;;
+      model-id) e="档位编在模型编号里，不要传 --effort" ;;
+      *)        e="不支持" ;;
+    esac
+    printf '%-8s  effort: %s\n' "$a" "$e"
+    [ -n "$AX_NOTE" ] && printf '          %s\n' "$AX_NOTE"
+  done <<EOF
+$(agents)
+EOF
+  printf '\nax list <agent> 看该 agent 的模型编号\n'
+  exit 0
+fi
+
+# ---------- run ----------
+AGENT="$1"; shift
+AX_MODEL=""; AX_EFFORT=""; AX_MODE="read"; AX_RESUME=""; AX_PROMPT=""; AX_DRY=""
+
+# 取一个必须带值的选项的值：缺值或值本身是选项都要挡掉，否则
+# `shift 2` 在 $#=1 时会失败且不移位，while 循环原地打转。
+need_value() {
+  [ $# -ge 2 ] || die "$1 缺少值"
+  [ -n "$2" ]  || die "$1 的值不能为空"
+  case "$2" in -*) die "$1 的值不能以 - 开头（拿到的是 '$2'）" ;; esac
+  printf '%s' "$2"
+}
+
+# flag 可以出现在 prompt 前后任意位置；`--` 之后的一律当字面 prompt。
+AX_WORDS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --model)   AX_MODEL="$(need_value "$@")"  || exit 1; shift 2 ;;
+    --effort)  AX_EFFORT="$(need_value "$@")" || exit 1; shift 2 ;;
+    --write)   AX_MODE="write"; shift ;;
+    --plan)    AX_MODE="plan"; shift ;;
+    --resume)  AX_RESUME="1"; shift ;;
+    --dry-run) AX_DRY="1"; shift ;;
+    --)        shift; while [ $# -gt 0 ]; do AX_WORDS+=("$1"); shift; done ;;
+    -*)        die "未知选项 $1" ;;
+    *)         AX_WORDS+=("$1"); shift ;;
+  esac
+done
+AX_PROMPT="$(IFS=' '; printf '%s' "${AX_WORDS[*]}")"
+
+[ -n "$AX_PROMPT" ] || die "缺少 prompt"
+
+load_adapter "$AGENT"
+
+if [ -n "$AX_EFFORT" ]; then
+  case "$AX_EFFORT_STYLE" in
+    native)
+      case " $AX_EFFORT_VALUES " in
+        *" $AX_EFFORT "*) ;;
+        *) die "$AGENT 的 --effort 只接受：$AX_EFFORT_VALUES" ;;
+      esac ;;
+    model-id)
+      die "$AGENT 把档位编在模型编号里，不要传 --effort。跑 ax list $AGENT 挑一个带档位的编号" ;;
+    *)
+      die "$AGENT 不支持 effort" ;;
+  esac
+fi
+
+AX_ARGV=()
+ax_argv
+
+# prelude 放在 ax_argv 之后：它是外部文件，不该有机会改到已经解析好的参数。
+load_prelude
+resolve_run
+
+if [ -n "$AX_DRY" ]; then
+  printf '%s' "$AX_RUN"
+  for a in "${AX_ARGV[@]}"; do printf ' %s' "$(shquote "$a")"; done
+  printf '\n'
+  exit 0
+fi
+
+# 不能用 exec：AX_RUN 可能是 prelude 定义的 shell function。
+"$AX_RUN" "${AX_ARGV[@]}"
+exit $?
