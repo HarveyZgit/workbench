@@ -23,8 +23,7 @@
   ],
   "main": "./dist/extension.js",
   "bin": {
-    "markdown-comment": "./dist/cli.js",
-    "mdc": "./dist/cli.js"
+    "markdown-comment": "./dist/cli.js"
   },
   "activationEvents": [
     "onLanguage:markdown",
@@ -33,58 +32,66 @@
   "contributes": {
     "commands": [
       {
-        "command": "markdownComment.addComment",
-        "title": "Markdown 评论：添加划词评论",
+        "command": "markdown-comment.add-comment",
+        "title": "Markdown Comment：添加划词评论",
         "icon": "$(comment)"
       },
       {
-        "command": "markdownComment.addDocumentComment",
-        "title": "Markdown 评论：添加全文评论",
+        "command": "markdown-comment.add-document-comment",
+        "title": "Markdown Comment：添加全文评论",
         "icon": "$(comment-discussion)"
       },
       {
-        "command": "markdownComment.openPreview",
-        "title": "Markdown 评论：打开评论预览",
+        "command": "markdown-comment.open-preview",
+        "title": "Markdown Comment：打开评论预览",
         "icon": "$(preview)"
       },
       {
-        "command": "markdownComment.createThread",
+        "command": "markdown-comment.install-or-update-skill",
+        "title": "Markdown Comment：安装 / 更新 Agent Skill"
+      },
+      {
+        "command": "markdown-comment.cleanup-skill",
+        "title": "Markdown Comment：移除 Agent Skill"
+      },
+      {
+        "command": "markdown-comment.create-thread",
         "title": "评论"
       },
       {
-        "command": "markdownComment.reply",
+        "command": "markdown-comment.reply",
         "title": "回复"
       },
       {
-        "command": "markdownComment.resolve",
+        "command": "markdown-comment.resolve",
         "title": "标记为已解决",
         "icon": "$(check)"
       },
       {
-        "command": "markdownComment.reopen",
+        "command": "markdown-comment.reopen",
         "title": "重新打开",
         "icon": "$(history)"
       },
       {
-        "command": "markdownComment.editComment",
+        "command": "markdown-comment.edit-comment",
         "title": "编辑",
         "icon": "$(edit)"
       },
       {
-        "command": "markdownComment.deleteComment",
+        "command": "markdown-comment.delete-comment",
         "title": "删除",
         "icon": "$(trash)"
       },
       {
-        "command": "markdownComment.saveEdit",
+        "command": "markdown-comment.save-edit",
         "title": "保存"
       },
       {
-        "command": "markdownComment.cancelEdit",
+        "command": "markdown-comment.cancel-edit",
         "title": "取消"
       },
       {
-        "command": "markdownComment.deleteThread",
+        "command": "markdown-comment.delete-thread",
         "title": "删除整条评论线程",
         "icon": "$(trash)"
       }
@@ -92,77 +99,77 @@
     "menus": {
       "editor/title": [
         {
-          "command": "markdownComment.openPreview",
+          "command": "markdown-comment.open-preview",
           "when": "editorLangId == markdown || resourceExtname =~ /\\.(md|markdown|mkd|mkdn|mdwn|mdown|markdn|mdtxt|mdtext)$/i",
           "group": "navigation"
         }
       ],
       "editor/context": [
         {
-          "command": "markdownComment.addComment",
+          "command": "markdown-comment.add-comment",
           "when": "(editorLangId == markdown || resourceExtname =~ /\\.(md|markdown|mkd|mkdn|mdwn|mdown|markdn|mdtxt|mdtext)$/i) && config.markdownComment.sourceComments.enabled",
           "group": "1_modification"
         },
         {
-          "command": "markdownComment.addDocumentComment",
+          "command": "markdown-comment.add-document-comment",
           "when": "(editorLangId == markdown || resourceExtname =~ /\\.(md|markdown|mkd|mkdn|mdwn|mdown|markdn|mdtxt|mdtext)$/i) && config.markdownComment.sourceComments.enabled",
           "group": "1_modification"
         },
         {
-          "command": "markdownComment.openPreview",
+          "command": "markdown-comment.open-preview",
           "when": "editorLangId == markdown || resourceExtname =~ /\\.(md|markdown|mkd|mkdn|mdwn|mdown|markdn|mdtxt|mdtext)$/i",
           "group": "1_modification"
         }
       ],
       "comments/commentThread/title": [
         {
-          "command": "markdownComment.resolve",
+          "command": "markdown-comment.resolve",
           "when": "commentController == markdownComment && commentThread == unresolved",
           "group": "inline"
         },
         {
-          "command": "markdownComment.reopen",
+          "command": "markdown-comment.reopen",
           "when": "commentController == markdownComment && commentThread == resolved",
           "group": "inline"
         },
         {
-          "command": "markdownComment.deleteThread",
+          "command": "markdown-comment.delete-thread",
           "when": "commentController == markdownComment && !commentThreadIsEmpty",
           "group": "navigation"
         }
       ],
       "comments/commentThread/context": [
         {
-          "command": "markdownComment.createThread",
+          "command": "markdown-comment.create-thread",
           "when": "commentController == markdownComment && commentThreadIsEmpty",
           "group": "inline"
         },
         {
-          "command": "markdownComment.reply",
+          "command": "markdown-comment.reply",
           "when": "commentController == markdownComment && !commentThreadIsEmpty",
           "group": "inline"
         }
       ],
       "comments/comment/title": [
         {
-          "command": "markdownComment.editComment",
+          "command": "markdown-comment.edit-comment",
           "when": "commentController == markdownComment",
           "group": "group@1"
         },
         {
-          "command": "markdownComment.deleteComment",
+          "command": "markdown-comment.delete-comment",
           "when": "commentController == markdownComment",
           "group": "group@2"
         }
       ],
       "comments/comment/context": [
         {
-          "command": "markdownComment.cancelEdit",
+          "command": "markdown-comment.cancel-edit",
           "when": "commentController == markdownComment",
           "group": "inline@1"
         },
         {
-          "command": "markdownComment.saveEdit",
+          "command": "markdown-comment.save-edit",
           "when": "commentController == markdownComment",
           "group": "inline@2"
         }
@@ -170,14 +177,14 @@
     },
     "keybindings": [
       {
-        "command": "markdownComment.addComment",
+        "command": "markdown-comment.add-comment",
         "key": "ctrl+alt+m",
         "mac": "cmd+alt+m",
         "when": "(editorLangId == markdown || resourceExtname =~ /\\.(md|markdown|mkd|mkdn|mdwn|mdown|markdn|mdtxt|mdtext)$/i) && editorTextFocus && config.markdownComment.sourceComments.enabled"
       }
     ],
     "configuration": {
-      "title": "Markdown 评论",
+      "title": "Markdown Comment",
       "properties": {
         "markdownComment.sourceComments.enabled": {
           "type": "boolean",
@@ -197,7 +204,7 @@
             "以 YAML 代码块渲染 Front Matter。",
             "隐藏 Front Matter。"
           ],
-          "description": "控制 Markdown 评论预览如何显示文档开头的 YAML Front Matter。"
+          "description": "控制 Markdown Comment 预览如何显示文档开头的 YAML Front Matter。"
         },
         "markdownComment.preview.scrollPreviewWithEditor": {
           "type": "boolean",
@@ -220,26 +227,26 @@
             "type": "string"
           },
           "default": [],
-          "description": "为 Markdown 评论预览加载 workspace 内的本地 CSS 文件。"
+          "description": "为 Markdown Comment 预览加载 workspace 内的本地 CSS 文件。"
         },
         "markdownComment.preview.fontFamily": {
           "type": "string",
           "default": "",
-          "description": "Markdown 评论预览字体；留空时使用 VS Code 字体。"
+          "description": "Markdown Comment 预览字体；留空时使用 VS Code 字体。"
         },
         "markdownComment.preview.fontSize": {
           "type": "number",
           "default": 14,
           "minimum": 8,
           "maximum": 40,
-          "description": "Markdown 评论预览字号（px）。"
+          "description": "Markdown Comment 预览字号（px）。"
         },
         "markdownComment.preview.lineHeight": {
           "type": "number",
           "default": 1.7,
           "minimum": 1,
           "maximum": 3,
-          "description": "Markdown 评论预览行高。"
+          "description": "Markdown Comment 预览行高。"
         },
         "markdownComment.preview.breaks": {
           "type": "boolean",
@@ -262,7 +269,7 @@
             "不渲染 Markdown 原始 HTML。",
             "渲染经过严格清洗的静态 HTML。"
           ],
-          "description": "控制 Markdown 评论预览中的原始 HTML。"
+          "description": "控制 Markdown Comment 预览中的原始 HTML。"
         },
         "markdownComment.preview.renderedDiff": {
           "type": "boolean",
@@ -280,7 +287,7 @@
   "scripts": {
     "build": "node esbuild.mjs --production",
     "watch": "node esbuild.mjs --watch",
-    "setup": "node esbuild.mjs --production && node dist/cli.js init",
+    "setup": "node esbuild.mjs --production",
     "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
     "package": "vsce package --no-dependencies --ignoreFile .vscodeignore -o dist/vscode-markdown-comment.vsix",
     "prepack": "node esbuild.mjs --production && vsce package --no-dependencies --ignoreFile .vscodeignore -o dist/vscode-markdown-comment.vsix"

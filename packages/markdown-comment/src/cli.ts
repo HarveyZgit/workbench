@@ -1,9 +1,6 @@
-// markdown-comment（简写 mdc）CLI —— 给 Agent 读取/回复评论（list/reply/resolve），以及给用户一键安装（init）。
+// markdown-comment CLI —— 给 Agent 读取/回复评论（list/reply/resolve）。
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
-import * as readline from 'node:readline';
-import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readStorageDir, listAll, loadDoc, saveDoc, findThread } from './storage';
 import type { StoredComment, StoredThread } from './types';
@@ -26,57 +23,6 @@ function getStorageDir(): string {
 const [, , cmd, ...rest] = process.argv;
 const flags = new Set(rest.filter((a) => a.startsWith('--')));
 const args = rest.filter((a) => !a.startsWith('--'));
-
-function requiredFlagValue(name: string): string | undefined {
-  const indexes = rest.flatMap((value, index) => (value === name ? [index] : []));
-  if (indexes.length > 1) {
-    fail(`${name} 只能传一次。`);
-  }
-  if (!indexes.length) {
-    return undefined;
-  }
-  const value = rest[indexes[0] + 1];
-  if (!value || value.startsWith('-')) {
-    fail(`${name} 缺少目录参数。`);
-  }
-  return value;
-}
-
-function validateInitArgs(): void {
-  const valueFlags = new Set(['--skill-dir', '--skill-dirs']);
-  const booleanFlags = new Set(['--no-skill', '--no-extension']);
-  const seen = new Set<string>();
-  for (let index = 0; index < rest.length; index += 1) {
-    const token = rest[index];
-    if (valueFlags.has(token)) {
-      if (seen.has(token)) {
-        fail(`${token} 只能传一次。`);
-      }
-      const value = rest[index + 1];
-      if (!value || value.startsWith('-')) {
-        fail(`${token} 缺少目录参数。`);
-      }
-      seen.add(token);
-      index += 1;
-      continue;
-    }
-    if (booleanFlags.has(token)) {
-      if (seen.has(token)) {
-        fail(`${token} 只能传一次。`);
-      }
-      seen.add(token);
-      continue;
-    }
-    if (token.startsWith('--')) {
-      fail(`未知参数: ${token}`);
-    }
-    fail(`不支持的位置参数: ${token}`);
-  }
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`;
-}
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 const clip = (s: string, n = 30) => {
@@ -101,7 +47,6 @@ function headOf(absFile: string, t: StoredThread): string {
   const start = t.anchor.startLine + 1;
   const end = t.anchor.endLine + 1;
   const loc = end > start ? `L${start}-${end}` : `L${start}`;
-  // 渲染态引用（preview 划词时所选）更贴近人看到的文字，优先展示。
   const quote = t.anchor.rendered?.quote || t.anchor.quote;
   if (t.anchor.target?.kind === 'mermaid-node') {
     const label = quote.trim() || t.anchor.target.nodeId;
@@ -175,18 +120,16 @@ function anchorState(
 function cmdList(): void {
   const storageDir = getStorageDir();
   const global = flags.has('--global') || rest.includes('-g');
-  const fileArg = args.find((a) => a !== '-g'); // -g 是单划线，不在 args 的 -- 过滤里，手动排掉
+  const fileArg = args.find((a) => a !== '-g');
   let docs = fileArg
     ? [{ path: path.resolve(fileArg), doc: loadDoc(storageDir, path.resolve(fileArg)) }]
     : listAll(storageDir);
-  // 默认只看当前目录（含子目录）下有评论的文档；-g/--global 看全局。指定 file 时不限定。
   const scoped = !fileArg && !global;
   if (scoped) {
     const cwd = process.cwd();
     docs = docs.filter(({ path: p }) => isUnder(cwd, p));
   }
 
-  // 默认隐藏失联评论（原文已删/被替换，定位不到）；--hidden 才列出。
   const showHidden = flags.has('--hidden');
 
   if (flags.has('--json')) {
@@ -240,7 +183,7 @@ function cmdList(): void {
       const status = t.status === 'resolved' ? ' [已解决]' : '';
       const state = anchorState(text, t.anchor);
       const anchorStatus = state.orphaned ? ' [失联]' : state.diagramFallback ? ' [降级到整图]' : '';
-      lines.push(`${headOf(p, t)}  #${shortId(t.id)}${status}${anchorStatus}`); // headOf 用绝对路径读行内容
+      lines.push(`${headOf(p, t)}  #${shortId(t.id)}${status}${anchorStatus}`);
       for (const c of t.comments) {
         lines.push(`    - ${c.author}: ${oneLine(c.body)}`);
       }
@@ -256,7 +199,7 @@ function cmdReply(): void {
   const threadId = args[0];
   const body = args.slice(1).join(' ');
   if (!threadId || !body) {
-    fail('用法: mdc reply <threadId> <text>');
+    fail('用法: markdown-comment reply <threadId> <text>');
   }
   const found = findThread(storageDir, threadId);
   if (!found) {
@@ -277,7 +220,7 @@ function cmdResolve(): void {
   const storageDir = getStorageDir();
   const threadId = args[0];
   if (!threadId) {
-    fail('用法: mdc resolve <threadId>');
+    fail('用法: markdown-comment resolve <threadId>');
   }
   const found = findThread(storageDir, threadId);
   if (!found) {
@@ -288,158 +231,7 @@ function cmdResolve(): void {
   process.stdout.write('OK: 已标记已解决 #' + shortId(found.thread.id) + '\n');
 }
 
-function nearestExistingAncestor(target: string): string {
-  let current = target;
-  while (!fs.existsSync(current)) {
-    const parent = path.dirname(current);
-    if (parent === current) {
-      break;
-    }
-    current = parent;
-  }
-  return current;
-}
-
-/**
- * 返回安装目标的 canonical identity。
- * 目标本身可能还不存在，因此先 realpath 最近的已存在祖先，再拼回剩余相对路径。
- */
-function canonicalTarget(target: string): string {
-  const absolute = path.resolve(target);
-  const ancestor = nearestExistingAncestor(absolute);
-  try {
-    return path.join(fs.realpathSync.native(ancestor), path.relative(ancestor, absolute));
-  } catch {
-    return absolute;
-  }
-}
-
-function dedupeSkillTargets(targets: string[]): { targets: string[]; duplicates: Array<{ target: string; original: string }> } {
-  const seen = new Map<string, string>();
-  const unique: string[] = [];
-  const duplicates: Array<{ target: string; original: string }> = [];
-  for (const target of targets) {
-    const canonical = canonicalTarget(target);
-    const original = seen.get(canonical);
-    if (original) {
-      duplicates.push({ target, original });
-      continue;
-    }
-    seen.set(canonical, target);
-    unique.push(target);
-  }
-  return { targets: unique, duplicates };
-}
-
-function askLine(prompt: string): Promise<string> {
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(prompt, (ans) => {
-      rl.close();
-      resolve(ans);
-    });
-  });
-}
-
-function parseSkillDirs(input: string, label: string): string[] {
-  const directories = [...new Set(input.split(',').map((s) => s.trim()).filter(Boolean))];
-  if (!directories.length) {
-    fail(`${label} 至少需要一个非空目录。`);
-  }
-  return directories;
-}
-
-/** 决定装到哪些 skill 根目录：--skill-dirs 指定 > 交互输入 > 非 TTY 明确失败。 */
-async function chooseSkillDirs(): Promise<string[]> {
-  const csv = requiredFlagValue('--skill-dirs');
-  if (csv) {
-    return parseSkillDirs(csv, '--skill-dirs');
-  }
-  if (!process.stdin.isTTY) {
-    fail('非交互安装必须用 --skill-dir <目录> 或 --skill-dirs <目录列表> 明确指定 skill 目标。');
-  }
-  const line = (
-    await askLine('请输入一个或多个 skill 根目录（逗号分隔；每个目录下会创建 markdown-comment/）：\n> ')
-  ).trim();
-  if (!line) {
-    fail('未指定 skill 目标目录；可用 --no-skill 跳过安装。');
-  }
-  return parseSkillDirs(line, 'skill 目录');
-}
-
-/** 安装：打 vsix → 装 VS Code 插件 → 写 skill（目标目录必须显式指定）。 */
-async function cmdInit(): Promise<void> {
-  validateInitArgs();
-  const pkgRoot = path.resolve(__dirname, '..'); // dist/.. = 包根
-
-  // 先决定 skill 目标（含交互），避免插件安装日志后再打断提问。
-  let skillTargets: string[] = [];
-  const explicit = requiredFlagValue('--skill-dir');
-  const roots = requiredFlagValue('--skill-dirs');
-  if (explicit && roots) {
-    fail('--skill-dir 与 --skill-dirs 不能同时使用。');
-  }
-  if (flags.has('--no-skill') && (explicit || roots)) {
-    fail('--no-skill 不能与 --skill-dir 或 --skill-dirs 同时使用。');
-  }
-  if (!flags.has('--no-skill')) {
-    if (explicit) {
-      skillTargets = [path.resolve(explicit.replace(/^~(?=$|\/)/, os.homedir()))];
-    } else {
-      skillTargets = (await chooseSkillDirs()).map((directory) =>
-        path.join(path.resolve(directory.replace(/^~(?=$|\/)/, os.homedir())), 'markdown-comment'),
-      );
-    }
-    const deduped = dedupeSkillTargets(skillTargets);
-    skillTargets = deduped.targets;
-    for (const duplicate of deduped.duplicates) {
-      process.stdout.write(`跳过重复 skill 目标：${duplicate.target} → ${duplicate.original}\n`);
-    }
-  }
-
-  if (!flags.has('--no-extension')) {
-    const vsix = path.join(pkgRoot, 'dist', 'vscode-markdown-comment.vsix');
-    if (!fs.existsSync(vsix)) {
-      const vsce = path.join(pkgRoot, 'node_modules', '.bin', 'vsce');
-      process.stdout.write('打包 vsix…\n');
-      execFileSync(vsce, ['package', '--no-dependencies', '--ignoreFile', '.vscodeignore', '-o', vsix], {
-        cwd: pkgRoot,
-        stdio: 'inherit',
-      });
-    }
-    process.stdout.write('安装 VS Code 插件…\n');
-    try {
-      execFileSync('code', ['--install-extension', vsix, '--force'], { stdio: 'inherit' });
-    } catch {
-      fail(
-        "调用 `code` 失败。请确认 VS Code 的 code 命令在 PATH（VS Code 执行 “Shell Command: Install 'code' command in PATH”），或加 --no-extension 跳过。",
-      );
-    }
-  }
-
-  if (skillTargets.length) {
-    // 始终绑定当前 package 的 CLI，避免 PATH 里的同名命令指向旧仓库或其他版本。
-    const cliCmd = `node ${shellQuote(path.join(pkgRoot, 'dist', 'cli.js'))}`;
-    const body = fs
-      .readFileSync(path.join(pkgRoot, 'dist', 'resources', 'skills', 'markdown-comment', 'SKILL.md'), 'utf8')
-      .replaceAll('{{CLI}}', cliCmd);
-    for (const dir of skillTargets) {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, 'SKILL.md'), body);
-      process.stdout.write(`已安装 skill → ${path.join(dir, 'SKILL.md')}（CLI = ${cliCmd}）\n`);
-    }
-  }
-
-  process.stdout.write(
-    '\n完成。VS Code 执行 “Developer: Reload Window”，打开任意 .md 即可划词评论（在跑 F5 调试实例的话先关掉）。\n',
-  );
-}
-
 switch (cmd) {
-  case 'init':
-  case 'install': // 兼容旧名
-    void cmdInit();
-    break;
   case 'list':
     cmdList();
     break;
@@ -452,15 +244,8 @@ switch (cmd) {
   default:
     process.stdout.write(
       [
-        'markdown-comment（简写 mdc）<command>',
+        'markdown-comment <command>',
         '',
-        '给用户：',
-        '  init [--skill-dirs <a,b>] [--skill-dir <dir>] [--no-skill] [--no-extension]',
-        '                                  安装 VS Code 插件 + Agent skill',
-        '                                  --skill-dir 指定完整目标目录；--skill-dirs 指定一个或多个 skill 根目录',
-        '                                  未传目录时仅在 TTY 交互询问；非交互调用必须显式指定',
-        '',
-        '给 Agent：',
         '  list [file] [-g] [--open] [--name-only] [--hidden] [--json]',
         '                                  列出评论。默认只看当前目录（含子目录）下的文档、且隐藏失联评论；',
         '                                  -g/--global 看全局；指定 file 只看该文件；--open 只看未解决；',
