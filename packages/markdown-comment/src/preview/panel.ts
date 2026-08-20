@@ -434,14 +434,18 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 /* 侧栏 */
 #sidebar-head {
   position: sticky; top: 0; z-index: 5;
-  display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px;
+  display: flex; justify-content: space-between; align-items: center; gap: 4px; padding: 8px 6px 8px 4px;
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
   border-bottom: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.25));
 }
-#mdc-tabs { display: flex; gap: 2px; min-width: 0; flex-wrap: wrap; }
+#mdc-tabs {
+  display: flex; gap: 1px; min-width: 0; flex: 1; flex-wrap: nowrap; overflow-x: auto;
+  scrollbar-width: none;
+}
+#mdc-tabs::-webkit-scrollbar { display: none; }
 .mdc-tab {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 0.82em; padding: 3px 9px; border: none; border-radius: 999px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 3px; flex: none; white-space: nowrap;
+  font-size: 0.82em; padding: 3px 6px; border: none; border-radius: 999px; cursor: pointer;
   background: transparent; color: var(--vscode-foreground); opacity: 0.65;
 }
 .mdc-tab:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.15)); }
@@ -454,7 +458,7 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 .mdc-tab-n.show { display: inline-block; }
 #mdc-head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 #mdc-add-doc {
-  flex: none; font-size: 0.82em; padding: 4px 9px; border: none; border-radius: 4px; cursor: pointer;
+  flex: none; font-size: 0.82em; padding: 4px 7px; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;
   background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.2));
   color: var(--vscode-button-secondaryForeground, inherit);
 }
