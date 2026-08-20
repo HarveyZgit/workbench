@@ -49,9 +49,9 @@ code --install-extension <path-to-vscode-markdown-comment.vsix> --force
 
 ## Skill 安装 / 更新 / 卸载
 
-Skill 是给 Agent 看的操作指令，安装后 Agent 可以通过 CLI 读取和回复你的评论。
+Skill 是给 Agent 看的操作指令，安装后 Agent 可以通过 CLI 读取和回复你的评论。两种方式等价，都需要先装好 VSIX（CLI 在扩展里）。
 
-### 安装 / 更新
+### 方式一：通过插件安装
 
 1. 打开 VS Code 命令面板（`Cmd+Shift+P` / `Ctrl+Shift+P`）
 2. 运行 **Markdown Comment：安装 / 更新 Agent Skill**
@@ -60,13 +60,19 @@ Skill 是给 Agent 看的操作指令，安装后 Agent 可以通过 CLI 读取�
 
 更新时运行同样的命令即可。已安装的 Skill 会被刷新到最新版本，扩展启动时也会自动修复失效的软链。
 
+### 方式二：自行安装 / Skill Hub
+
+把打包产物 `dist/skill-hub/markdown-comment/` 整个目录放到 Agent 的 skills 根目录下，目录名保持 `markdown-comment`。上传 Skill Hub 时也传这一份。
+
+自行安装的 Skill 通过同目录 `scripts/markdown-comment` 定位 CLI（`PATH`、`MARKDOWN_COMMENT_CLI`，或已安装的编辑器扩展），不依赖插件去改 SKILL.md。
+
 ### 卸载
 
 1. 运行 **Markdown Comment：移除 Agent Skill**
 2. 从已安装记录中多选要移除的目标
-3. 确认后只删除本扩展创建的软链，不碰其他文件
+3. 确认后只删除本扩展创建的软链，不碰其他文件（含自行拷贝 / Skill Hub 安装的目录）
 
-> 如果之后要卸载 VS Code 扩展本身，请先运行移除 Skill，否则会留下失效的软链。
+> 如果之后要卸载 VS Code 扩展本身，请先运行移除 Skill，否则会留下失效的软链。自行安装的目录需自己删。
 
 ---
 
