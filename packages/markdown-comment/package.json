@@ -44,7 +44,10 @@
       {
         "command": "markdown-comment.open-preview",
         "title": "Markdown Comment：打开评论预览",
-        "icon": "$(preview)"
+        "icon": {
+          "light": "./media/comment-preview-light.svg",
+          "dark": "./media/comment-preview-dark.svg"
+        }
       },
       {
         "command": "markdown-comment.install-or-update-skill",
