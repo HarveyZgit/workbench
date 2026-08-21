@@ -1,0 +1,15 @@
+node_modules
+dist
+common/temp
+common/scripts
+.eden-mono
+coverage
+*.vsix
+.eslintrc.js
+.commitlintrc.js
+
+# Vendored third-party
+packages/dom-to-markdown/src/lib/
+
+# Eval fixtures are incomplete stubs by design
+resources/evals/**/fixtures/

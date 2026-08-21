@@ -50,9 +50,9 @@ export interface MermaidRenderOptions {
 }
 
 export interface MermaidRuntime {
-  captureViewState(root?: ParentNode): MermaidViewStates;
-  render(root: ParentNode, options?: MermaidRenderOptions): Promise<void>;
-  abort(): void;
+  captureViewState: (root?: ParentNode) => MermaidViewStates;
+  render: (root: ParentNode, options?: MermaidRenderOptions) => Promise<void>;
+  abort: () => void;
 }
 
 export const MERMAID_COMMENT_EVENT = 'markdown-comment:mermaid-comment';
@@ -65,8 +65,8 @@ interface DiagramElements {
 
 interface DiagramController {
   signal: AbortSignal;
-  capture(): MermaidViewState;
-  dispose(): void;
+  capture: () => MermaidViewState;
+  dispose: () => void;
 }
 
 interface Transform {
@@ -78,7 +78,7 @@ interface Transform {
 type MermaidTheme = 'default' | 'dark';
 
 function currentTheme(): MermaidTheme {
-  const body = document.body;
+  const { body } = document;
   if (body.classList.contains('vscode-dark') || body.classList.contains('vscode-high-contrast')) {
     return 'dark';
   }
@@ -262,11 +262,16 @@ function setTransform(viewport: SVGGElement, transform: Transform): void {
   );
 }
 
-function installViewport(svg: SVGSVGElement, initialState?: MermaidViewState): { viewport: SVGGElement; transform: Transform } {
+function installViewport(
+  svg: SVGSVGElement,
+  initialState?: MermaidViewState,
+): { viewport: SVGGElement; transform: Transform } {
   const viewport = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   viewport.classList.add('mdc-mermaid-viewport');
   const stationaryElements = new Set(['defs', 'style', 'title', 'desc']);
-  const movable = Array.from(svg.childNodes).filter((node) => !stationaryElements.has(node.nodeName.toLowerCase()));
+  const movable = Array.from(svg.childNodes).filter(
+    (node) => !stationaryElements.has(node.nodeName.toLowerCase()),
+  );
   viewport.append(...movable);
   svg.append(viewport);
 
@@ -370,7 +375,8 @@ function installNodeComments(
       return;
     }
     const labelText =
-      node.querySelector<HTMLElement>('.nodeLabel, .label')?.textContent?.replace(/\s+/g, ' ').trim() || nodeId;
+      node.querySelector<HTMLElement>('.nodeLabel, .label')?.textContent?.replace(/\s+/g, ' ').trim() ||
+      nodeId;
     node.classList.add('mdc-mermaid-commentable-node');
     node.dataset.mdcNodeId = nodeId;
     node.setAttribute('tabindex', '0');
@@ -403,8 +409,7 @@ function installNodeComments(
       'click',
       (event) => {
         const moved =
-          pointerStart &&
-          Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 4;
+          pointerStart && Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 4;
         pointerStart = undefined;
         if (moved) {
           return;
@@ -553,18 +558,18 @@ function installInteractions(
   );
 
   installToolbarActions(elements, toolbar, key, options, signal, (action) => {
-      if (action === 'zoom-in' || action === 'zoom-out') {
-        const center = diagramCenter(svg);
-        const factor = action === 'zoom-in' ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
-        zoomAt(svg, viewport, transform, center.x, center.y, transform.scale * factor);
-      } else if (action === 'reset') {
-        transform.scale = 1;
-        transform.translateX = 0;
-        transform.translateY = 0;
-        elements.canvas.style.removeProperty('height');
-        setTransform(viewport, transform);
-      }
-    });
+    if (action === 'zoom-in' || action === 'zoom-out') {
+      const center = diagramCenter(svg);
+      const factor = action === 'zoom-in' ? ZOOM_FACTOR : 1 / ZOOM_FACTOR;
+      zoomAt(svg, viewport, transform, center.x, center.y, transform.scale * factor);
+    } else if (action === 'reset') {
+      transform.scale = 1;
+      transform.translateX = 0;
+      transform.translateY = 0;
+      elements.canvas.style.removeProperty('height');
+      setTransform(viewport, transform);
+    }
+  });
 
   return {
     signal,

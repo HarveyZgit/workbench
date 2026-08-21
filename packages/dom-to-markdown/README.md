@@ -7,7 +7,7 @@
 该包是静态浏览器扩展，不是 Rslib library。构建脚本会把 `src/manifest.json`、后台脚本、内容脚本和 Turndown runtime 复制到 `dist/`：
 
 ```sh
-emo run build --filter './packages/dom-to-markdown'
+rush build --to dom-to-markdown
 ```
 
 ## 验证
@@ -15,5 +15,5 @@ emo run build --filter './packages/dom-to-markdown'
 测试会先重新构建，再检查 `dist/manifest.json` 引用的运行时文件是否完整：
 
 ```sh
-emo run test --filter './packages/dom-to-markdown'
+rush test --to dom-to-markdown
 ```

@@ -17,11 +17,11 @@ The current implementation has been migrated from the former standalone VS Code 
 
 ## Commands
 
-Use Eden Monorepo commands from the repository root:
+Use Rush commands from the repository root:
 
 ```sh
-emo run build --filter './packages/markdown-comment'
-emo run check --filter './packages/markdown-comment'
+rush build --to vscode-markdown-comment
+rush typecheck --to vscode-markdown-comment
 ```
 
-Do not run `pnpm` directly in this repository. When the migration changes the build or test setup, update this file and the package README in the same change.
+Do not run `pnpm` at the repository root. When the migration changes the build or test setup, update this file and the package README in the same change.

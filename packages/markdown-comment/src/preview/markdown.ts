@@ -32,7 +32,7 @@ export interface MarkdownRenderOptions {
 }
 
 export interface MarkdownRenderer {
-  render(markdown: string, options?: MarkdownRenderOptions): string;
+  render: (markdown: string, options?: MarkdownRenderOptions) => string;
 }
 
 interface RenderEnvironment {
@@ -70,13 +70,13 @@ function escapeHtml(value: string): string {
     /[&<>"']/g,
     (character) =>
       (
-        {
+        ({
           '&': '&amp;',
           '<': '&lt;',
           '>': '&gt;',
           '"': '&quot;',
           "'": '&#39;',
-        } as const
+        }) as const
       )[character as '&' | '<' | '>' | '"' | "'"],
   );
 }
@@ -102,9 +102,7 @@ function highlightCode(source: string, language: string): { html: string; langua
 
 function renderCode(source: string, language: string): string {
   const highlighted = highlightCode(source, language);
-  const className = highlighted.language
-    ? ` class="hljs language-${escapeHtml(highlighted.language)}"`
-    : '';
+  const className = highlighted.language ? ` class="hljs language-${escapeHtml(highlighted.language)}"` : '';
   return `<code${className}>${highlighted.html}</code>`;
 }
 
@@ -126,7 +124,9 @@ function renderYamlValue(value: unknown, ancestors: WeakSet<object>): string {
   }
 
   ancestors.add(value);
-  const entries = Array.isArray(value) ? value.map((item, index) => [String(index), item] as const) : Object.entries(value);
+  const entries = Array.isArray(value)
+    ? value.map((item, index) => [String(index), item] as const)
+    : Object.entries(value);
   const rows = entries
     .map(
       ([key, item]) =>
@@ -183,7 +183,9 @@ function createMarkdownIt(): MarkdownIt {
       return false;
     }
 
-    const openingLine = state.src.slice(state.bMarks[startLine], state.eMarks[startLine]).replace(/^\uFEFF/, '');
+    const openingLine = state.src
+      .slice(state.bMarks[startLine], state.eMarks[startLine])
+      .replace(/^\uFEFF/, '');
     if (openingLine.trim() !== '---') {
       return false;
     }
@@ -351,7 +353,13 @@ function createMarkdownIt(): MarkdownIt {
     }
   };
 
-  const renderFence: NonNullable<typeof markdown.renderer.rules.fence> = (tokens, index, _options, _environment, renderer) => {
+  const renderFence: NonNullable<typeof markdown.renderer.rules.fence> = (
+    tokens,
+    index,
+    _options,
+    _environment,
+    renderer,
+  ) => {
     const token = tokens[index];
     const language = languageFromInfo(token.info);
 

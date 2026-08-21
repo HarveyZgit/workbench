@@ -1,13 +1,16 @@
 {
-  "eslint.nodePath": "infra/node_modules",
+  "eslint.nodePath": "tools/repo/node_modules",
   "eslint.trace.server": "verbose",
+  "eslint.options": {
+    "resolvePluginsRelativeTo": "tools/repo"
+  },
   "eslint.workingDirectories": [
     {
       "mode": "auto"
     }
   ],
   "editor.defaultFormatter": "esbenp.prettier-vscode",
-  "prettier.prettierPath": "infra/node_modules/prettier",
+  "prettier.prettierPath": "tools/repo/node_modules/prettier",
   "[typescript]": {
     "editor.defaultFormatter": "dbaeumer.vscode-eslint"
   },

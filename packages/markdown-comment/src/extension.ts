@@ -10,7 +10,6 @@ import { buildAnchorFromRange, relocate } from './anchor';
 import { openPreview } from './preview/panel';
 import {
   SKILL_NAME,
-  canonicalDir,
   detectAgentSkillRoots,
   installSkill,
   normalizeRoot,
@@ -116,7 +115,7 @@ function authorInfo(storedAuthor: string): vscode.CommentAuthorInformation {
 // ─── 锚点：序列化 ───────────────────────────────────────────────────
 
 function buildAnchor(doc: vscode.TextDocument, thread: vscode.CommentThread, meta: ThreadMeta): StoredAnchor {
-  const range = thread.range;
+  const { range } = thread;
   if (meta.kind === 'document' || !range) {
     return buildAnchorFromRange(doc, new vscode.Range(0, 0, 0, 0), 'document');
   }
@@ -148,7 +147,7 @@ function labelFor(kind: 'selection' | 'document', quote: string, anchorFailed: b
     return '全文评论';
   }
   const q = quote.trim().replace(/\s+/g, ' ');
-  const short = q.length > 30 ? q.slice(0, 30) + '…' : q;
+  const short = q.length > 30 ? `${q.slice(0, 30)}…` : q;
   return short ? `评论：「${short}」` : '评论';
 }
 
@@ -190,7 +189,11 @@ function toMarkdownComment(sc: StoredComment, thread: vscode.CommentThread): Mar
 
 function loadForDocument(doc: vscode.TextDocument): void {
   // 关闭源码内联评论：不在源码编辑器里渲染已有评论（也就不会标记 loaded / 不会写盘）。
-  if (!sourceCommentsEnabled() || doc.uri.scheme !== 'file' || !isMarkdownDocument(doc.languageId, doc.uri.fsPath)) {
+  if (
+    !sourceCommentsEnabled() ||
+    doc.uri.scheme !== 'file' ||
+    !isMarkdownDocument(doc.languageId, doc.uri.fsPath)
+  ) {
     return;
   }
   const k = keyOf(doc.uri);
@@ -352,7 +355,7 @@ function startThread(kind: 'selection' | 'document'): void {
 }
 
 function addReply(reply: vscode.CommentReply): void {
-  const thread = reply.thread;
+  const { thread } = reply;
   if (!threadMeta.has(thread)) {
     const meta: ThreadMeta = { id: randomUUID(), kind: 'selection', status: 'open' };
     threadMeta.set(thread, meta);
@@ -423,7 +426,7 @@ function deleteComment(comment: MarkdownComment): void {
   const thread = comment.parent;
   thread.comments = thread.comments.filter((c) => c !== comment);
   if (thread.comments.length === 0) {
-    const uri = thread.uri;
+    const { uri } = thread;
     untrackThread(uri, thread);
     threadMeta.delete(thread);
     thread.dispose();
@@ -435,7 +438,7 @@ function deleteComment(comment: MarkdownComment): void {
 }
 
 function deleteThread(thread: vscode.CommentThread): void {
-  const uri = thread.uri;
+  const { uri } = thread;
   untrackThread(uri, thread);
   threadMeta.delete(thread);
   thread.dispose();
@@ -471,12 +474,13 @@ const CUSTOM_DIR_PICK = '$(add) 自定义目录…';
 /** 「安装 / 更新 Agent Skill」命令：多选候选目录 → 建软链指向 globalStorage 真源，已安装的会被刷新/迁移到最新。 */
 async function cmdInstallSkill(context: vscode.ExtensionContext): Promise<void> {
   const globalStorageDir = context.globalStorageUri.fsPath;
-  const canonical = canonicalDir(globalStorageDir);
   const installed = new Set(readState(globalStorageDir).roots);
 
   // 候选 = 已安装 ∪ 探测到的 ~/.*/skills ∪ 常见宿主种子；按绝对路径去重。
   const seeds = CURATED_SKILL_ROOTS.map((rel) => path.join(os.homedir(), rel));
-  const candidates = [...new Set([...installed, ...detectAgentSkillRoots(), ...seeds].map(normalizeRoot))].sort();
+  const candidates = [
+    ...new Set([...installed, ...detectAgentSkillRoots(), ...seeds].map(normalizeRoot)),
+  ].sort();
 
   const items: vscode.QuickPickItem[] = candidates.map((dir) => {
     const already = installed.has(dir);
@@ -525,7 +529,6 @@ async function cmdInstallSkill(context: vscode.ExtensionContext): Promise<void> 
   }
 
   const parts: string[] = [];
-  const totalOk = outcome.installed.length + outcome.migrated.length + outcome.refreshed.length;
   if (outcome.installed.length) {
     parts.push(`已安装到 ${outcome.installed.length} 个 Agent`);
   }
@@ -538,15 +541,13 @@ async function cmdInstallSkill(context: vscode.ExtensionContext): Promise<void> 
   for (const skip of outcome.skipped) {
     parts.push(`跳过 ${skip.root.replace(os.homedir(), '~')}：${skip.reason}`);
   }
-  void vscode.window.showInformationMessage(
-    `Markdown Comment：${parts.join('；') || '安装完成'}`,
-  );
+  void vscode.window.showInformationMessage(`Markdown Comment：${parts.join('；') || '安装完成'}`);
 }
 
 /** 「移除 Agent Skill」命令：从安装记录里多选 → 只删我们自己注册的内容。 */
 async function cmdCleanupSkill(context: vscode.ExtensionContext): Promise<void> {
   const globalStorageDir = context.globalStorageUri.fsPath;
-  const roots = readState(globalStorageDir).roots;
+  const { roots } = readState(globalStorageDir);
   if (roots.length === 0) {
     void vscode.window.showInformationMessage('Markdown Comment：当前没有已安装的 Agent Skill。');
     return;
@@ -597,7 +598,11 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   controller.commentingRangeProvider = {
     provideCommentingRanges(document) {
-      if (!sourceCommentsEnabled() || document.uri.scheme !== 'file' || !isMarkdownDocument(document.languageId, document.uri.fsPath)) {
+      if (
+        !sourceCommentsEnabled() ||
+        document.uri.scheme !== 'file' ||
+        !isMarkdownDocument(document.languageId, document.uri.fsPath)
+      ) {
         return [];
       }
       return [new vscode.Range(0, 0, Math.max(0, document.lineCount - 1), 0)];
@@ -643,7 +648,10 @@ export function activate(context: vscode.ExtensionContext): void {
       // 源码内联评论开关切换：提示重载，避免「已渲染线程未拆 / 新开关未挂」的半开状态。
       if (e.affectsConfiguration('markdownComment.sourceComments.enabled')) {
         void vscode.window
-          .showInformationMessage('Markdown Comment：源码内联评论设置已更改，重新加载窗口后生效。', '重新加载窗口')
+          .showInformationMessage(
+            'Markdown Comment：源码内联评论设置已更改，重新加载窗口后生效。',
+            '重新加载窗口',
+          )
           .then((pick) => {
             if (pick === '重新加载窗口') {
               void vscode.commands.executeCommand('workbench.action.reloadWindow');

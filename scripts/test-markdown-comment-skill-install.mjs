@@ -38,19 +38,11 @@ function isSymlink(p) {
   }
 }
 
-function readLinkAbs(p) {
-  const raw = readlinkSync(p);
-  return require.resolve(raw, { paths: [join(p, '..')] });
-}
-
 const {
   SKILL_NAME,
   canonicalDir,
   canonicalSkillFile,
   writeCanonicalSkill,
-  linkStatus,
-  installManagedLink,
-  removeManagedLink,
   readState,
   writeState,
   installSkill,
@@ -152,7 +144,10 @@ try {
   const gs5 = join(temporaryDirectory, 'gs5');
   const res6 = installSkill(gs5, [rootForeignLink], BODY);
   assert(res6.skipped.length === 1, 'foreign symlink should be skipped');
-  assert(readlinkSync(join(rootForeignLink, SKILL_NAME)) === foreignTargetDir, 'foreign symlink must remain untouched');
+  assert(
+    readlinkSync(join(rootForeignLink, SKILL_NAME)) === foreignTargetDir,
+    'foreign symlink must remain untouched',
+  );
 
   // ── 8. 卸载：只删我们管理的软链 ──
   const gs6 = join(temporaryDirectory, 'gs6');
@@ -203,7 +198,6 @@ try {
   const gs9 = join(temporaryDirectory, 'gs9');
   const c1 = writeCanonicalSkill(gs9, BODY);
   const f1 = canonicalSkillFile(gs9);
-  const mt1 = lstatSync(f1).mtimeMs;
   // 同步写入：必须等一下让 mtime 有可分辨的差异，但实际上我们测的是：再写一次，文件应仍存在
   const c2 = writeCanonicalSkill(gs9, BODY);
   assert(c1 === c2, 'canonical dir path must be stable');

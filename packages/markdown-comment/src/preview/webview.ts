@@ -92,11 +92,14 @@ function applyPreviewAppearance(options: PreviewRenderOptions): void {
 
 // ─── 小工具 ─────────────────────────────────────────────────────────
 function esc(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+  return s.replace(
+    /[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string,
+  );
 }
 function clip(s: string, n: number): string {
   const t = s.replace(/\s+/g, ' ').trim();
-  return t.length > n ? t.slice(0, n) + '…' : t;
+  return t.length > n ? `${t.slice(0, n)}…` : t;
 }
 function authorName(author: string): string {
   return author === 'agent' ? '🤖 Agent' : '你';
@@ -259,7 +262,7 @@ function markText(block: HTMLElement, t: WireThread): boolean {
     range.setStart(node, segStart - start);
     range.setEnd(node, segEnd - start);
     const mark = document.createElement('mark');
-    mark.className = 'mdc-hl' + (t.status === 'resolved' ? ' resolved' : '');
+    mark.className = `mdc-hl${t.status === 'resolved' ? ' resolved' : ''}`;
     mark.setAttribute('data-thread-id', t.id);
     try {
       range.surroundContents(mark);
@@ -314,7 +317,8 @@ function applyHighlights(threads: WireThread[]): void {
       continue;
     }
     if (t.target?.kind === 'mermaid-node') {
-      const diagram = findBlock(t.blockStartLine)?.closest<HTMLElement>('.mdc-mermaid') ?? findBlock(t.blockStartLine);
+      const diagram =
+        findBlock(t.blockStartLine)?.closest<HTMLElement>('.mdc-mermaid') ?? findBlock(t.blockStartLine);
       const node = diagram?.querySelector<HTMLElement>(
         `.mdc-mermaid-commentable-node[data-mdc-node-id="${CSS.escape(t.target.nodeId)}"]`,
       );
@@ -392,8 +396,12 @@ function cardHtml(t: WireThread): string {
   <div class="mdc-card-head">
     <div class="mdc-card-quote">${orphaned ? '<span class="mdc-orphaned-tag">原文已删除</span> ' : ''}${label}</div>
     <div class="mdc-card-tools">
-      ${orphaned ? '' : `<button class="mdc-icon mdc-tip" data-act="reveal" data-tip="${t.kind === 'document' ? '打开文档' : '在源码中显示'}">${ICON_SOURCE}</button>
-      <button class="mdc-icon mdc-tip resolve ${resolved ? 'on' : ''}" data-act="resolve" data-tip="${resolved ? '重新打开' : '标记已解决'}">${ICON_RESOLVE}</button>`}
+      ${
+        orphaned
+          ? ''
+          : `<button class="mdc-icon mdc-tip" data-act="reveal" data-tip="${t.kind === 'document' ? '打开文档' : '在源码中显示'}">${ICON_SOURCE}</button>
+      <button class="mdc-icon mdc-tip resolve ${resolved ? 'on' : ''}" data-act="resolve" data-tip="${resolved ? '重新打开' : '标记已解决'}">${ICON_RESOLVE}</button>`
+      }
     </div>
   </div>
   <div class="mdc-card-comments">${comments}</div>
@@ -410,7 +418,11 @@ function renderSidebar(threads: WireThread[]): void {
   }
   if (threads.length === 0) {
     const msg =
-      activeTab === 'open' ? '没有未解决的评论 🎉' : activeTab === 'resolved' ? '没有已解决的评论' : '还没有评论。在左侧划词试试。';
+      activeTab === 'open'
+        ? '没有未解决的评论 🎉'
+        : activeTab === 'resolved'
+          ? '没有已解决的评论'
+          : '还没有评论。在左侧划词试试。';
     sidebar.innerHTML = `<div class="mdc-empty">${msg}</div>`;
     return;
   }
@@ -585,10 +597,10 @@ function selectThread(id: string, scrollTo: 'content' | 'sidebar'): void {
   const sel = CSS.escape(id);
   const target =
     scrollTo === 'content'
-      ? content?.querySelector<HTMLElement>(`[data-thread-id="${sel}"]`) ??
+      ? (content?.querySelector<HTMLElement>(`[data-thread-id="${sel}"]`) ??
         Array.from(content?.querySelectorAll<HTMLElement>('[data-thread-ids]') ?? []).find((element) =>
           (element.dataset.threadIds ?? '').split(',').includes(id),
-        )
+        ))
       : sidebar?.querySelector<HTMLElement>(`.mdc-card[data-thread-id="${sel}"]`);
   target?.scrollIntoView({ behavior: 'smooth', block: scrollTo === 'content' ? 'center' : 'nearest' });
 }
@@ -612,7 +624,8 @@ function applySelected(): void {
 }
 
 document.getElementById('mdc-tabs')?.addEventListener('click', (e) => {
-  const tab = (e.target as HTMLElement).closest<HTMLElement>('.mdc-tab')?.getAttribute('data-tab') as Tab | undefined;
+  const tab = (e.target as HTMLElement).closest<HTMLElement>('.mdc-tab')?.getAttribute('data-tab') as
+    Tab | undefined;
   if (tab && tab !== activeTab) {
     activeTab = tab;
     refreshThreads(lastThreads);
@@ -688,7 +701,11 @@ function requestLocalResources(): void {
   for (let index = 0; index < allSources.length; index += RESOURCE_BATCH_SIZE) {
     const requestId = `resources-${++resourceRequestGeneration}`;
     pendingResourceRequests.add(requestId);
-    post({ type: 'resolveResources', requestId, sources: allSources.slice(index, index + RESOURCE_BATCH_SIZE) });
+    post({
+      type: 'resolveResources',
+      requestId,
+      sources: allSources.slice(index, index + RESOURCE_BATCH_SIZE),
+    });
   }
 }
 
@@ -718,7 +735,8 @@ function addImageTools(): void {
       toolbar.append(imageActionButton('open', '打开源文件'));
     }
     toolbar.addEventListener('click', async (event) => {
-      const action = (event.target as HTMLElement).closest<HTMLElement>('[data-image-action]')?.dataset.imageAction;
+      const action = (event.target as HTMLElement).closest<HTMLElement>('[data-image-action]')?.dataset
+        .imageAction;
       if (action === 'open') {
         post({ type: 'openImage', source });
         return;
@@ -742,7 +760,10 @@ function addImageTools(): void {
                   return;
                 }
                 context.drawImage(image, 0, 0);
-                canvas.toBlob((value) => (value ? resolve(value) : reject(new Error('Image conversion failed'))), 'image/png');
+                canvas.toBlob(
+                  (value) => (value ? resolve(value) : reject(new Error('Image conversion failed'))),
+                  'image/png',
+                );
               });
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
       } catch {
@@ -778,29 +799,28 @@ function applyLineChanges(changes?: PreviewLineChanges): void {
   if (!content || !changes) {
     return;
   }
-  content.querySelectorAll<HTMLElement>(':scope > .mdc-source-block[data-line][data-end-line]').forEach((element) => {
-    const start = Number(element.dataset.line);
-    const end = Number(element.dataset.endLine);
-    if (changes.modified.some((range) => rangesOverlap(start, end, range.startLine, range.endLine))) {
-      element.classList.add('mdc-diff-modified');
-    }
-    if (changes.added.some((range) => rangesOverlap(start, end, range.startLine, range.endLine))) {
-      element.classList.add('mdc-diff-added');
-    }
-  });
+  content
+    .querySelectorAll<HTMLElement>(':scope > .mdc-source-block[data-line][data-end-line]')
+    .forEach((element) => {
+      const start = Number(element.dataset.line);
+      const end = Number(element.dataset.endLine);
+      if (changes.modified.some((range) => rangesOverlap(start, end, range.startLine, range.endLine))) {
+        element.classList.add('mdc-diff-modified');
+      }
+      if (changes.added.some((range) => rangesOverlap(start, end, range.startLine, range.endLine))) {
+        element.classList.add('mdc-diff-added');
+      }
+    });
   for (const deletion of changes.deleted) {
     const blocks = Array.from(
       content.querySelectorAll<HTMLElement>(':scope > .mdc-source-block[data-line][data-end-line]'),
     );
     const containing = blocks.find(
       (element) =>
-        Number(element.dataset.line) < deletion.atLine &&
-        deletion.atLine < Number(element.dataset.endLine),
+        Number(element.dataset.line) < deletion.atLine && deletion.atLine < Number(element.dataset.endLine),
     );
     const target =
-      containing ??
-      blocks.find((element) => Number(element.dataset.line) >= deletion.atLine) ??
-      null;
+      containing ?? blocks.find((element) => Number(element.dataset.line) >= deletion.atLine) ?? null;
     const marker = document.createElement('div');
     marker.className = 'mdc-diff-deleted-marker';
     marker.textContent = `删除 ${deletion.count} 行`;
@@ -888,11 +908,11 @@ function render(
       nodeCommentsEnabled: options.mermaidNodeComments,
     })
     .then(() => {
-    if (generation !== renderGeneration) {
-      return;
-    }
-    refreshThreads(lastThreads);
-    restoreNavigationLater(navigationState, generation);
+      if (generation !== renderGeneration) {
+        return;
+      }
+      refreshThreads(lastThreads);
+      restoreNavigationLater(navigationState, generation);
     });
 }
 

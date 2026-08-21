@@ -9,10 +9,10 @@
 | 路径 | 用途 | 状态 |
 | --- | --- | --- |
 | `packages/markdown-comment` | Markdown 评论工具：已迁入 VS Code 扩展、CLI 与 Agent Skill | 架构迁移中 |
-| `packages/config` | 可复用的 TypeScript、Rslib 与 Rstest 配置 | 已启用 |
+| `packages/dom-to-markdown` | 本地 Manifest V3 Chrome 扩展：把页面/选区转为 Markdown | 已启用 |
+| `tools/repo` | 仓库级 ESLint、Prettier 与 Git hooks | 已启用 |
 | `resources/skills` | 独立 workflow Skill 源文件（`review-and-commit`、`session-handoff`），经 `scripts/link-skills.sh` 分发到本机各 Agent | 已启用 |
 | `resources/evals` | 按 Skill 隔离的评测定义、夹具、测试与 iteration 产物 | 已启用 |
-| `infra` | Monorepo 依赖、Git hooks、提交规范与通用工程配置 | 已启用 |
 
 后续资产按类型放入清晰的顶层目录或独立 package；每个可发布/可安装的工具都应有自己的 README、使用入口和验证方式。
 
@@ -26,26 +26,84 @@ VS Code 扩展、CLI、Skill 和未来的其他 IDE / 本地 Web 页面，都是
 
 ## 开发
 
-本仓库使用 Eden Monorepo（`emo`）管理工作区。建议 Node.js 22 与 pnpm 10。
+本仓库用 [Rush](https://rushjs.io/) 管理 monorepo，底层包管理器是 pnpm 10。依赖从 **npmjs** 安装（`common/config/rush/.npmrc`），不要用 bnpm。
+
+环境：**Node.js 22**（`>=22 <23`）。Rush 会拒绝其它主版本。
+
+### 安装
 
 ```sh
-npm install -g @ies/eden-monorepo
-emo install
+npm install -g @microsoft/rush
+rush update
 ```
 
-在某个 package 下执行其定义的脚本：
+没有全局 Rush 时：
 
 ```sh
-emo build
-emo run check
+node common/scripts/install-run-rush.js update
 ```
 
-或在仓库根目录按包筛选：
+`rush update` 会装依赖、生成 lockfile，并安装 Git hooks（husky / lint-staged / commitlint）。之后请用 `rush`，**不要在仓库根目录直接跑 `pnpm` / `npm install`**。
+
+### 常用命令
+
+Rush 的 `--to` 用的是 **package.json 的 `name`**，不是目录名：
+
+| 目录 | 包名 |
+| --- | --- |
+| `packages/markdown-comment` | `vscode-markdown-comment` |
+| `packages/dom-to-markdown` | `dom-to-markdown` |
+| `tools/repo` | `repo-tools`（仓库级 ESLint / Prettier / hooks，无业务产物） |
 
 ```sh
-emo run build --filter './packages/markdown-comment'
-emo run check --filter './packages/markdown-comment'
+rush update                              # 安装 / 更新依赖
+rush build                               # 按依赖顺序构建全部 package
+rush build --to vscode-markdown-comment  # 只构建该包及其依赖
+rush typecheck                           # 跑有 typecheck 脚本的包（目前是 markdown-comment）
+rush test                                # 跑有 test 脚本的包（目前是 dom-to-markdown）
+rush lint                                # ESLint
+rush format                              # Prettier --write
+rush format-check                        # Prettier --check（CI 用）
 ```
+
+在某个 package 目录里跑它自己的 script：
+
+```sh
+cd packages/markdown-comment
+rushx build
+rushx typecheck
+rushx package          # 打 VSIX
+rushx watch            # 扩展开发时的增量构建
+```
+
+`dom-to-markdown` 的测试会先构建再校验 `dist/`：
+
+```sh
+rush test --to dom-to-markdown
+```
+
+改 Skills / 安装路径时再跑：
+
+```sh
+python3 scripts/test-agent-neutrality.py
+python3 scripts/check-agent-neutrality.py
+```
+
+### 改代码时
+
+- ESLint、Prettier 配置在仓库根：`.eslintrc.js`、`.prettierrc.json`。工具装在 `tools/repo`。
+- 提交走 Conventional Commits（`feat` / `fix` / `chore` / `style` …）。`lint-staged` 会格式化并 lint 暂存的 JS/TS/JSON。
+- 第三方 vendored 代码（例如 `packages/dom-to-markdown/src/lib/`）和评测夹具不进 ESLint。
+- 给某个包加依赖：
+
+  ```sh
+  rush add -p <npm-package> --dev --package vscode-markdown-comment
+  ```
+
+  然后 `rush update`。
+- 新增可构建的 package：在 `packages/<name>/` 写 `package.json`，再登记到根目录 `rush.json` 的 `projects`，最后 `rush update`。目录必须是仓库根下恰好两级（`packages/foo`、`tools/foo`）。未就绪的目录（目前的 `figma-sync`、`http-cache-probe`）先不要登记。
+
+各工具自己的用法看对应 package README。
 
 ## 约定
 

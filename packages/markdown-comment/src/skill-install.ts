@@ -230,7 +230,15 @@ export function installManagedLink(
     case 'foreign-link':
       return { ok: false, reason: '该位置已被其他内容占用，未改动', linkPath: status.linkPath };
     case 'foreign-real':
-      return { ok: false, reason: '该位置已存在同名文件/目录且不是本 Skill，未改动', linkPath: status.linkPath };
+      return {
+        ok: false,
+        reason: '该位置已存在同名文件/目录且不是本 Skill，未改动',
+        linkPath: status.linkPath,
+      };
+    default: {
+      const unexpected: never = status.kind;
+      throw new Error(`unexpected link status: ${JSON.stringify(unexpected)}`);
+    }
   }
 }
 
@@ -251,6 +259,10 @@ export function removeManagedLink(
       return { ok: false, reason: '该位置不是本 Skill 创建的内容，未删除', linkPath: status.linkPath };
     case 'foreign-real':
       return { ok: false, reason: '该位置不是本 Skill 创建的内容，未删除', linkPath: status.linkPath };
+    default: {
+      const unexpected: never = status.kind;
+      throw new Error(`unexpected link status: ${JSON.stringify(unexpected)}`);
+    }
   }
 }
 
@@ -279,7 +291,7 @@ export function writeState(globalStorageDir: string, state: InstallState): void 
     version: STATE_VERSION,
     roots: [...new Set(state.roots)],
   };
-  fs.writeFileSync(stateFilePath(globalStorageDir), JSON.stringify(normalized, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(stateFilePath(globalStorageDir), `${JSON.stringify(normalized, null, 2)}\n`, 'utf8');
 }
 
 // ─── 组合操作 ──────────────────────────────────────────────────────
@@ -380,6 +392,10 @@ export function reconcile(globalStorageDir: string, skillBody: string): void {
       case 'foreign-real':
         // 用户把落点换成了别的东西，剔出记录，绝不覆盖。
         break;
+      default: {
+        const unexpected: never = status.kind;
+        throw new Error(`unexpected link status: ${JSON.stringify(unexpected)}`);
+      }
     }
   }
 

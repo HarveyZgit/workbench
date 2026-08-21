@@ -72,14 +72,7 @@ const ALLOWED_TAGS = [
   'wbr',
 ] as const;
 
-const GLOBAL_ATTRIBUTES = new Set([
-  'class',
-  'dir',
-  'hidden',
-  'id',
-  'lang',
-  'title',
-]);
+const GLOBAL_ATTRIBUTES = new Set(['class', 'dir', 'hidden', 'id', 'lang', 'title']);
 const TAG_ATTRIBUTES: Readonly<Record<string, ReadonlySet<string>>> = {
   a: new Set(['href']),
   col: new Set(['span']),
@@ -99,20 +92,12 @@ const ALLOWED_ATTRIBUTES = [
   ...new Set(Object.values(TAG_ATTRIBUTES).flatMap((attributes) => [...attributes])),
 ];
 
-const FORBIDDEN_TAGS = [
-  'button',
-  'embed',
-  'form',
-  'iframe',
-  'input',
-  'object',
-  'script',
-  'style',
-] as const;
+const FORBIDDEN_TAGS = ['button', 'embed', 'form', 'iframe', 'input', 'object', 'script', 'style'] as const;
+// Strip C0 controls and Unicode whitespace from URIs before scheme checks.
+// eslint-disable-next-line no-control-regex -- \u0000 is an intentional C0 range bound
 const URI_WHITESPACE = /[\u0000-\u0020\u00a0\u1680\u180e\u2000-\u2029\u205f\u3000]/g;
 const URI_SCHEME = /^([a-z][a-z0-9+.-]*):/i;
-const SAFE_IMAGE_DATA_URI =
-  /^data:image\/(?:avif|gif|jpe?g|png|webp);base64,[a-z0-9+/=\s]*$/i;
+const SAFE_IMAGE_DATA_URI = /^data:image\/(?:avif|gif|jpe?g|png|webp);base64,[a-z0-9+/=\s]*$/i;
 const VOID_TAGS = new Set(['br', 'col', 'hr', 'img', 'wbr']);
 
 function isAllowedAttribute(tagName: string, attributeName: string): boolean {
@@ -166,22 +151,22 @@ function createPurifier() {
 }
 
 const SANITIZE_OPTIONS = {
-    ALLOWED_TAGS: [...ALLOWED_TAGS],
-    ALLOWED_ATTR: ALLOWED_ATTRIBUTES,
-    ALLOW_ARIA_ATTR: true,
-    ALLOW_DATA_ATTR: false,
-    ALLOW_UNKNOWN_PROTOCOLS: false,
-    CUSTOM_ELEMENT_HANDLING: {
-      tagNameCheck: null,
-      attributeNameCheck: null,
-      allowCustomizedBuiltInElements: false,
-    },
-    FORBID_ATTR: ['style', 'target'],
-    FORBID_TAGS: [...FORBIDDEN_TAGS],
-    KEEP_CONTENT: false,
-    RETURN_TRUSTED_TYPE: false,
-    SANITIZE_DOM: true,
-  };
+  ALLOWED_TAGS: [...ALLOWED_TAGS],
+  ALLOWED_ATTR: ALLOWED_ATTRIBUTES,
+  ALLOW_ARIA_ATTR: true,
+  ALLOW_DATA_ATTR: false,
+  ALLOW_UNKNOWN_PROTOCOLS: false,
+  CUSTOM_ELEMENT_HANDLING: {
+    tagNameCheck: null,
+    attributeNameCheck: null,
+    allowCustomizedBuiltInElements: false,
+  },
+  FORBID_ATTR: ['style', 'target'],
+  FORBID_TAGS: [...FORBIDDEN_TAGS],
+  KEEP_CONTENT: false,
+  RETURN_TRUSTED_TYPE: false,
+  SANITIZE_DOM: true,
+};
 
 export function sanitizeHtml(input: string): string {
   return createPurifier().sanitize(input, SANITIZE_OPTIONS);

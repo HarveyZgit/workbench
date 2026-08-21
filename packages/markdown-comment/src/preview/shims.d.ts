@@ -12,7 +12,7 @@ declare module 'markdown-it-texmath' {
   interface TexmathOptions {
     delimiters?: string | string[];
     engine?: {
-      renderToString(source: string, options?: KatexOptions): string;
+      renderToString: (source: string, options?: KatexOptions) => string;
     };
     katexOptions?: KatexOptions;
     outerSpace?: boolean;
@@ -24,7 +24,7 @@ declare module 'markdown-it-texmath' {
 
 // Webview 沙箱注入的全局：拿 postMessage 通道。
 declare function acquireVsCodeApi(): {
-  postMessage(msg: unknown): void;
-  getState(): unknown;
-  setState(state: unknown): void;
+  postMessage: (msg: unknown) => void;
+  getState: () => unknown;
+  setState: (state: unknown) => void;
 };
