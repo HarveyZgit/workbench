@@ -30,7 +30,8 @@ function isFile(filePath) {
 }
 
 function fromPath() {
-  const names = process.platform === 'win32' ? ['markdown-comment.cmd', 'markdown-comment'] : ['markdown-comment'];
+  const names =
+    process.platform === 'win32' ? ['markdown-comment.cmd', 'markdown-comment'] : ['markdown-comment'];
   for (const dir of (process.env.PATH || '').split(path.delimiter)) {
     for (const name of names) {
       const candidate = path.join(dir, name);
