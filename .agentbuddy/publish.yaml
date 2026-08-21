@@ -4,5 +4,6 @@ registry:
   skills:
     - path: resources/skills
       items:
+        - context-doctor
         - review-and-commit
         - session-handoff
