@@ -24,8 +24,8 @@ The repository is written primarily for a Chinese-speaking maintainer. User-faci
 
 ## Working rules
 
-- This is an Eden Monorepo: use `emo`, never invoke `pnpm` directly. Use `emo run-pnpm` only when inspecting pnpm-specific behavior.
-- Scope commands with `--filter` whenever possible, for example `emo run build --filter './packages/markdown-comment'`.
+- This is a Rush monorepo: use `rush` (or `node common/scripts/install-run-rush.js`), never invoke `pnpm` at the repository root.
+- Scope commands with `--to` / `--from` / `--only` whenever possible, for example `rush build --to vscode-markdown-comment`.
 - Prefer `rg` for searches. Respect `.gitignore`; use `rg --no-ignore` only when ignored files are intentionally in scope.
 - Do not edit the original tool repository under `~/Work/Code/corehr-fe-ai-kit` unless the task explicitly includes that repository. Its migration history and any untracked files belong to the user.
 - Keep changes narrow. Do not replace unrelated user changes or generated files.
@@ -45,8 +45,8 @@ python3 scripts/check-agent-neutrality.py
 Run the smallest relevant checks before handing off. For the current Markdown Comment package:
 
 ```sh
-emo run build --filter './packages/markdown-comment'
-emo run check --filter './packages/markdown-comment'
+rush build --to vscode-markdown-comment
+rush typecheck --to vscode-markdown-comment
 ```
 
 When the tool migration introduces new checks, document them in the package README and run the adapter-specific checks affected by the change.

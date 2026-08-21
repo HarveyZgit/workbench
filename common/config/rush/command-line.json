@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/rush/v5/command-line.schema.json",
+  "commands": [
+    {
+      "commandKind": "bulk",
+      "name": "build",
+      "summary": "Build all projects that haven't been built, or have changed since they were last built",
+      "description": "For details, refer to the command-line help.",
+      "incremental": true,
+      "enableParallelism": true,
+      "allowWarningsInSuccessfulBuild": true
+    },
+    {
+      "commandKind": "bulk",
+      "name": "rebuild",
+      "summary": "Clean and rebuild the entire set of projects",
+      "description": "For details, refer to the command-line help.",
+      "incremental": false,
+      "enableParallelism": true,
+      "allowWarningsInSuccessfulBuild": true
+    },
+    {
+      "commandKind": "bulk",
+      "name": "typecheck",
+      "summary": "Typecheck projects that define a typecheck script",
+      "description": "Runs each project's typecheck script when present.",
+      "enableParallelism": true,
+      "ignoreMissingScript": true
+    },
+    {
+      "commandKind": "bulk",
+      "name": "test",
+      "summary": "Run tests",
+      "description": "Runs each project's test script when present.",
+      "enableParallelism": true,
+      "ignoreMissingScript": true
+    }
+  ],
+  "parameters": []
+}

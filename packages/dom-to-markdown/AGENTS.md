@@ -10,8 +10,8 @@ You are an expert in JavaScript and Chrome extension development. You write main
 
 ## Commands
 
-- `emo run build --filter './packages/dom-to-markdown'` - Build the extension into `dist/`
-- `emo run test --filter './packages/dom-to-markdown'` - Build and validate the extension output
+- `rush build --to dom-to-markdown` - Build the extension into `dist/`
+- `rush test --to dom-to-markdown` - Build and validate the extension output
 
 ## Docs
 

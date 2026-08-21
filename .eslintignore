@@ -1,0 +1,9 @@
+node_modules
+dist
+common/temp
+common/scripts
+.eden-mono
+coverage
+*.vsix
+.eslintrc.js
+.commitlintrc.js

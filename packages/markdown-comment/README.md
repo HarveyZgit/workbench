@@ -47,7 +47,12 @@ Symlinks target a canonical Skill copy in the extension's global storage rather 
 From the repository root:
 
 ```sh
-emo run check --filter './packages/markdown-comment'
-emo run build --filter './packages/markdown-comment'
-emo run package --filter './packages/markdown-comment'
+rush typecheck --to vscode-markdown-comment
+rush build --to vscode-markdown-comment
+```
+
+Pack the VSIX from the package directory:
+
+```sh
+(cd packages/markdown-comment && rushx package)
 ```

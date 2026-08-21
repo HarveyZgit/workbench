@@ -1,4 +1,7 @@
 {
-  "**/*.{js,ts,jsx,tsx}": ["emox prettier --write", "emox eslint"],
-  "**/*.{css,json}": ["emox prettier --write"]
+  "**/*.{js,ts,jsx,tsx,mjs,cjs,mts,cts}": [
+    "prettier --write",
+    "eslint --fix --resolve-plugins-relative-to tools/repo"
+  ],
+  "**/*.{css,json}": ["prettier --write"]
 }

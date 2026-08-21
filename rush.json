@@ -1,0 +1,42 @@
+/**
+ * This is the main configuration file for Rush.
+ * For full documentation, please see https://rushjs.io
+ */
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/rush/v5/rush.schema.json",
+  "rushVersion": "5.178.1",
+  "pnpmVersion": "10.12.1",
+  "nodeSupportedVersionRange": ">=22.0.0 <23.0.0",
+  "projectFolderMinDepth": 2,
+  "projectFolderMaxDepth": 2,
+  "gitPolicy": {},
+  "repository": {
+    "url": "git@code.byted.org:zhanghang.harvey/workbench.git",
+    "defaultBranch": "master"
+  },
+  "eventHooks": {
+    "preRushInstall": [],
+    "postRushInstall": [
+      "node tools/repo/node_modules/husky/lib/bin.js install"
+    ],
+    "preRushBuild": [],
+    "postRushBuild": []
+  },
+  "projects": [
+    {
+      "packageName": "vscode-markdown-comment",
+      "projectFolder": "packages/markdown-comment",
+      "shouldPublish": false
+    },
+    {
+      "packageName": "dom-to-markdown",
+      "projectFolder": "packages/dom-to-markdown",
+      "shouldPublish": false
+    },
+    {
+      "packageName": "repo-tools",
+      "projectFolder": "tools/repo",
+      "shouldPublish": false
+    }
+  ]
+}

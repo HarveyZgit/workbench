@@ -10,10 +10,6 @@
     "url": "git+ssh://git@code.byted.org/zhanghang.harvey/workbench.git",
     "directory": "packages/markdown-comment"
   },
-  "publishConfig": {
-    "registry": "https://bnpm.byted.org/",
-    "access": "public"
-  },
   "engines": {
     "vscode": "^1.85.0",
     "node": ">=22"
@@ -289,6 +285,7 @@
     "watch": "node esbuild.mjs --watch",
     "setup": "node esbuild.mjs --production",
     "check": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
     "package": "vsce package --no-dependencies --ignoreFile .vscodeignore -o dist/vscode-markdown-comment.vsix",
     "prepack": "node esbuild.mjs --production && vsce package --no-dependencies --ignoreFile .vscodeignore -o dist/vscode-markdown-comment.vsix"
   },

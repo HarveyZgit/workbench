@@ -9,10 +9,10 @@
 | 路径 | 用途 | 状态 |
 | --- | --- | --- |
 | `packages/markdown-comment` | Markdown 评论工具：已迁入 VS Code 扩展、CLI 与 Agent Skill | 架构迁移中 |
-| `packages/config` | 可复用的 TypeScript、Rslib 与 Rstest 配置 | 已启用 |
+| `packages/dom-to-markdown` | 本地 Manifest V3 Chrome 扩展：把页面/选区转为 Markdown | 已启用 |
+| `tools/repo` | 仓库级 ESLint、Prettier 与 Git hooks | 已启用 |
 | `resources/skills` | 独立 workflow Skill 源文件（`review-and-commit`、`session-handoff`），经 `scripts/link-skills.sh` 分发到本机各 Agent | 已启用 |
 | `resources/evals` | 按 Skill 隔离的评测定义、夹具、测试与 iteration 产物 | 已启用 |
-| `infra` | Monorepo 依赖、Git hooks、提交规范与通用工程配置 | 已启用 |
 
 后续资产按类型放入清晰的顶层目录或独立 package；每个可发布/可安装的工具都应有自己的 README、使用入口和验证方式。
 
@@ -26,25 +26,31 @@ VS Code 扩展、CLI、Skill 和未来的其他 IDE / 本地 Web 页面，都是
 
 ## 开发
 
-本仓库使用 Eden Monorepo（`emo`）管理工作区。建议 Node.js 22 与 pnpm 10。
+本仓库使用 Rush 管理工作区，底层包管理器是 pnpm。建议 Node.js 22。依赖从 npmjs 安装。
 
 ```sh
-npm install -g @ies/eden-monorepo
-emo install
+npm install -g @microsoft/rush
+rush update
 ```
 
-在某个 package 下执行其定义的脚本：
+未全局安装 Rush 时可以用仓库脚本：
 
 ```sh
-emo build
-emo run check
+node common/scripts/install-run-rush.js update
+```
+
+在某个 package 目录执行其脚本：
+
+```sh
+rushx build
+rushx typecheck
 ```
 
 或在仓库根目录按包筛选：
 
 ```sh
-emo run build --filter './packages/markdown-comment'
-emo run check --filter './packages/markdown-comment'
+rush build --to vscode-markdown-comment
+rush typecheck --to vscode-markdown-comment
 ```
 
 ## 约定

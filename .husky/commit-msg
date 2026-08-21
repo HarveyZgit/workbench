@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+export PATH="$(pwd)/tools/repo/node_modules/.bin:$PATH"
+commitlint --config .commitlintrc.js --edit "$1"

@@ -81,9 +81,13 @@ common/config/
 common/_templates/
 CHANGELOG.*
 
-# Emo files
+# Leftover Eden local cache
 .eden-mono
 
+
+# Rush config files allow comments; Prettier JSON parser cannot
+rush.json
+common/config/rush/repo-state.json
 
 # Package manager files
 pnpm-lock.yaml
