@@ -89,7 +89,9 @@ output_resource
 tsconfig.tsbuildinfo
 
 .temp
+.tmp
 
 # Eval fixtures intentionally exercise repository instruction discovery.
 !resources/evals/session-handoff/fixtures/resume-compatible/AGENTS.md
 !resources/evals/session-handoff/fixtures/resume-drift/AGENTS.md
+

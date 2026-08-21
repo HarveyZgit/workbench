@@ -137,7 +137,17 @@
 
 ---
 
-## 3. src/preview/mermaid.ts — Mermaid 工具栏 / 错误提示
+## 3. src/preview/panel.ts / webview.ts — 评论预览侧栏
+
+| 位置 | 当前文案 |
+|------|----------|
+| 全文评论按钮 | `＋ 全文评论`（title：`对整篇文档添加评论`） |
+| 侧栏展开/收起（展开态） | `收起侧边栏` |
+| 侧栏展开/收起（收起态） | `展开侧边栏` |
+
+---
+
+## 4. src/preview/mermaid.ts — Mermaid 工具栏 / 错误提示
 
 | 位置 | 当前文案 |
 |------|----------|
@@ -154,7 +164,7 @@
 
 ---
 
-## 4. src/cli.ts — CLI 终端输出（命令行用户/Agent 可见）
+## 5. src/cli.ts — CLI 终端输出（命令行用户/Agent 可见）
 
 > 如果你只关心 VS Code UI，这一节可以不改。但如果想 CLI 体验也一致，可以一并调整。
 
@@ -202,7 +212,7 @@
 
 ---
 
-## 5. bundled SKILL.md（dist/resources/skills/markdown-comment/SKILL.md）
+## 6. bundled SKILL.md（dist/resources/skills/markdown-comment/SKILL.md）
 
 > 这是发给 Agent 看的，不是给最终用户的。frontmatter description 和里面的说明文字可以调整语气，但要保持 Agent 能看懂。
 

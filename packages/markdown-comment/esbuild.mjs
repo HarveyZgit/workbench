@@ -1,17 +1,35 @@
 import esbuild from 'esbuild';
-import { copyFile, mkdir } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
-const skillSource = path.join(packageRoot, 'resources/skills/markdown-comment/SKILL.md');
+const skillDir = path.join(packageRoot, 'resources/skills/markdown-comment');
+const skillSource = path.join(skillDir, 'SKILL.md');
+const skillScript = path.join(skillDir, 'scripts/markdown-comment');
 const skillOutput = path.join(packageRoot, 'dist/resources/skills/markdown-comment/SKILL.md');
+const skillHubDir = path.join(packageRoot, 'dist/skill-hub/markdown-comment');
+
+const PLUGIN_CLI_NOTE = '插件安装时已替换为实际可执行路径';
+const PORTABLE_CLI_NOTE =
+  '`<skill-dir>` 为本 SKILL.md 所在目录；请用 node 调用同目录 `scripts/markdown-comment`，它会定位本机 CLI';
+const PORTABLE_CLI = 'node <skill-dir>/scripts/markdown-comment';
 
 async function copySkill() {
+  const source = await readFile(skillSource, 'utf8');
   await mkdir(path.dirname(skillOutput), { recursive: true });
-  await copyFile(skillSource, skillOutput);
+  await writeFile(skillOutput, source.replaceAll('{{CLI_NOTE}}', PLUGIN_CLI_NOTE));
+
+  await mkdir(path.join(skillHubDir, 'scripts'), { recursive: true });
+  await writeFile(
+    path.join(skillHubDir, 'SKILL.md'),
+    source.replaceAll('{{CLI_NOTE}}', PORTABLE_CLI_NOTE).replaceAll('{{CLI}}', PORTABLE_CLI),
+  );
+  const hubScript = path.join(skillHubDir, 'scripts/markdown-comment');
+  await copyFile(skillScript, hubScript);
+  await chmod(hubScript, 0o755);
 }
 
 /** Node 侧：extension.js 由 VS Code 宿主加载；cli.js 作为 markdown-comment 命令给 Agent 用；skill-install.js 供纯 node 测试/脚本调用。 */

@@ -434,14 +434,18 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 /* 侧栏 */
 #sidebar-head {
   position: sticky; top: 0; z-index: 5;
-  display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px;
+  display: flex; justify-content: space-between; align-items: center; gap: 4px; padding: 8px 6px 8px 4px;
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
   border-bottom: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.25));
 }
-#mdc-tabs { display: flex; gap: 2px; min-width: 0; flex-wrap: wrap; }
+#mdc-tabs {
+  display: flex; gap: 1px; min-width: 0; flex: 1; flex-wrap: nowrap; overflow-x: auto;
+  scrollbar-width: none;
+}
+#mdc-tabs::-webkit-scrollbar { display: none; }
 .mdc-tab {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 0.82em; padding: 3px 9px; border: none; border-radius: 999px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 3px; flex: none; white-space: nowrap;
+  font-size: 0.82em; padding: 3px 6px; border: none; border-radius: 999px; cursor: pointer;
   background: transparent; color: var(--vscode-foreground); opacity: 0.65;
 }
 .mdc-tab:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.15)); }
@@ -452,12 +456,29 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
   background: var(--vscode-badge-background, rgba(128,128,128,0.35)); color: var(--vscode-badge-foreground, inherit);
 }
 .mdc-tab-n.show { display: inline-block; }
+#mdc-head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 #mdc-add-doc {
-  flex: none; font-size: 0.82em; padding: 4px 9px; border: none; border-radius: 4px; cursor: pointer;
+  flex: none; font-size: 0.82em; padding: 4px 7px; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;
   background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.2));
   color: var(--vscode-button-secondaryForeground, inherit);
 }
 #mdc-add-doc:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.3)); }
+#mdc-toggle-sidebar { flex: none; opacity: 0.72; }
+#app.sidebar-collapsed #sidebar {
+  width: 40px; overflow: visible;
+}
+#app.sidebar-collapsed #mdc-tabs,
+#app.sidebar-collapsed #mdc-add-doc,
+#app.sidebar-collapsed #sidebar-draft,
+#app.sidebar-collapsed #sidebar-inner { display: none; }
+#app.sidebar-collapsed #sidebar-head {
+  justify-content: center; padding: 8px 4px; border-bottom: none;
+}
+#app.sidebar-collapsed #mdc-toggle-sidebar.mdc-tip::after,
+#app.sidebar-collapsed #mdc-toggle-sidebar.mdc-tip:hover::after {
+  right: auto; left: 0; top: 50%; margin-top: 0; margin-right: 0; margin-left: -6px;
+  transform: translate(-100%, -50%);
+}
 #sidebar-inner { padding: 12px; }
 .mdc-empty { opacity: 0.6; padding: 16px 6px; font-size: 0.9em; }
 .mdc-card {
@@ -577,7 +598,10 @@ function buildHtml(webview: vscode.Webview, scriptUri: vscode.Uri, styleUri: vsc
         <button class="mdc-tab" data-tab="resolved">已解决<span class="mdc-tab-n"></span></button>
         <button class="mdc-tab" data-tab="all">全部<span class="mdc-tab-n"></span></button>
       </div>
-      <button id="mdc-add-doc" title="对整篇文档添加评论">＋ 全文评论</button>
+      <div id="mdc-head-actions">
+        <button id="mdc-add-doc" title="对整篇文档添加评论">＋ 全文评论</button>
+        <button id="mdc-toggle-sidebar" class="mdc-icon mdc-tip" data-tip="收起侧边栏" aria-label="收起侧边栏" aria-expanded="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg></button>
+      </div>
     </div>
     <div id="sidebar-draft"></div>
     <div id="sidebar-inner"></div>

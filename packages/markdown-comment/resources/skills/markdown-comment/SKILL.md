@@ -11,7 +11,7 @@ Markdown Comment 为 Markdown 提供划词、全文和 Mermaid 图表评论。�
 
 ## CLI
 
-下文 `{{CLI}}` 是评论 CLI 命令（安装本 skill 时已替换为实际可执行路径）。当前迁移兼容层仍从 VS Code 全局存储定位评论数据，路径记录在 `~/.markdown-comment/pointer.json`。
+下文 `{{CLI}}` 是评论 CLI 入口（{{CLI_NOTE}}）。当前迁移兼容层仍从 VS Code 全局存储定位评论数据，路径记录在 `~/.markdown-comment/pointer.json`。
 
 前置：首次使用当前兼容实现时，用户必须在 VS Code 启动过插件一次（否则指针不存在，CLI 会给出提示）。
 

@@ -9,7 +9,7 @@
 - 平台专属的发现或发布文件只能做薄适配器：指向这里的源文件，不复制工作流、不定义默认身份、不成为状态真源。
 - 安装目标由用户显式传入，不由 Skill 猜测宿主目录。
 
-依赖 CLI 路径注入或其他 package 构建产物的 Skill 不放在这里，应随所属 package 维护并由该 package 安装。例如 `markdown-comment` 的 Skill 位于 `packages/markdown-comment/resources/skills/markdown-comment/`，由 `mdc init` 安装。
+依赖 CLI 路径注入或其他 package 构建产物的 Skill 不放在这里，应随所属 package 维护。例如 `markdown-comment` 的 Skill 位于 `packages/markdown-comment/resources/skills/markdown-comment/`：可通过 VS Code 命令安装，也可使用打包出的 `dist/skill-hub/markdown-comment/` 自行安装或上传 Skill Hub。
 
 ## 目录约定
 

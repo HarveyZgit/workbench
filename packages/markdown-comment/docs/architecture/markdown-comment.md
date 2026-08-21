@@ -80,6 +80,7 @@ packages/markdown-comment/
   src/adapters/web/  # optional local browser/agent adapter
   resources/skills/markdown-comment/
     SKILL.md         # package-managed Agent instructions using the public CLI
+    scripts/         # portable CLI locator for Skill Hub / self-install
 ```
 
 Split these into published packages only when separate release cadence or reuse makes that worthwhile. Do not duplicate the core inside an extension, server, or Skill.

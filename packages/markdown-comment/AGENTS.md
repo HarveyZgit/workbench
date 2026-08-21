@@ -12,7 +12,7 @@ The current implementation has been migrated from the former standalone VS Code 
 - Put models, anchor relocation, operations, and portable storage behind editor-neutral interfaces.
 - Keep VS Code-specific code under an adapter boundary. `vscode` types must never leak into core modules.
 - The CLI is a public automation interface; Skills call it rather than editing storage JSON.
-- The editable Skill source is `resources/skills/markdown-comment/SKILL.md` at the repository root. `esbuild.mjs` copies it into `dist/resources/` for distribution.
+- The editable Skill source is `resources/skills/markdown-comment/SKILL.md`. `esbuild.mjs` copies it into `dist/resources/` for VSIX plugin-install (rewrites `{{CLI}}` to an absolute path) and emits a portable copy at `dist/skill-hub/markdown-comment/` for Skill Hub / manual install.
 - Preserve existing comment data. A migration from the former VS Code global storage must be safe and idempotent.
 
 ## Commands

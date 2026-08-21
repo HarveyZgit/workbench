@@ -26,6 +26,8 @@ function post(msg: WebviewToHost): void {
 const content = document.getElementById('content');
 const sidebar = document.getElementById('sidebar-inner');
 const draftEl = document.getElementById('sidebar-draft');
+const app = document.getElementById('app');
+const toggleSidebarBtn = document.getElementById('mdc-toggle-sidebar');
 
 const submitKey = navigator.platform.toLowerCase().includes('mac') ? 'Cmd' : 'Ctrl';
 
@@ -132,6 +134,42 @@ const ICON_SEND =
   '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v2.2a2 2 0 0 1-2 2H4"/><path d="M6.3 6.3L4 8.2l2.3 1.9"/></svg>';
 const ICON_EDIT =
   '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2.5l2.5 2.5L6 12.5 3 13l.5-3z"/><path d="M9.5 4l2.5 2.5"/></svg>';
+const ICON_SIDEBAR_COLLAPSE =
+  '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>';
+const ICON_SIDEBAR_EXPAND =
+  '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4l-4 4 4 4"/></svg>';
+
+type WebviewState = { sidebarCollapsed?: boolean };
+
+function readWebviewState(): WebviewState {
+  const raw = vscode.getState();
+  return raw && typeof raw === 'object' ? (raw as WebviewState) : {};
+}
+
+function setSidebarCollapsed(collapsed: boolean, persist = true): void {
+  app?.classList.toggle('sidebar-collapsed', collapsed);
+  if (toggleSidebarBtn) {
+    const label = collapsed ? '展开侧边栏' : '收起侧边栏';
+    toggleSidebarBtn.setAttribute('data-tip', label);
+    toggleSidebarBtn.setAttribute('aria-label', label);
+    toggleSidebarBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    toggleSidebarBtn.innerHTML = collapsed ? ICON_SIDEBAR_EXPAND : ICON_SIDEBAR_COLLAPSE;
+  }
+  if (persist) {
+    vscode.setState({ ...readWebviewState(), sidebarCollapsed: collapsed });
+  }
+}
+
+function expandSidebar(): void {
+  if (app?.classList.contains('sidebar-collapsed')) {
+    setSidebarCollapsed(false);
+  }
+}
+
+setSidebarCollapsed(readWebviewState().sidebarCollapsed === true, false);
+toggleSidebarBtn?.addEventListener('click', () => {
+  setSidebarCollapsed(!app?.classList.contains('sidebar-collapsed'));
+});
 
 /** 在 hay 里找 needle，多处命中时用前后文消歧（与 host 端 anchor.locate 同构）。 */
 function locate(hay: string, needle: string, before: string, after: string): number {
@@ -389,6 +427,7 @@ function renderDraft(labelHtml: string): void {
   if (!draftEl) {
     return;
   }
+  expandSidebar();
   draftEl.innerHTML = `<div class="mdc-draft">
   <div class="mdc-card-quote">${labelHtml}</div>
   <textarea class="mdc-draft-input" placeholder="写下你的评论…（Markdown，${submitKey}+Enter 提交，Esc 取消）"></textarea>
@@ -539,6 +578,9 @@ function updateTabs(threads: WireThread[]): void {
 /** 选中一条评论：正文高亮 + 侧栏卡片同时高亮（持久，直到换选），并滚到指定一侧。 */
 function selectThread(id: string, scrollTo: 'content' | 'sidebar'): void {
   selectedId = id;
+  if (scrollTo === 'sidebar') {
+    expandSidebar();
+  }
   applySelected();
   const sel = CSS.escape(id);
   const target =

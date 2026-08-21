@@ -1,0 +1,97 @@
+#!/usr/bin/env node
+'use strict';
+
+// 自行安装 / Skill Hub 用的 CLI 入口：在 PATH、MARKDOWN_COMMENT_CLI 或编辑器扩展目录里定位 CLI。
+// VS Code「安装 / 更新 Agent Skill」仍会把 SKILL.md 里的 {{CLI}} 写成绝对路径，不走这里。
+
+const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const EXT_PREFIX = 'corehr-fe.vscode-markdown-comment-';
+const HOME = os.homedir();
+const EXT_ROOTS = [
+  '.vscode/extensions',
+  '.vscode-insiders/extensions',
+  '.vscode-server/extensions',
+  '.cursor/extensions',
+  '.cursor-server/extensions',
+  '.trae/extensions',
+  '.trae-cn/extensions',
+];
+
+function isFile(filePath) {
+  try {
+    return fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function fromPath() {
+  const names = process.platform === 'win32' ? ['markdown-comment.cmd', 'markdown-comment'] : ['markdown-comment'];
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      if (isFile(candidate)) {
+        return { cmd: candidate, args: [] };
+      }
+    }
+  }
+  return null;
+}
+
+function fromExtensions() {
+  const found = [];
+  for (const rel of EXT_ROOTS) {
+    const root = path.join(HOME, rel);
+    let entries;
+    try {
+      entries = fs.readdirSync(root, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !entry.name.startsWith(EXT_PREFIX)) {
+        continue;
+      }
+      const cli = path.join(root, entry.name, 'dist', 'cli.js');
+      if (isFile(cli)) {
+        found.push(cli);
+      }
+    }
+  }
+  found.sort();
+  return found.length ? found[found.length - 1] : null;
+}
+
+function resolveTarget() {
+  const env = process.env.MARKDOWN_COMMENT_CLI;
+  if (env) {
+    if (env.endsWith('.js') && isFile(env)) {
+      return { cmd: process.execPath, args: [env] };
+    }
+    return { cmd: env, args: [] };
+  }
+  const onPath = fromPath();
+  if (onPath) {
+    return onPath;
+  }
+  const extCli = fromExtensions();
+  if (extCli) {
+    return { cmd: process.execPath, args: [extCli] };
+  }
+  return null;
+}
+
+const target = resolveTarget();
+if (!target) {
+  process.stderr.write(
+    '未找到 markdown-comment CLI。请先安装 Markdown Comment 编辑器扩展，或将 CLI 加入 PATH / 设置 MARKDOWN_COMMENT_CLI。\n',
+  );
+  process.exit(1);
+}
+
+const result = spawnSync(target.cmd, [...target.args, ...process.argv.slice(2)], { stdio: 'inherit' });
+process.exit(result.status === null ? 1 : result.status);
