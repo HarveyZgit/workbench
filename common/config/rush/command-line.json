@@ -34,6 +34,27 @@
       "description": "Runs each project's test script when present.",
       "enableParallelism": true,
       "ignoreMissingScript": true
+    },
+    {
+      "commandKind": "global",
+      "name": "lint",
+      "summary": "Run ESLint",
+      "description": "Lint first-party JS/TS with the repository ESLint config.",
+      "shellCommand": "node tools/repo/node_modules/eslint/bin/eslint.js --resolve-plugins-relative-to tools/repo ."
+    },
+    {
+      "commandKind": "global",
+      "name": "format",
+      "summary": "Format files with Prettier",
+      "description": "Write Prettier formatting across the repository.",
+      "shellCommand": "node tools/repo/node_modules/prettier/bin/prettier.cjs --write ."
+    },
+    {
+      "commandKind": "global",
+      "name": "format-check",
+      "summary": "Check Prettier formatting",
+      "description": "Fail if files are not Prettier-formatted.",
+      "shellCommand": "node tools/repo/node_modules/prettier/bin/prettier.cjs --check ."
     }
   ],
   "parameters": []
