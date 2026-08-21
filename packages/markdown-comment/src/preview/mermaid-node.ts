@@ -92,10 +92,7 @@ export function parseMermaidFlowchartNodeSources(source: string): MermaidNodeSou
     return new Map();
   }
 
-  const sourceLines = new Map<
-    string,
-    { references: number[]; declarations: Map<string, number[]> }
-  >();
+  const sourceLines = new Map<string, { references: number[]; declarations: Map<string, number[]> }>();
   let inDirective = false;
 
   for (let lineIndex = declarationLine + 1; lineIndex < lines.length; lineIndex++) {
@@ -165,10 +162,7 @@ function candidatesForIdentifier(identifier: string, sourceMap: MermaidNodeSourc
     if (!SAFE_NODE_ID.test(nodeId)) {
       continue;
     }
-    if (
-      identifier === nodeId ||
-      flowchartMatch?.[1] === nodeId
-    ) {
+    if (identifier === nodeId || flowchartMatch?.[1] === nodeId) {
       candidates.add(nodeId);
     }
   }

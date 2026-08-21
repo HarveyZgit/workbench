@@ -12,7 +12,7 @@ const POINTER_FILE = path.join(POINTER_DIR, 'pointer.json');
 
 export function writePointer(storageDir: string): void {
   fs.mkdirSync(POINTER_DIR, { recursive: true });
-  fs.writeFileSync(POINTER_FILE, JSON.stringify({ storageDir }, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(POINTER_FILE, `${JSON.stringify({ storageDir }, null, 2)}\n`, 'utf8');
 }
 
 export function readStorageDir(): string | null {
@@ -40,7 +40,7 @@ function docsDir(storageDir: string): string {
 }
 
 export function docFile(storageDir: string, absPath: string): string {
-  return path.join(docsDir(storageDir), fileHash(absPath) + '.json');
+  return path.join(docsDir(storageDir), `${fileHash(absPath)}.json`);
 }
 
 function indexFile(storageDir: string): string {
@@ -64,7 +64,7 @@ function readIndex(storageDir: string): Index {
 
 function writeIndex(storageDir: string, idx: Index): void {
   fs.mkdirSync(storageDir, { recursive: true });
-  fs.writeFileSync(indexFile(storageDir), JSON.stringify(idx, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(indexFile(storageDir), `${JSON.stringify(idx, null, 2)}\n`, 'utf8');
 }
 
 export function loadDoc(storageDir: string, absPath: string): StoredDocument {
@@ -94,7 +94,7 @@ export function saveDoc(storageDir: string, absPath: string, data: StoredDocumen
     return;
   }
   fs.mkdirSync(docsDir(storageDir), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
   idx[h] = { path: absPath, updatedAt: new Date().toISOString() };
   writeIndex(storageDir, idx);
 }

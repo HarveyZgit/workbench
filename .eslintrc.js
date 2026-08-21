@@ -220,6 +220,15 @@ module.exports = {
   },
   overrides: [
     {
+      files: ['packages/dom-to-markdown/src/**/*.js'],
+      env: {
+        webextensions: true,
+      },
+      globals: {
+        TurndownService: 'readonly',
+      },
+    },
+    {
       files: ['**/*.{ts,tsx,mts,cts}'],
       parser: require.resolve('@typescript-eslint/parser', { paths: [repoTools] }),
       parserOptions: {

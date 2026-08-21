@@ -6,7 +6,7 @@ import { readStorageDir, listAll, loadDoc, saveDoc, findThread } from './storage
 import type { StoredComment, StoredThread } from './types';
 
 function fail(msg: string): never {
-  process.stderr.write(msg + '\n');
+  process.stderr.write(`${msg}\n`);
   process.exit(1);
 }
 
@@ -27,7 +27,7 @@ const args = rest.filter((a) => !a.startsWith('--'));
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 const clip = (s: string, n = 30) => {
   const t = oneLine(s);
-  return t.length > n ? t.slice(0, n) + '…' : t;
+  return t.length > n ? `${t.slice(0, n)}…` : t;
 };
 const shortId = (id: string) => id.slice(0, 8);
 
@@ -141,7 +141,7 @@ function cmdList(): void {
           continue;
         }
         const state = anchorState(text, t.anchor);
-        const orphaned = state.orphaned;
+        const { orphaned } = state;
         if (orphaned && !showHidden) {
           continue;
         }
@@ -159,7 +159,7 @@ function cmdList(): void {
         });
       }
     }
-    process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+    process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
     return;
   }
 
@@ -191,7 +191,7 @@ function cmdList(): void {
     blocks.push(lines.join('\n'));
   }
   const empty = scoped ? '（当前目录下没有评论；加 -g 看全部）' : '（没有评论）';
-  process.stdout.write((blocks.join(nameOnly ? '\n' : '\n\n') || empty) + '\n');
+  process.stdout.write(`${blocks.join(nameOnly ? '\n' : '\n\n') || empty}\n`);
 }
 
 function cmdReply(): void {
@@ -203,7 +203,7 @@ function cmdReply(): void {
   }
   const found = findThread(storageDir, threadId);
   if (!found) {
-    fail('未找到 thread（或前缀不唯一）: ' + threadId);
+    fail(`未找到 thread（或前缀不唯一）: ${threadId}`);
   }
   const comment: StoredComment = {
     id: randomUUID(),
@@ -213,7 +213,7 @@ function cmdReply(): void {
   };
   found.thread.comments.push(comment);
   saveDoc(storageDir, found.path, found.doc);
-  process.stdout.write('OK: 已回复 #' + shortId(found.thread.id) + '\n');
+  process.stdout.write(`OK: 已回复 #${shortId(found.thread.id)}\n`);
 }
 
 function cmdResolve(): void {
@@ -224,11 +224,11 @@ function cmdResolve(): void {
   }
   const found = findThread(storageDir, threadId);
   if (!found) {
-    fail('未找到 thread（或前缀不唯一）: ' + threadId);
+    fail(`未找到 thread（或前缀不唯一）: ${threadId}`);
   }
   found.thread.status = 'resolved';
   saveDoc(storageDir, found.path, found.doc);
-  process.stdout.write('OK: 已标记已解决 #' + shortId(found.thread.id) + '\n');
+  process.stdout.write(`OK: 已标记已解决 #${shortId(found.thread.id)}\n`);
 }
 
 switch (cmd) {

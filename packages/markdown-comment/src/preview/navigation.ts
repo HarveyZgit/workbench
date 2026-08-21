@@ -31,11 +31,11 @@ export interface PreviewNavigationOptions {
 }
 
 export interface PreviewNavigation {
-  scrollToSourceLine(sourceLine: number): void;
-  getCurrentSourceLine(): number | undefined;
-  captureState(): PreviewNavigationState;
-  restoreState(state: PreviewNavigationState): void;
-  dispose(): void;
+  scrollToSourceLine: (sourceLine: number) => void;
+  getCurrentSourceLine: () => number | undefined;
+  captureState: () => PreviewNavigationState;
+  restoreState: (state: PreviewNavigationState) => void;
+  dispose: () => void;
 }
 
 interface SourceBlock {
@@ -104,7 +104,11 @@ function isMoreSpecific(candidate: SourceBlock, current: SourceBlock): boolean {
 function blockForSourceLine(blocks: SourceBlock[], line: number): SourceBlock | undefined {
   let containing: SourceBlock | undefined;
   for (const block of blocks) {
-    if (block.startLine <= line && line < block.endLine && (!containing || isMoreSpecific(block, containing))) {
+    if (
+      block.startLine <= line &&
+      line < block.endLine &&
+      (!containing || isMoreSpecific(block, containing))
+    ) {
       containing = block;
     }
   }
@@ -171,8 +175,8 @@ function summaryText(details: HTMLDetailsElement): string {
 function detailsSourceLine(details: HTMLDetailsElement): number | undefined {
   const element = details.matches(SOURCE_BLOCK_SELECTOR)
     ? details
-    : details.querySelector<HTMLElement>(SOURCE_BLOCK_SELECTOR) ??
-      details.closest<HTMLElement>(SOURCE_BLOCK_SELECTOR);
+    : (details.querySelector<HTMLElement>(SOURCE_BLOCK_SELECTOR) ??
+      details.closest<HTMLElement>(SOURCE_BLOCK_SELECTOR));
   if (!element) {
     return undefined;
   }
@@ -188,7 +192,10 @@ function eventElement(event: Event): Element | undefined {
   return event.target instanceof Element ? event.target : undefined;
 }
 
-export function createPreviewNavigation(root: HTMLElement, options: PreviewNavigationOptions = {}): PreviewNavigation {
+export function createPreviewNavigation(
+  root: HTMLElement,
+  options: PreviewNavigationOptions = {},
+): PreviewNavigation {
   const view = root.ownerDocument.defaultView;
   if (!view) {
     throw new Error('Preview navigation requires a browser window');
@@ -264,7 +271,12 @@ export function createPreviewNavigation(root: HTMLElement, options: PreviewNavig
   };
 
   const scheduleScrollReport = (): void => {
-    if (disposed || view.performance.now() < suppressedUntil || reportFrame !== undefined || reportTimer !== undefined) {
+    if (
+      disposed ||
+      view.performance.now() < suppressedUntil ||
+      reportFrame !== undefined ||
+      reportTimer !== undefined
+    ) {
       return;
     }
     const wait = Math.max(0, lastReportedAt + throttleMs - view.performance.now());
@@ -285,7 +297,10 @@ export function createPreviewNavigation(root: HTMLElement, options: PreviewNavig
     const rootRect = root.getBoundingClientRect();
     const blockTop = root.scrollTop + block.rect.top - rootRect.top;
     const top = blockTop + block.rect.height * clamp(ratio, 0, 1);
-    root.scrollTo({ top: clamp(top, 0, Math.max(0, root.scrollHeight - root.clientHeight)), behavior: 'auto' });
+    root.scrollTo({
+      top: clamp(top, 0, Math.max(0, root.scrollHeight - root.clientHeight)),
+      behavior: 'auto',
+    });
   };
 
   const scrollToSourceLine = (value: number): void => {
@@ -327,7 +342,11 @@ export function createPreviewNavigation(root: HTMLElement, options: PreviewNavig
   const restoreDetails = (states: PreviewDetailsState[]): void => {
     const saved = new Map<string, boolean[]>();
     for (const state of states) {
-      if (!Number.isFinite(state.sourceLine) || typeof state.summary !== 'string' || typeof state.open !== 'boolean') {
+      if (
+        !Number.isFinite(state.sourceLine) ||
+        typeof state.summary !== 'string' ||
+        typeof state.open !== 'boolean'
+      ) {
         continue;
       }
       const key = detailsKey({ sourceLine: sourceLine(state.sourceLine), summary: state.summary });
@@ -355,7 +374,11 @@ export function createPreviewNavigation(root: HTMLElement, options: PreviewNavig
     }
     suppressReports();
     restoreDetails(Array.isArray(state.details) ? state.details : []);
-    if (state.scroll && Number.isFinite(state.scroll.sourceLine) && Number.isFinite(state.scroll.blockRatio)) {
+    if (
+      state.scroll &&
+      Number.isFinite(state.scroll.sourceLine) &&
+      Number.isFinite(state.scroll.blockRatio)
+    ) {
       const blocks = sourceBlocks(root);
       const exactBlocks = blocks.filter(
         (candidate) =>
@@ -364,7 +387,10 @@ export function createPreviewNavigation(root: HTMLElement, options: PreviewNavig
           (state.scroll?.tagName === undefined || candidate.element.tagName === state.scroll.tagName),
       );
       const ordinal = Math.max(0, Math.floor(state.scroll.ordinal ?? 0));
-      const block = exactBlocks[ordinal] ?? exactBlocks[0] ?? blockForSourceLine(blocks, sourceLine(state.scroll.sourceLine));
+      const block =
+        exactBlocks[ordinal] ??
+        exactBlocks[0] ??
+        blockForSourceLine(blocks, sourceLine(state.scroll.sourceLine));
       if (block) {
         scrollToBlock(block, state.scroll.blockRatio);
       }
@@ -422,7 +448,10 @@ export function createPreviewNavigation(root: HTMLElement, options: PreviewNavig
     const rootRect = root.getBoundingClientRect();
     const headingRect = heading.getBoundingClientRect();
     const top = root.scrollTop + headingRect.top - rootRect.top;
-    root.scrollTo({ top: clamp(top, 0, Math.max(0, root.scrollHeight - root.clientHeight)), behavior: 'auto' });
+    root.scrollTo({
+      top: clamp(top, 0, Math.max(0, root.scrollHeight - root.clientHeight)),
+      behavior: 'auto',
+    });
   };
 
   root.addEventListener('scroll', scheduleScrollReport, { passive: true });

@@ -13,7 +13,16 @@ export function buildAnchorFromRange(
   kind: 'selection' | 'document',
 ): StoredAnchor {
   if (kind === 'document') {
-    return { kind: 'document', startLine: 0, startChar: 0, endLine: 0, endChar: 0, quote: '', before: '', after: '' };
+    return {
+      kind: 'document',
+      startLine: 0,
+      startChar: 0,
+      endLine: 0,
+      endChar: 0,
+      quote: '',
+      before: '',
+      after: '',
+    };
   }
   const startOffset = doc.offsetAt(range.start);
   const endOffset = doc.offsetAt(range.end);
@@ -24,7 +33,9 @@ export function buildAnchorFromRange(
     endLine: range.end.line,
     endChar: range.end.character,
     quote: doc.getText(range),
-    before: doc.getText(new vscode.Range(doc.positionAt(Math.max(0, startOffset - CONTEXT_LEN)), range.start)),
+    before: doc.getText(
+      new vscode.Range(doc.positionAt(Math.max(0, startOffset - CONTEXT_LEN)), range.start),
+    ),
     after: doc.getText(new vscode.Range(range.end, doc.positionAt(endOffset + CONTEXT_LEN))),
   };
 }
@@ -125,7 +136,11 @@ function trimmedRange(doc: vscode.TextDocument, range: vscode.Range): vscode.Ran
 }
 
 /** 把渲染块的源码行范围转换成实体 Range。endLineExclusive 为排他行号。 */
-export function blockLinesToRange(doc: vscode.TextDocument, startLine: number, endLineExclusive: number): vscode.Range | null {
+export function blockLinesToRange(
+  doc: vscode.TextDocument,
+  startLine: number,
+  endLineExclusive: number,
+): vscode.Range | null {
   if (doc.lineCount === 0) {
     return null;
   }
@@ -134,7 +149,9 @@ export function blockLinesToRange(doc: vscode.TextDocument, startLine: number, e
   const safeEndLineExclusive = Math.min(Math.max(endLineExclusive, safeStartLine + 1), doc.lineCount);
   const start = new vscode.Position(safeStartLine, 0);
   const end =
-    safeEndLineExclusive >= doc.lineCount ? doc.lineAt(lastLine).range.end : new vscode.Position(safeEndLineExclusive, 0);
+    safeEndLineExclusive >= doc.lineCount
+      ? doc.lineAt(lastLine).range.end
+      : new vscode.Position(safeEndLineExclusive, 0);
   return trimmedRange(doc, new vscode.Range(start, end));
 }
 
@@ -143,7 +160,10 @@ export function blockLinesToRange(doc: vscode.TextDocument, startLine: number, e
  * 单块内且块源码能原样搜到 renderedQuote → 精确锚（选词级）；
  * 跨块 / 子串夹了 **、链接符号搜不到 → 退回整块范围。
  */
-export function mapRenderedSelectionToRange(doc: vscode.TextDocument, sel: RenderedSelection): vscode.Range | null {
+export function mapRenderedSelectionToRange(
+  doc: vscode.TextDocument,
+  sel: RenderedSelection,
+): vscode.Range | null {
   const blockRange = blockLinesToRange(doc, sel.blockStartLine, sel.blockEndLine);
   if (!blockRange) {
     return null;
