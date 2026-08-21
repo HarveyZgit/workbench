@@ -142,7 +142,9 @@ const ICON_SIDEBAR_COLLAPSE =
 const ICON_SIDEBAR_EXPAND =
   '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4l-4 4 4 4"/></svg>';
 
-type WebviewState = { sidebarCollapsed?: boolean };
+interface WebviewState {
+  sidebarCollapsed?: boolean;
+}
 
 function readWebviewState(): WebviewState {
   const raw = vscode.getState();
