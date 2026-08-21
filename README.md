@@ -11,7 +11,9 @@
 | `packages/markdown-comment` | Markdown 评论工具：已迁入 VS Code 扩展、CLI 与 Agent Skill | 架构迁移中 |
 | `packages/dom-to-markdown` | 本地 Manifest V3 Chrome 扩展：把页面/选区转为 Markdown | 已启用 |
 | `tools/repo` | 仓库级 ESLint、Prettier 与 Git hooks | 已启用 |
-| `resources/skills` | 独立 workflow Skill 源文件（`review-and-commit`、`session-handoff`），经 `scripts/link-skills.sh` 分发到本机各 Agent | 已启用 |
+| `resources/skills` | 独立 workflow Skill 源文件（`review-and-commit`、`session-handoff`、`context-doctor`），经 `scripts/link-skills.sh` 分发到本机各 Agent | 已启用 |
+| `resources/rules` | 原子化通用准则片段，未来分发到各 Agent 宿主的全局配置 | 体系已建，分发未实现 |
+| `resources/references` | 参考资料存档（文章、外部实践），精华消化为 rule/skill | 已启用 |
 | `resources/evals` | 按 Skill 隔离的评测定义、夹具、测试与 iteration 产物 | 已启用 |
 
 后续资产按类型放入清晰的顶层目录或独立 package；每个可发布/可安装的工具都应有自己的 README、使用入口和验证方式。
