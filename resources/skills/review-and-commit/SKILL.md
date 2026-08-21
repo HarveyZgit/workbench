@@ -71,7 +71,7 @@ git ls-files --others --exclude-standard   # 未跟踪文件清单
 1. 暂存合适的文件（`git add` 相关路径；不要盲目 `git add -A` 带进无关文件/产物）。
 2. 生成匹配当前仓库历史与提交规范的 message；若仓库使用 Conventional Commits，可采用
    `feat/fix/docs/chore/refactor(scope): 描述`。只在当前运行环境、仓库规则或用户明确要求时添加
-   trailer，并原样遵循对应规则；不要在 skill 中固定某个 Agent、CLI、厂商或邮箱。
+   trailer，并原样遵循对应规则。
 
 3. 向用户展示：`git diff --cached --stat` 的 diff-stat + 完整 commit message + 审查结论（几轮、修了什么）。
 4. **停下等用户确认**。用户明确同意后才提交；用户要改 message 就改；用户喊停就停。
@@ -84,4 +84,4 @@ git ls-files --others --exclude-standard   # 未跟踪文件清单
 git commit -m "<subject>" -m "<body>"
 ```
 
-**绝不 `git push`。** 提交信息应符合仓库约定，不加入与本次改动无关的宿主运行时元数据。
+**绝不 `git push`。**
