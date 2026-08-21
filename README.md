@@ -9,7 +9,6 @@
 | 路径 | 用途 | 状态 |
 | --- | --- | --- |
 | `packages/markdown-comment` | Markdown 评论工具：已迁入 VS Code 扩展、CLI 与 Agent Skill | 架构迁移中 |
-| `packages/dom-to-markdown` | 本地 Manifest V3 Chrome 扩展：把页面/选区转为 Markdown | 已启用 |
 | `tools/repo` | 仓库级 ESLint、Prettier 与 Git hooks | 已启用 |
 | `resources/skills` | 独立 workflow Skill 源文件（`review-and-commit`、`session-handoff`），经 `scripts/link-skills.sh` 分发到本机各 Agent | 已启用 |
 | `resources/evals` | 按 Skill 隔离的评测定义、夹具、测试与 iteration 产物 | 已启用 |
@@ -52,7 +51,6 @@ Rush 的 `--to` 用的是 **package.json 的 `name`**，不是目录名：
 | 目录 | 包名 |
 | --- | --- |
 | `packages/markdown-comment` | `vscode-markdown-comment` |
-| `packages/dom-to-markdown` | `dom-to-markdown` |
 | `tools/repo` | `repo-tools`（仓库级 ESLint / Prettier / hooks，无业务产物） |
 
 ```sh
@@ -60,7 +58,7 @@ rush update                              # 安装 / 更新依赖
 rush build                               # 按依赖顺序构建全部 package
 rush build --to vscode-markdown-comment  # 只构建该包及其依赖
 rush typecheck                           # 跑有 typecheck 脚本的包（目前是 markdown-comment）
-rush test                                # 跑有 test 脚本的包（目前是 dom-to-markdown）
+rush test                                # 跑有 test 脚本的包（目前没有）
 rush lint                                # ESLint
 rush format                              # Prettier --write
 rush format-check                        # Prettier --check（CI 用）
@@ -76,12 +74,6 @@ rushx package          # 打 VSIX
 rushx watch            # 扩展开发时的增量构建
 ```
 
-`dom-to-markdown` 的测试会先构建再校验 `dist/`：
-
-```sh
-rush test --to dom-to-markdown
-```
-
 改 Skills / 安装路径时再跑：
 
 ```sh
@@ -93,7 +85,7 @@ python3 scripts/check-agent-neutrality.py
 
 - ESLint、Prettier 配置在仓库根：`.eslintrc.js`、`.prettierrc.json`。工具装在 `tools/repo`。
 - 提交走 Conventional Commits（`feat` / `fix` / `chore` / `style` …）。`lint-staged` 会格式化并 lint 暂存的 JS/TS/JSON。
-- 第三方 vendored 代码（例如 `packages/dom-to-markdown/src/lib/`）和评测夹具不进 ESLint。
+- 评测夹具不进 ESLint。
 - 给某个包加依赖：
 
   ```sh

@@ -15,11 +15,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Platform discovery files are allowed only as removable pointers to the
 # host-neutral source assets.
 ADAPTER_CONTENT = {
-    ".agentbuddy/publish.yaml": (
-        "schema_version: v1\n\nregistry:\n  skills:\n"
-        "    - path: resources/skills\n      items:\n"
-        "        - review-and-commit\n        - session-handoff\n"
-    ),
     ".github/copilot-instructions.md": (
         "# AI Workbench instructions\n\nFollow [`AGENTS.md`](../AGENTS.md).\n"
     ),
