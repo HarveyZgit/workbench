@@ -37,7 +37,7 @@ metadata:
    python3 <session-handoff-skill-dir>/scripts/validate_handoff.py <handoff-path> --check-state
    ```
 
-   修复结构、占位符、敏感信息或状态漂移后再交付。只需向用户说明路径、校验结果和下一会话起点，不要重复整份文档。
+   无法执行命令时，改为对照模板逐项自查（无残留占位符、必填结构齐全、无敏感值），并在交付说明中注明校验器未运行。修复结构、占位符、敏感信息或状态漂移后再交付。只需向用户说明路径、校验结果和下一会话起点，不要重复整份文档。
 
 ## RESUME：从 Handoff 继续
 
