@@ -9,9 +9,16 @@ enum FrontChromePage {
             .contains { !$0.isTerminated }
     }
 
+    static func isChromeFrontmost() -> Bool {
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier == chromeBundleID
+    }
+
     static func currentTabURL() throws -> String {
         guard isChromeRunning() else {
             throw FrontChromePageError.chromeNotRunning
+        }
+        guard isChromeFrontmost() else {
+            throw FrontChromePageError.chromeNotFrontmost
         }
 
         let source = """
@@ -42,6 +49,7 @@ enum FrontChromePage {
 
 enum FrontChromePageError: LocalizedError {
     case chromeNotRunning
+    case chromeNotFrontmost
     case scriptUnavailable
     case appleScriptFailed(String)
     case noTabURL
@@ -50,6 +58,8 @@ enum FrontChromePageError: LocalizedError {
         switch self {
         case .chromeNotRunning:
             return "Google Chrome is not running."
+        case .chromeNotFrontmost:
+            return "Google Chrome is not the frontmost app."
         case .scriptUnavailable:
             return "Could not build the Chrome AppleScript."
         case .appleScriptFailed(let message):

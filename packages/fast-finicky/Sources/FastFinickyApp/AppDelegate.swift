@@ -285,7 +285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(addCurrentPage(_:)) {
-            return FrontChromePage.isChromeRunning()
+            return FrontChromePage.isChromeFrontmost()
         }
         return true
     }
