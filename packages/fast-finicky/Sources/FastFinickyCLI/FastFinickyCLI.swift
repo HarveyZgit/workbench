@@ -6,9 +6,14 @@ struct FastFinickyCLI {
     static func main() {
         do {
             let arguments = Array(CommandLine.arguments.dropFirst())
+            if arguments.contains("--setup") {
+                try runSetup()
+                return
+            }
+
             guard let url = value(for: "--url", in: arguments) else {
                 printUsage()
-                return
+                exit(2)
             }
 
             let dryRun = arguments.contains("--dry-run")
@@ -35,6 +40,19 @@ struct FastFinickyCLI {
         }
     }
 
+    private static func runSetup() throws {
+        let paths = AppPaths()
+        let store = try ConfigStore(paths: paths)
+        let result = try store.setupProfiles()
+        let payload = SetupCLIOutput(
+            configPath: paths.configURL.path,
+            discovered: result.discoveredCount,
+            added: result.added
+        )
+        let data = try JSONEncoder.pretty.encode(payload)
+        print(String(decoding: data, as: UTF8.self))
+    }
+
     private static func value(for flag: String, in arguments: [String]) -> String? {
         guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else {
             return nil
@@ -43,15 +61,19 @@ struct FastFinickyCLI {
     }
 
     private static func printUsage() {
-        print(
+        fputs(
             """
             Usage:
+              fast-finicky-cli --setup
               fast-finicky-cli --url <url> [--dry-run]
 
             Examples:
+              fast-finicky-cli --setup
               fast-finicky-cli --url https://github.com --dry-run
               fast-finicky-cli --url https://meet.google.com
-            """
+
+            """,
+            stderr
         )
     }
 }
@@ -59,6 +81,12 @@ struct FastFinickyCLI {
 private struct CLIOutput: Codable {
     let configPath: String
     let decision: RouteDecision
+}
+
+private struct SetupCLIOutput: Codable {
+    let configPath: String
+    let discovered: Int
+    let added: [ChromeProfileEntry]
 }
 
 private extension JSONEncoder {

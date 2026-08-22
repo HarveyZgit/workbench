@@ -57,14 +57,90 @@ public final class ConfigStore {
                 .map { RoutingEngine.normalizeToken($0) }
                 .filter { !$0.isEmpty }
 
-            guard !contains.isEmpty else {
-                throw FastFinickyError.invalidConfig("rules[\(index)].contains must include at least one non-empty token")
-            }
-
-            return ConfigRule(contains: contains, profile: profile)
+            let name = emptyToNil(rule.name)
+            let email = emptyToNil(rule.email)
+            return ConfigRule(contains: contains, profile: profile, name: name, email: email)
         }
 
-        return AppConfig(defaultProfile: defaultProfile, rules: rules)
+        let profiles = uniqueProfiles(config.profiles)
+        return AppConfig(defaultProfile: defaultProfile, rules: rules, profiles: profiles)
+    }
+
+    private static func uniqueProfiles(_ entries: [ChromeProfileEntry]) -> [ChromeProfileEntry] {
+        var seen = Set<String>()
+        var result: [ChromeProfileEntry] = []
+
+        for entry in entries {
+            let profile = entry.profile.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !profile.isEmpty else {
+                continue
+            }
+
+            let key = profile.lowercased()
+            guard !seen.contains(key) else {
+                continue
+            }
+            seen.insert(key)
+
+            let name = entry.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let email = entry.email?.trimmingCharacters(in: .whitespacesAndNewlines)
+            result.append(
+                ChromeProfileEntry(
+                    profile: profile,
+                    name: (name?.isEmpty == false) ? name : nil,
+                    email: (email?.isEmpty == false) ? email : nil
+                )
+            )
+        }
+
+        return result
+    }
+
+    private static func emptyToNil(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    @discardableResult
+    public func setupProfiles() throws -> ProfileSetupResult {
+        try setupProfiles(
+            userDataDirectory: ChromeLocalState.defaultUserDataDirectory,
+            fileManager: .default
+        )
+    }
+
+    @discardableResult
+    func setupProfiles(
+        userDataDirectory: URL,
+        fileManager: FileManager = .default
+    ) throws -> ProfileSetupResult {
+        try ensureConfigFileExists()
+        let loaded = try reload()
+        let discovered = ChromeLocalState.discoverProfiles(
+            userDataDirectory: userDataDirectory,
+            fileManager: fileManager
+        )
+        let (merged, added) = ChromeProfileSetup.merge(
+            discovered: discovered,
+            into: loaded
+        )
+        let result = ProfileSetupResult(
+            discoveredCount: discovered.count,
+            added: added
+        )
+        if result.didChange {
+            try save(merged)
+        }
+        return result
+    }
+
+    private func save(_ config: AppConfig) throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(config)
+        try data.write(to: paths.configURL, options: .atomic)
+        currentConfig = try Self.normalize(config)
     }
 }
 

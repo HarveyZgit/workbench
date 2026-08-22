@@ -3,13 +3,13 @@ import Carbon
 import FastFinickyCore
 import Foundation
 
-@MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let paths = AppPaths()
     private let logger: DailyLogger
     private let router = RoutingEngine()
-    private let launcher = BrowserLauncher()
+    private let launcher: BrowserLauncher
     private let warmer: ChromeWarmer
+    private let launchAtLogin = LaunchAtLogin()
 
     private var configStore: ConfigStore?
     private var watcher: ConfigWatcher?
@@ -19,11 +19,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let logger = DailyLogger(paths: paths, retentionDays: 7)
         self.logger = logger
         let launcher = BrowserLauncher()
+        self.launcher = launcher
         self.warmer = ChromeWarmer(
             chromeAppLocator: { try launcher.locateChromeApplication() },
             logger: logger
         )
         super.init()
+        ensureStoreAndWatcher(trigger: "init")
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -36,25 +38,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        do {
-            let store = try ConfigStore(paths: paths)
-            self.configStore = store
-            self.watcher = ConfigWatcher(configURL: paths.configURL) { [weak self] in
-                self?.reloadConfiguration(trigger: "watcher")
-            }
-            try watcher?.start()
-            setupStatusItem()
-            warmer.start()
+        setupStatusItem()
+        warmer.start()
+        launchAtLogin.removeLegacyAgentsIfNeeded()
+        ensureStoreAndWatcher(trigger: "launch")
+        if configStore != nil {
             logger.log("app_started", fields: [
                 "config": paths.configURL.path
             ])
-        } catch {
-            setupStatusItem()
-            warmer.start()
-            logger.log("startup_error", fields: [
-                "error": error.localizedDescription
-            ])
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        warmer.stop()
     }
 
     func application(_ sender: NSApplication, openFile filename: String) -> Bool {
@@ -63,12 +59,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, openFiles filenames: [String]) {
-        let handledAll = filenames.allSatisfy { filename in
+        var handledAll = true
+        for filename in filenames {
             let fileURL = URL(fileURLWithPath: filename)
-            return openIncomingURLString(fileURL.absoluteString, launchURL: fileURL, source: "open_files")
+            if !openIncomingURLString(fileURL.absoluteString, launchURL: fileURL, source: "open_files") {
+                handledAll = false
+            }
         }
 
         application.reply(toOpenOrPrint: handledAll ? .success : .failure)
+    }
+
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([NSUserActivityRestoring]) -> Void) -> Bool {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+              let url = userActivity.webpageURL else {
+            return false
+        }
+
+        return openIncomingURLString(url.absoluteString, launchURL: url, source: "user_activity")
     }
 
     @objc
@@ -106,6 +114,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc
+    func setupProfiles(_ sender: Any?) {
+        do {
+            ensureStoreAndWatcher(trigger: "setup")
+            guard let store = configStore else {
+                throw FastFinickyError.invalidConfig("Configuration is unavailable")
+            }
+
+            let result = try store.setupProfiles()
+            logger.log("setup_profiles", fields: [
+                "discovered": String(result.discoveredCount),
+                "added": String(result.added.count),
+                "profiles": result.added.map(\.profile).joined(separator: ",")
+            ])
+
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            if !result.didChange {
+                alert.messageText = "No new Chrome profiles"
+                alert.informativeText = "Scanned \(result.discoveredCount) profile(s). Config rules already cover them."
+            } else {
+                var lines: [String] = []
+                if !result.added.isEmpty {
+                    alert.messageText = "Added \(result.added.count) rule(s)"
+                    lines.append(contentsOf: result.added.map { entry in
+                        if let name = entry.name, !name.isEmpty {
+                            return "\(entry.profile) — \(name)"
+                        }
+                        return entry.profile
+                    })
+                    lines.append("Fill in each rule's contains with URL host/path tokens.")
+                }
+                alert.informativeText = lines.joined(separator: "\n")
+            }
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+        } catch {
+            logger.log("menu_error", fields: [
+                "action": "setup_profiles",
+                "error": error.localizedDescription
+            ])
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Setup failed"
+            alert.informativeText = error.localizedDescription
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+        }
+    }
+
+    @objc
     func reloadConfig(_ sender: Any?) {
         reloadConfiguration(trigger: "menu")
     }
@@ -124,24 +182,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc
+    func toggleLaunchAtLogin(_ sender: Any?) {
+        do {
+            let enabled = !launchAtLogin.isEnabled
+            try launchAtLogin.setEnabled(enabled)
+            if let item = sender as? NSMenuItem {
+                item.state = enabled ? .on : .off
+            }
+            logger.log("launch_at_login", fields: [
+                "enabled": enabled ? "true" : "false"
+            ])
+        } catch {
+            logger.log("menu_error", fields: [
+                "action": "launch_at_login",
+                "error": error.localizedDescription
+            ])
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Could not update Launch at Login"
+            alert.informativeText = error.localizedDescription
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+        }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard let item = menu.item(withTitle: "Launch at Login") else { return }
+        item.state = launchAtLogin.isEnabled ? .on : .off
+    }
+
+    @objc
     func quit(_ sender: Any?) {
         NSApp.terminate(nil)
     }
 
-    private func reloadConfiguration(trigger: String) {
-        guard let store = configStore else {
+    private func ensureStoreAndWatcher(trigger: String) {
+        if configStore == nil {
             do {
                 configStore = try ConfigStore(paths: paths)
-                logger.log("config_reloaded", fields: [
-                    "trigger": trigger,
-                    "result": "recreated_store"
-                ])
             } catch {
-                logger.log("config_reload_failed", fields: [
+                logger.log("startup_error", fields: [
                     "trigger": trigger,
+                    "stage": "store",
                     "error": error.localizedDescription
                 ])
             }
+        }
+
+        if watcher == nil {
+            watcher = ConfigWatcher(configURL: paths.configURL) { [weak self] in
+                self?.reloadConfiguration(trigger: "watcher")
+            }
+        }
+
+        do {
+            try watcher?.start()
+        } catch {
+            logger.log("startup_error", fields: [
+                "trigger": trigger,
+                "stage": "watcher",
+                "error": error.localizedDescription
+            ])
+        }
+
+    }
+
+    private func reloadConfiguration(trigger: String) {
+        guard let store = configStore else {
+            ensureStoreAndWatcher(trigger: trigger)
             return
         }
 
@@ -162,6 +270,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @discardableResult
     private func openIncomingURLString(_ urlString: String, launchURL: URL, source: String) -> Bool {
         let startedAt = Date()
+
+        if configStore == nil {
+            ensureStoreAndWatcher(trigger: "route")
+        }
 
         guard let store = configStore else {
             logger.log("route_error", fields: [
@@ -220,11 +332,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(withTitle: "Open Config", action: #selector(openConfig(_:)), keyEquivalent: ",")
+        menu.addItem(withTitle: "Setup", action: #selector(setupProfiles(_:)), keyEquivalent: "s")
         menu.addItem(withTitle: "Reload Config", action: #selector(reloadConfig(_:)), keyEquivalent: "r")
         menu.addItem(withTitle: "Open Log", action: #selector(openLog(_:)), keyEquivalent: "l")
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Quit", action: #selector(quit(_:)), keyEquivalent: "q")
 
+        menu.delegate = self
         statusItem.menu = menu
         self.statusItem = statusItem
     }

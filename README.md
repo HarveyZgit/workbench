@@ -9,6 +9,7 @@
 | 路径 | 用途 | 状态 |
 | --- | --- | --- |
 | `packages/markdown-comment` | Markdown 评论工具：已迁入 VS Code 扩展、CLI 与 Agent Skill | 架构迁移中 |
+| `packages/fast-finicky` | macOS 菜单栏 Chrome Profile 分流（Swift，不进 Rush） | 已启用 |
 | `tools/repo` | 仓库级 ESLint、Prettier 与 Git hooks | 已启用 |
 | `resources/skills` | 独立 workflow Skill 源文件（`review-and-commit`、`session-handoff`、`context-doctor`），经 `scripts/link-skills.sh` 分发到本机各 Agent | 已启用 |
 | `resources/rules` | 原子化通用准则片段，未来分发到各 Agent 宿主的全局配置 | 体系已建，分发未实现 |

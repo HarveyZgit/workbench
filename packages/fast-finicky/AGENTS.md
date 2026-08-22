@@ -45,7 +45,9 @@ Key files:
 - If no rule matches, use `defaultProfile`
 - Config is loaded into memory and reloaded on file change
 - Local files are supported through `openFile` / `openFiles`
-- Menu actions are `Open Config`, `Reload Config`, `Open Log`, `Quit`
+- Menu actions are `Open Config`, `Setup`, `Reload Config`, `Open Log`, `Launch at Login`, `Quit`
+- `Launch at Login` toggles a LaunchAgent at `~/Library/LaunchAgents/com.harvey.fastfinicky.plist` for the running `.app` (not a raw `swift run` binary). Enabling also removes the old `dev.fastfinicky.app` agent if present.
+- `Setup` / `fast-finicky-cli --setup` scans Chrome user data and appends a rule for each unknown profile. New rules get empty `contains` (URL matching only); `name`/`email` are labels. It never deletes or rewrites existing rules.
 
 Keep the hot path free of:
 
@@ -64,16 +66,17 @@ Reason:
 
 The current implementation in [BrowserLauncher.swift](Sources/FastFinickyCore/BrowserLauncher.swift) is:
 
-- for web URLs, execute `Google Chrome.app/Contents/MacOS/Google Chrome`
-- pass `--profile-directory=<profile> <absolute-url>`
-- for local files, keep using `/usr/bin/open -n -a <Chrome.app path> --args --profile-directory=<profile> <path>`
-- try one immediate activation, then at most one short retry if Chrome was not yet running
+- if Chrome is already running, `profile.last_used` matches the target, and at most one profile has windows (`last_active_profiles`), hand the URL to that instance (`reuseRunningInstance`) — no new Chrome process
+- otherwise, for web URLs, execute `Google Chrome.app/Contents/MacOS/Google Chrome` with `--profile-directory=<profile> <absolute-url>`
+- for local files, keep using `/usr/bin/open -n -a <Chrome.app path> --args --profile-directory=<profile> <path>` (`-g` when Chrome is already running)
+- activate Chrome only on a true cold start (not running yet); never activate an already-running instance right after spawn
 
 Important details:
 
-- Web URLs favor the shortest launch path.
+- Web URLs favor the shortest launch path that still preserves the profile.
 - Local files still use the raw file path while routing continues to use the `file://` URL form.
 - Profile correctness currently has priority over trying more "native" app-launch APIs.
+- Activating a running Chrome immediately after spawn fronts existing windows before the URL arrives. That is the "focus, then wait, then open" symptom.
 - `BrowserLauncher.launch(...)` returns structured metadata (`LaunchResult`) instead of only returning the app URL.
 
 If you revisit performance work here, treat profile correctness as the non-negotiable constraint.
@@ -94,7 +97,9 @@ The `directBinary` path spawns the full Chrome binary so it can honor `--profile
 Constraints if you touch this:
 
 - Keep it profile-independent — there is no per-profile framework to warm, so do not add per-profile logic.
-- Do not switch the hot path to LaunchServices/`open` to "fix" latency: that reintroduces the profile-correctness regression documented above.
+- Remap when `Versions/Current` changes device+inode; comparing the unresolved path string is not enough after a Chrome update.
+- Tear down the mmap on the isolation queue (`stop()` / `deinit`). Off-queue `munmap` races the timer.
+- `reuseRunningInstance` is safe only when `profile.last_used` matches the target and at most one profile currently has windows. LaunchServices without a new instance cannot pick a profile.
 
 ## Config And Logs
 
@@ -143,6 +148,7 @@ App bundle output:
 CLI examples:
 
 ```sh
+swift run fast-finicky-cli --setup
 swift run fast-finicky-cli --url 'https://people-byte-my.byteintl.com/path?q=1' --dry-run
 swift run fast-finicky-cli --url 'https://people-byte-my.byteintl.com/path?q=1'
 ```

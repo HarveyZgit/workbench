@@ -1,10 +1,10 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 5.7
 import PackageDescription
 
 let package = Package(
-    name: "FastFinickyRewrite",
+    name: "FastFinicky",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v12)
     ],
     products: [
         .library(

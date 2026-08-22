@@ -32,8 +32,8 @@ public struct RoutingEngine: Sendable {
     }
 
     public static func matchText(for url: URL) -> String {
-        let host = url.host(percentEncoded: false) ?? url.host ?? ""
-        let path = url.path(percentEncoded: false)
+        let host = url.host ?? ""
+        let path = url.path
         return (host + path).lowercased()
     }
 

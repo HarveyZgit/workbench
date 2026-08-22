@@ -11,14 +11,14 @@ public struct AppPaths: Sendable {
         let resolvedHome = homeDirectory ?? Self.resolveHomeDirectory()
         self.homeDirectory = resolvedHome
         self.configDirectoryURL = resolvedHome
-            .appending(path: ".config", directoryHint: .isDirectory)
-            .appending(path: "fast-finicky", directoryHint: .isDirectory)
-        self.configURL = configDirectoryURL.appending(path: "config.json", directoryHint: .notDirectory)
+            .appendingPathComponent(".config", isDirectory: true)
+            .appendingPathComponent("fast-finicky", isDirectory: true)
+        self.configURL = configDirectoryURL.appendingPathComponent("config.json", isDirectory: false)
         self.stateDirectoryURL = resolvedHome
-            .appending(path: ".local", directoryHint: .isDirectory)
-            .appending(path: "state", directoryHint: .isDirectory)
-            .appending(path: "fast-finicky", directoryHint: .isDirectory)
-        self.logsDirectoryURL = stateDirectoryURL.appending(path: "logs", directoryHint: .isDirectory)
+            .appendingPathComponent(".local", isDirectory: true)
+            .appendingPathComponent("state", isDirectory: true)
+            .appendingPathComponent("fast-finicky", isDirectory: true)
+        self.logsDirectoryURL = stateDirectoryURL.appendingPathComponent("logs", isDirectory: true)
     }
 
     public func ensureBaseDirectories(fileManager: FileManager = .default) throws {

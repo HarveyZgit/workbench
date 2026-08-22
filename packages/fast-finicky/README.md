@@ -23,23 +23,28 @@ macOS 菜单栏应用：把链接按规则分流到指定的 Chrome Profile。�
     },
     {
       "contains": ["people-byte-my.byteintl.com", "samebyte"],
+      "name": "Cloudvxz",
       "profile": "Profile 9"
     }
   ]
 }
 ```
 
-匹配输入是 `lowercase(hostname + pathname)`，忽略 query 和 hash。规则按顺序首条命中生效，未命中用 `defaultProfile`。
+匹配输入是 `lowercase(hostname + pathname)`，忽略 query 和 hash。规则按顺序首条命中生效，未命中用 `defaultProfile`。`name` / `email` 只是对照 Chrome 里这个 profile 是谁，**不参与匹配**。
+
+菜单 **Setup** 或 `fast-finicky-cli --setup` 会扫描本机 Chrome，给还没有 rule 的 profile 追加一条，`contains` 留空。空 `contains` 不会命中任何 URL，链接仍走 `defaultProfile`，直到你填上真正的 host/path。不删已有 rules。
 
 首次启动时，如果配置文件还不存在，会写入一份当前常用规则的默认配置。已有配置不会被覆盖。
 
 日志：`~/.local/state/fast-finicky/logs/YYYY-MM-DD.log`，只保留最近 7 天。
 
-菜单：`Open Config` / `Reload Config` / `Open Log` / `Quit`。
+菜单：`Open Config` / `Setup` / `Reload Config` / `Open Log` / `Launch at Login` / `Quit`。
+
+`Launch at Login` 勾选后写入 `~/Library/LaunchAgents/com.harvey.fastfinicky.plist`，开机用当前这个 `.app` 路径启动。再点一次取消勾选即关闭。
 
 ## 构建与测试
 
-本包是 Swift Package，**不进 Rush**。需要 macOS 14+ 和 Swift 6。
+本包是 Swift Package，**不进 Rush**。需要 macOS 12+ 和 Swift 5.7（Xcode 14）。
 
 ```sh
 cd packages/fast-finicky
@@ -55,6 +60,7 @@ swift test
 
 ```sh
 cd packages/fast-finicky
+swift run fast-finicky-cli --setup
 swift run fast-finicky-cli --url 'https://people-byte-my.byteintl.com/path?q=1' --dry-run
 ```
 

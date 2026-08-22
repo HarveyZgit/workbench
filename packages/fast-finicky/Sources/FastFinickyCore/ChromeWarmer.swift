@@ -1,24 +1,9 @@
 import Foundation
 import Darwin
 
-/// Keeps Google Chrome's shared framework binary resident in the unified buffer
-/// cache so that the `directBinary` launch path stays "warm".
+/// Keeps Chrome's shared framework pages resident for `directBinary` launches.
 ///
-/// Why this exists:
-/// - The hot path spawns the full Chrome binary to honor `--profile-directory`.
-/// - When Chrome's (~458 MB, profile-independent) framework pages get evicted
-///   after idle / memory pressure, that spawn must page the framework back in,
-///   which was measured at ~6.8s cold vs ~0.1s warm.
-///
-/// Strategy:
-/// - `mmap` the framework binary once (shares the same physical pages Chrome
-///   already maps, so it adds ~no private memory while Chrome runs).
-/// - On a timer, cheaply check residency with `mincore`; only when a meaningful
-///   fraction has been evicted do we `madvise(WILLNEED)` + touch pages to fault
-///   them back. A resident tick is a near-free no-op.
-/// - `warmNow()` lets the launch path keep things hot during active use.
-/// - Back off the interval when eviction recurs (real memory pressure) so we do
-///   not thrash against the OS; reset to the base interval once warm again.
+/// Constraints: profile-independent; no `mlock`; remap when `Versions/Current` changes inode.
 public final class ChromeWarmer: @unchecked Sendable {
     private let chromeAppLocator: @Sendable () throws -> URL
     private let logger: DailyLogger?
@@ -34,10 +19,14 @@ public final class ChromeWarmer: @unchecked Sendable {
     private var mapAddress: UnsafeMutableRawPointer?
     private var mapLength: Int = 0
     private var mappedPath: String?
+    private var mappedResolvedPath: String?
+    private var mappedDevice: dev_t = 0
+    private var mappedInode: ino_t = 0
 
     private var currentInterval: TimeInterval
     private var consecutiveEvictions: Int = 0
     private var touchSink: UInt8 = 0
+    private var stopped = false
 
     public init(
         chromeAppLocator: @escaping @Sendable () throws -> URL,
@@ -55,18 +44,16 @@ public final class ChromeWarmer: @unchecked Sendable {
     }
 
     deinit {
-        timer?.cancel()
-        if let address = mapAddress, mapLength > 0 {
-            munmap(address, mapLength)
-        }
-        if fileDescriptor >= 0 {
-            close(fileDescriptor)
+        queue.sync {
+            stopped = true
+            tearDownLocked()
         }
     }
 
     /// Maps the framework, warms it once, and starts the residency timer.
     public func start() {
         queue.async { [self] in
+            guard !stopped else { return }
             warmLocked(trigger: "start")
             scheduleTimerLocked(after: currentInterval)
         }
@@ -75,19 +62,25 @@ public final class ChromeWarmer: @unchecked Sendable {
     /// Opportunistic warm — called right after a real launch to stay hot during active use.
     public func warmNow() {
         queue.async { [self] in
+            guard !stopped else { return }
             warmLocked(trigger: "launch")
         }
     }
 
     public func stop() {
-        queue.async { [self] in
-            timer?.cancel()
-            timer = nil
-            unmapLocked()
+        queue.sync {
+            stopped = true
+            tearDownLocked()
         }
     }
 
     // MARK: - Queue-isolated core
+
+    private func tearDownLocked() {
+        timer?.cancel()
+        timer = nil
+        unmapLocked()
+    }
 
     private func warmLocked(trigger: String) {
         ensureMappedLocked()
@@ -132,7 +125,20 @@ public final class ChromeWarmer: @unchecked Sendable {
         }
 
         let path = Self.frameworkBinaryURL(forChromeApp: appURL).path
-        if mapAddress != nil, mappedPath == path {
+        var probe = stat()
+        guard stat(path, &probe) == 0, probe.st_size > 0 else {
+            logger?.log("warm_error", fields: [
+                "stage": "stat",
+                "path": path
+            ])
+            return
+        }
+
+        let resolvedPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        if mapAddress != nil,
+           mappedInode == probe.st_ino,
+           mappedDevice == probe.st_dev,
+           mappedResolvedPath == resolvedPath {
             return
         }
 
@@ -167,6 +173,9 @@ public final class ChromeWarmer: @unchecked Sendable {
         mapAddress = address
         mapLength = length
         mappedPath = path
+        mappedResolvedPath = resolvedPath
+        mappedDevice = info.st_dev
+        mappedInode = info.st_ino
     }
 
     private func unmapLocked() {
@@ -180,6 +189,9 @@ public final class ChromeWarmer: @unchecked Sendable {
         mapLength = 0
         fileDescriptor = -1
         mappedPath = nil
+        mappedResolvedPath = nil
+        mappedDevice = 0
+        mappedInode = 0
     }
 
     /// Fraction of mapped pages currently resident in core, or nil if unavailable.
@@ -232,7 +244,7 @@ public final class ChromeWarmer: @unchecked Sendable {
         let source = DispatchSource.makeTimerSource(queue: queue)
         source.schedule(deadline: .now() + interval)
         source.setEventHandler { [weak self] in
-            guard let self else { return }
+            guard let self, !self.stopped else { return }
             self.warmLocked(trigger: "timer")
             self.scheduleTimerLocked(after: self.currentInterval)
         }
@@ -241,10 +253,13 @@ public final class ChromeWarmer: @unchecked Sendable {
     }
 
     private static func frameworkBinaryURL(forChromeApp appURL: URL) -> URL {
-        appURL.appending(
-            path: "Contents/Frameworks/Google Chrome Framework.framework/Versions/Current/Google Chrome Framework",
-            directoryHint: .notDirectory
-        )
+        appURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Frameworks", isDirectory: true)
+            .appendingPathComponent("Google Chrome Framework.framework", isDirectory: true)
+            .appendingPathComponent("Versions", isDirectory: true)
+            .appendingPathComponent("Current", isDirectory: true)
+            .appendingPathComponent("Google Chrome Framework", isDirectory: false)
     }
 
     /// Synchronously maps + warms the located framework and returns the resulting
@@ -253,6 +268,13 @@ public final class ChromeWarmer: @unchecked Sendable {
         queue.sync {
             warmLocked(trigger: "test")
             return residentFractionLocked()
+        }
+    }
+
+    func mappedIdentityForTesting() -> (inode: UInt64, size: Int)? {
+        queue.sync {
+            guard mapAddress != nil, mappedInode != 0 else { return nil }
+            return (UInt64(mappedInode), mapLength)
         }
     }
 }
