@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --border: 240 5.9% 90%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --accent: 240 4.8% 95.9%;
+        --ring: 240 5.9% 10%;
+        --radius: 0.5rem;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        width: 340px;
+        color: hsl(var(--foreground));
+        background: hsl(var(--background));
+        font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif;
+      }
+      .wrap { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+      .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+        height: 36px; padding: 0 16px; border-radius: calc(var(--radius) - 2px);
+        border: 1px solid transparent; font: inherit; font-weight: 500; cursor: pointer;
+        transition: background-color .15s, color .15s, border-color .15s, box-shadow .15s;
+      }
+      .btn svg { flex: none; }
+      .btn:focus-visible { outline: none; box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring)); }
+      .btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+      .btn-primary:hover { background: hsl(240 5.9% 10% / 0.9); }
+      .btn-outline { background: hsl(var(--background)); color: hsl(var(--foreground)); border-color: hsl(var(--border)); }
+      .btn-outline:hover { background: hsl(var(--accent)); }
+      .btn-icon { width: 32px; height: 32px; padding: 0; color: hsl(var(--muted-foreground)); }
+      .w-full { width: 100%; }
+      .card {
+        border: 1px solid hsl(var(--border));
+        border-radius: calc(var(--radius) + 4px);
+        background: hsl(var(--background));
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .card.muted { opacity: 0.55; }
+      .card-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+      .card-title { font-size: 14px; font-weight: 500; letter-spacing: -0.01em; }
+      .card-desc { font-size: 12px; color: hsl(var(--muted-foreground)); margin-top: 2px; }
+      .code {
+        margin: 0; padding: 8px 10px; border-radius: calc(var(--radius) - 2px);
+        background: hsl(var(--muted)); color: hsl(var(--foreground));
+        font: 11.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: pre-wrap; word-break: break-all; max-height: 7.5em; overflow: auto;
+        user-select: text;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <button class="btn btn-primary w-full" id="toggle" type="button">开始标记</button>
+      <div class="card" data-label="查看当前标签页的所有评论">
+        <div class="card-row">
+          <div>
+            <div class="card-title">当前标签页</div>
+            <div class="card-desc">查看此标签上的全部评论</div>
+          </div>
+          <button class="btn btn-outline btn-icon copy" data-copy="tabPrompt" type="button" aria-label="复制" title="复制">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16V4a2 2 0 0 1 2-2h12"/></svg>
+          </button>
+        </div>
+        <pre class="code" id="tabPrompt"></pre>
+      </div>
+      <div class="card" id="pageCard" data-label="查看当前页面的所有评论">
+        <div class="card-row">
+          <div>
+            <div class="card-title">当前页面</div>
+            <div class="card-desc" id="pageDesc">查看此页面上的评论</div>
+          </div>
+          <button class="btn btn-outline btn-icon copy" data-copy="pagePrompt" type="button" aria-label="复制" title="复制">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16V4a2 2 0 0 1 2-2h12"/></svg>
+          </button>
+        </div>
+        <pre class="code" id="pagePrompt"></pre>
+      </div>
+    </div>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

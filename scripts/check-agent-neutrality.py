@@ -26,6 +26,7 @@ ADAPTER_CONTENT = {
 # their repository policy or installation boundary.
 SCAN_PREFIXES = (
     "packages/markdown-comment/resources/skills/",
+    "packages/dom-comment/resources/skills/",
     "resources/evals/",
     "resources/skills/",
 )

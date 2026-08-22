@@ -79,6 +79,8 @@ common/autoinstallers/*/.npmrc
 .eden-mono
 
 dist
+.output
+.wxt
 doc_build
 build_cn
 
@@ -91,6 +93,8 @@ tsconfig.tsbuildinfo
 
 .temp
 .tmp
+
+packages/dom-comment/data/
 
 # Eval fixtures intentionally exercise repository instruction discovery.
 !resources/evals/session-handoff/fixtures/resume-compatible/AGENTS.md

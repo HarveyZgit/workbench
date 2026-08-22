@@ -9,6 +9,7 @@
 | 路径 | 用途 | 状态 |
 | --- | --- | --- |
 | `packages/markdown-comment` | Markdown 评论工具：已迁入 VS Code 扩展、CLI 与 Agent Skill | 架构迁移中 |
+| `packages/dom-comment` | 页面 DOM 元素标记与评论 | 开发中（OpenSpec + CLI） |
 | `tools/repo` | 仓库级 ESLint、Prettier 与 Git hooks | 已启用 |
 | `resources/skills` | 独立 workflow Skill 源文件（`review-and-commit`、`session-handoff`、`context-doctor`），经 `scripts/link-skills.sh` 分发到本机各 Agent | 已启用 |
 | `resources/rules` | 原子化通用准则片段，未来分发到各 Agent 宿主的全局配置 | 体系已建，分发未实现 |
@@ -52,14 +53,15 @@ Rush 的 `--to` 用的是 **package.json 的 `name`**，不是目录名：
 | 目录 | 包名 |
 | --- | --- |
 | `packages/markdown-comment` | `vscode-markdown-comment` |
+| `packages/dom-comment` | `dom-comment` |
 | `tools/repo` | `repo-tools`（仓库级 ESLint / Prettier / hooks，无业务产物） |
 
 ```sh
 rush update                              # 安装 / 更新依赖
 rush build                               # 按依赖顺序构建全部 package
 rush build --to vscode-markdown-comment  # 只构建该包及其依赖
-rush typecheck                           # 跑有 typecheck 脚本的包（目前是 markdown-comment）
-rush test                                # 跑有 test 脚本的包（目前没有）
+rush typecheck                           # 跑有 typecheck 脚本的包
+rush test                                # 跑有 test 脚本的包
 rush lint                                # ESLint
 rush format                              # Prettier --write
 rush format-check                        # Prettier --check（CI 用）
