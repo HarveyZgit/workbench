@@ -206,9 +206,82 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    @objc
+    func addCurrentPage(_ sender: Any?) {
+        do {
+            ensureStoreAndWatcher(trigger: "add_page")
+            guard let store = configStore else {
+                throw FastFinickyError.invalidConfig("Configuration is unavailable")
+            }
+
+            let urlString = try FrontChromePage.currentTabURL()
+            let profiles = ProfileOption.list(from: store.currentConfig)
+            guard !profiles.isEmpty else {
+                throw FastFinickyError.invalidConfig("No Chrome profiles found. Run Setup first.")
+            }
+            let preferredProfile = ProfileOption.lastUsedDirectory()
+            let anchor = statusItem?.button
+
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                guard let draft = AddPageRulePanel.run(
+                    urlString: urlString,
+                    profiles: profiles,
+                    preferredProfile: preferredProfile,
+                    anchor: anchor
+                ) else {
+                    return
+                }
+
+                do {
+                    let token = try RoutingEngine.containsToken(fromUserInput: draft.contains)
+                    try store.addRule(
+                        ConfigRule(
+                            contains: [token],
+                            profile: draft.profile.directory,
+                            name: draft.profile.name,
+                            email: draft.profile.email
+                        )
+                    )
+                    self.logger.log("rule_added", fields: [
+                        "contains": token,
+                        "profile": draft.profile.directory,
+                        "url": urlString
+                    ])
+                } catch {
+                    self.presentAddPageError(error)
+                }
+            }
+        } catch {
+            presentAddPageError(error)
+        }
+    }
+
+    private func presentAddPageError(_ error: Error) {
+        logger.log("menu_error", fields: [
+            "action": "add_current_page",
+            "error": error.localizedDescription
+        ])
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Could not add current page"
+        alert.informativeText = error.localizedDescription
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
-        guard let item = menu.item(withTitle: "Launch at Login") else { return }
-        item.state = launchAtLogin.isEnabled ? .on : .off
+        if let loginItem = menu.item(withTitle: "Launch at Login") {
+            loginItem.state = launchAtLogin.isEnabled ? .on : .off
+        }
+    }
+
+    @objc
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(addCurrentPage(_:)) {
+            return FrontChromePage.isChromeRunning()
+        }
+        return true
     }
 
     @objc
@@ -331,9 +404,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.button?.imagePosition = .imageOnly
 
         let menu = NSMenu()
+        menu.addItem(withTitle: "Add Current Page…", action: #selector(addCurrentPage(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Open Config", action: #selector(openConfig(_:)), keyEquivalent: ",")
-        menu.addItem(withTitle: "Setup", action: #selector(setupProfiles(_:)), keyEquivalent: "s")
         menu.addItem(withTitle: "Reload Config", action: #selector(reloadConfig(_:)), keyEquivalent: "r")
+        menu.addItem(withTitle: "Setup", action: #selector(setupProfiles(_:)), keyEquivalent: "s")
         menu.addItem(withTitle: "Open Log", action: #selector(openLog(_:)), keyEquivalent: "l")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")

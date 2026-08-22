@@ -69,6 +69,8 @@
   <string>12.0</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Fast Finicky reads the current Google Chrome tab URL when you add it as a routing rule.</string>
   <key>NSUserActivityTypes</key>
   <array>
     <string>NSUserActivityTypeBrowsingWeb</string>

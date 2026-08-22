@@ -40,4 +40,22 @@ public struct RoutingEngine: Sendable {
     public static func normalizeToken(_ token: String) -> String {
         token.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
+
+    public static func containsToken(fromUserInput input: String) throws -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw FastFinickyError.invalidConfig("contains must not be empty")
+        }
+
+        if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased(),
+           ["http", "https", "file"].contains(scheme) {
+            let token = matchText(for: url)
+            guard !token.isEmpty else {
+                throw FastFinickyError.invalidConfig("contains must not be empty")
+            }
+            return token
+        }
+
+        return normalizeToken(trimmed)
+    }
 }

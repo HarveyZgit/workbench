@@ -28,6 +28,61 @@ final class FastFinickyCoreTests: XCTestCase {
         XCTAssertEqual(decision.matchText, "github.com/openai/openai")
     }
 
+    func testContainsTokenFromFullURLUsesHostAndPath() throws {
+        XCTAssertEqual(
+            try RoutingEngine.containsToken(fromUserInput: "https://github.com/openai/openai?tab=readme#setup"),
+            "github.com/openai/openai"
+        )
+        XCTAssertEqual(
+            try RoutingEngine.containsToken(fromUserInput: "  Example.COM/Docs  "),
+            "example.com/docs"
+        )
+        XCTAssertEqual(
+            try RoutingEngine.containsToken(fromUserInput: "chrome://settings/"),
+            "chrome://settings/"
+        )
+    }
+
+    func testProfileOptionListPrefersRuleLabelsThenDiscovered() {
+        let config = AppConfig(
+            defaultProfile: "Profile 1",
+            rules: [ConfigRule(contains: ["github.com"], profile: "Profile 4", name: "Haevy")]
+        )
+        let options = ProfileOption.list(
+            from: config,
+            discovered: [
+                ChromeProfileEntry(profile: "Profile 4", name: "Ignored"),
+                ChromeProfileEntry(profile: "Default", name: "Harvey", email: "a@example.com")
+            ]
+        )
+        XCTAssertEqual(options.map(\.directory), ["Profile 4", "Profile 1", "Default"])
+        XCTAssertEqual(options[0].title, "Haevy — Profile 4")
+        XCTAssertEqual(options[2].title, "Harvey — Default — a@example.com")
+
+        let unlabeled = AppConfig(defaultProfile: "Default", rules: [])
+        let labeledDefault = ProfileOption.list(
+            from: unlabeled,
+            discovered: [ChromeProfileEntry(profile: "Default", name: "Harvey")]
+        )
+        XCTAssertEqual(labeledDefault[0].title, "Harvey — Default")
+    }
+
+    func testConfigStoreAddRulePrependsWithoutDroppingExisting() throws {
+        let tempHome = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempHome, withIntermediateDirectories: true)
+        let paths = AppPaths(homeDirectory: tempHome)
+        try paths.ensureBaseDirectories()
+        try Data(#"{ "defaultProfile": "Profile 1", "rules": [{ "contains": ["github.com"], "profile": "Profile 4" }] }"#.utf8)
+            .write(to: paths.configURL)
+
+        let store = try ConfigStore(paths: paths)
+        try store.addRule(ConfigRule(contains: ["github.com/openai"], profile: "Profile 9", name: "Work"))
+
+        XCTAssertEqual(store.currentConfig.rules.map(\.profile), ["Profile 9", "Profile 4"])
+        XCTAssertEqual(store.currentConfig.rules[0].contains, ["github.com/openai"])
+        XCTAssertEqual(store.currentConfig.rules[1].contains, ["github.com"])
+    }
+
     func testRoutingFallsBackToDefaultProfile() throws {
         let config = AppConfig(
             defaultProfile: "Profile 1",

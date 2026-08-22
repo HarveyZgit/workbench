@@ -38,7 +38,9 @@ macOS 菜单栏应用：把链接按规则分流到指定的 Chrome Profile。�
 
 日志：`~/.local/state/fast-finicky/logs/YYYY-MM-DD.log`，只保留最近 7 天。
 
-菜单：`Open Config` / `Setup` / `Reload Config` / `Open Log` / `Launch at Login` / `Quit`。
+菜单：`Add Current Page…` / `Open Config` / `Reload Config` / `Setup` / `Open Log` / `Launch at Login` / `Quit`。
+
+`Add Current Page…` 在 Google Chrome 为当前前台应用时可用。点开后读取当前标签 URL，选一个 profile，把规则插到 `rules` 最前面。输入框会填入当前 URL；保存时按 host + path 写入 `contains`（忽略 query/hash）。首次使用需允许控制 Chrome。
 
 `Launch at Login` 勾选后写入 `~/Library/LaunchAgents/com.harvey.fastfinicky.plist`，开机用当前这个 `.app` 路径启动。再点一次取消勾选即关闭。
 

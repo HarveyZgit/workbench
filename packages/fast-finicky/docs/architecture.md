@@ -23,7 +23,7 @@
 
 - Apple Event 接收
 - 菜单栏入口
-- `Open Config / Setup / Reload Config / Open Log / Launch at Login / Quit`
+- `Add Current Page… / Open Config / Reload Config / Setup / Open Log / Launch at Login / Quit`
 - 无设置窗口、无 WebView
 
 ### 2. 极简规则引擎
@@ -61,3 +61,4 @@
 - reload 失败时继续使用上一版有效配置
 - 菜单 `Setup` 扫描 Chrome，给还没有 rule 的 profile **追加 rule**：`name`/`email` 作对照，`contains` 留空（空规则不匹配 URL）。不删、不改已有 rules。
 - 菜单 `Launch at Login` 开关 `~/Library/LaunchAgents/com.harvey.fastfinicky.plist`，用 `/usr/bin/open -ga <当前.app>` 开机启动；取消勾选则 unload 并删除 plist。启用时会清掉旧的 `dev.fastfinicky.app` agent。
+- 菜单 `Add Current Page…`：Chrome 为前台时可用；AppleScript 读当前标签 URL，在菜单栏下方打开 utility 面板（当前页面只读、Profile 下拉、Contains 输入、Cancel/Add），新 rule 插到列表最前。

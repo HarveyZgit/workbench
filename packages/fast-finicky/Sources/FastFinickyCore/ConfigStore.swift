@@ -135,6 +135,17 @@ public final class ConfigStore {
         return result
     }
 
+    public func addRule(_ rule: ConfigRule) throws {
+        try ensureConfigFileExists()
+        let loaded = try reload()
+        let next = AppConfig(
+            defaultProfile: loaded.defaultProfile,
+            rules: [rule] + loaded.rules,
+            profiles: loaded.profiles
+        )
+        try save(next)
+    }
+
     private func save(_ config: AppConfig) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

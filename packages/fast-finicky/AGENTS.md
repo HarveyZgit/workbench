@@ -45,7 +45,8 @@ Key files:
 - If no rule matches, use `defaultProfile`
 - Config is loaded into memory and reloaded on file change
 - Local files are supported through `openFile` / `openFiles`
-- Menu actions are `Open Config`, `Setup`, `Reload Config`, `Open Log`, `Launch at Login`, `Quit`
+- Menu actions are `Add Current Page…`, `Open Config`, `Reload Config`, `Setup`, `Open Log`, `Launch at Login`, `Quit`
+- `Add Current Page…` is enabled when Google Chrome is running. It reads the active tab URL via AppleScript (TCC prompt) and prepends a rule. The contains field is prefilled with host + path for http(s)/file URLs. The profile popup prefers Chrome's last used profile.
 - `Launch at Login` toggles a LaunchAgent at `~/Library/LaunchAgents/com.harvey.fastfinicky.plist` for the running `.app` (not a raw `swift run` binary). Enabling also removes the old `dev.fastfinicky.app` agent if present.
 - `Setup` / `fast-finicky-cli --setup` scans Chrome user data and appends a rule for each unknown profile. New rules get empty `contains` (URL matching only); `name`/`email` are labels. It never deletes or rewrites existing rules.
 
