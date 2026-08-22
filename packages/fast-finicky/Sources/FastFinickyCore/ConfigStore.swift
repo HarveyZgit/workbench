@@ -121,13 +121,14 @@ public final class ConfigStore {
             userDataDirectory: userDataDirectory,
             fileManager: fileManager
         )
-        let (merged, added) = ChromeProfileSetup.merge(
+        let (merged, added, labeled) = ChromeProfileSetup.merge(
             discovered: discovered,
             into: loaded
         )
         let result = ProfileSetupResult(
             discoveredCount: discovered.count,
-            added: added
+            added: added,
+            labeled: labeled
         )
         if result.didChange {
             try save(merged)

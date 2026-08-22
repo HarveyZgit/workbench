@@ -125,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             logger.log("setup_profiles", fields: [
                 "discovered": String(result.discoveredCount),
                 "added": String(result.added.count),
+                "labeled": String(result.labeled),
                 "profiles": result.added.map(\.profile).joined(separator: ",")
             ])
 
@@ -144,6 +145,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         return entry.profile
                     })
                     lines.append("Fill in each rule's contains with URL host/path tokens.")
+                } else {
+                    alert.messageText = "Updated profile labels"
+                }
+                if result.labeled > 0 {
+                    lines.append("Filled name/email on \(result.labeled) existing rule(s).")
                 }
                 alert.informativeText = lines.joined(separator: "\n")
             }

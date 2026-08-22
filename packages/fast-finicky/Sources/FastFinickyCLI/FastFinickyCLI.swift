@@ -47,7 +47,8 @@ struct FastFinickyCLI {
         let payload = SetupCLIOutput(
             configPath: paths.configURL.path,
             discovered: result.discoveredCount,
-            added: result.added
+            added: result.added,
+            labeled: result.labeled
         )
         let data = try JSONEncoder.pretty.encode(payload)
         print(String(decoding: data, as: UTF8.self))
@@ -87,6 +88,7 @@ private struct SetupCLIOutput: Codable {
     let configPath: String
     let discovered: Int
     let added: [ChromeProfileEntry]
+    let labeled: Int
 }
 
 private extension JSONEncoder {

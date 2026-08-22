@@ -527,6 +527,44 @@ final class FastFinickyCoreTests: XCTestCase {
         XCTAssertNil(discovered[2].email)
     }
 
+    func testDiscoverReadsEmailFromPreferencesWhenLocalStateUserNameIsEmpty() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data(#"{ "profile": { "info_cache": { "Profile 9": { "name": "Cloudvxz", "user_name": "" } } } }"#.utf8)
+            .write(to: root.appendingPathComponent("Local State"))
+        try makeChromeProfileDirectory(at: root, name: "Profile 9")
+        let preferences = root
+            .appendingPathComponent("Profile 9", isDirectory: true)
+            .appendingPathComponent("Preferences")
+        try Data(#"{ "account_info": [{ "email": "work@bytedance.com", "full_name": "Cloud" }] }"#.utf8)
+            .write(to: preferences)
+
+        let discovered = ChromeLocalState.discoverProfiles(userDataDirectory: root)
+        XCTAssertEqual(discovered.count, 1)
+        XCTAssertEqual(discovered[0].profile, "Profile 9")
+        XCTAssertEqual(discovered[0].name, "Cloudvxz")
+        XCTAssertEqual(discovered[0].email, "work@bytedance.com")
+    }
+
+    func testDiscoverDoesNotUseStaleGoogleServicesUsername() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data(#"{ "profile": { "info_cache": { "Profile 9": { "name": "Cloudvxz", "user_name": "" } } } }"#.utf8)
+            .write(to: root.appendingPathComponent("Local State"))
+        try makeChromeProfileDirectory(at: root, name: "Profile 9")
+        try Data(#"{ "google": { "services": { "last_username": "old@example.com" } } }"#.utf8)
+            .write(
+                to: root
+                    .appendingPathComponent("Profile 9", isDirectory: true)
+                    .appendingPathComponent("Preferences")
+            )
+
+        let discovered = ChromeLocalState.discoverProfiles(userDataDirectory: root)
+        XCTAssertEqual(discovered.count, 1)
+        XCTAssertEqual(discovered[0].name, "Cloudvxz")
+        XCTAssertNil(discovered[0].email)
+    }
+
     func testProfileSetupAddsMissingProfilesAsRulesAndNeverDeletes() throws {
         let existing = ConfigRule(contains: ["example.com"], profile: "Profile 2")
         let config = AppConfig(
@@ -540,12 +578,15 @@ final class FastFinickyCoreTests: XCTestCase {
             ChromeProfileEntry(profile: "Profile 4")
         ]
 
-        let (merged, added) = ChromeProfileSetup.merge(discovered: discovered, into: config)
+        let (merged, added, labeled) = ChromeProfileSetup.merge(discovered: discovered, into: config)
         XCTAssertEqual(added.map(\.profile), ["Default", "Profile 4", "Profile 99"])
+        XCTAssertEqual(labeled, 1)
         XCTAssertEqual(merged.defaultProfile, "Profile 1")
         XCTAssertEqual(merged.profiles, [])
         XCTAssertEqual(merged.rules.count, 4)
-        XCTAssertEqual(merged.rules[0], existing)
+        XCTAssertEqual(merged.rules[0].contains, existing.contains)
+        XCTAssertEqual(merged.rules[0].profile, existing.profile)
+        XCTAssertEqual(merged.rules[0].name, "Work")
         XCTAssertEqual(merged.rules[1].profile, "Default")
         XCTAssertEqual(merged.rules[1].contains, [])
         XCTAssertEqual(merged.rules[1].name, "Person 1")
@@ -556,15 +597,17 @@ final class FastFinickyCoreTests: XCTestCase {
         XCTAssertEqual(merged.rules[3].contains, [])
         XCTAssertEqual(merged.rules[3].name, "Kept")
 
-        let (again, addedAgain) = ChromeProfileSetup.merge(discovered: discovered, into: merged)
+        let (again, addedAgain, labeledAgain) = ChromeProfileSetup.merge(discovered: discovered, into: merged)
         XCTAssertTrue(addedAgain.isEmpty)
+        XCTAssertEqual(labeledAgain, 0)
         XCTAssertEqual(again.rules, merged.rules)
 
-        let (withoutDisk, removedOnDisk) = ChromeProfileSetup.merge(
+        let (withoutDisk, removedOnDisk, labeledOnDisk) = ChromeProfileSetup.merge(
             discovered: [ChromeProfileEntry(profile: "Default", email: "a@example.com")],
             into: merged
         )
         XCTAssertTrue(removedOnDisk.isEmpty)
+        XCTAssertEqual(labeledOnDisk, 0)
         XCTAssertEqual(withoutDisk.rules.map(\.profile), ["Profile 2", "Default", "Profile 4", "Profile 99"])
     }
 
@@ -584,9 +627,97 @@ final class FastFinickyCoreTests: XCTestCase {
             ChromeProfileEntry(profile: "Default", name: "Work", email: "a@example.com")
         ]
 
-        let (merged, added) = ChromeProfileSetup.merge(discovered: discovered, into: config)
+        let (merged, added, labeled) = ChromeProfileSetup.merge(discovered: discovered, into: config)
         XCTAssertTrue(added.isEmpty)
+        XCTAssertEqual(labeled, 0)
         XCTAssertEqual(merged.rules[0].contains, ["work"])
+        XCTAssertEqual(merged.rules[0].email, "a@example.com")
+    }
+
+    func testSetupFillsMissingEmailWithoutChangingContains() throws {
+        let config = AppConfig(
+            defaultProfile: "Profile 1",
+            rules: [ConfigRule(contains: ["github.com"], profile: "Profile 4")]
+        )
+        let discovered = [
+            ChromeProfileEntry(profile: "Profile 4", name: "Haevy", email: "haevy@example.com")
+        ]
+
+        let (merged, added, labeled) = ChromeProfileSetup.merge(discovered: discovered, into: config)
+        XCTAssertTrue(added.isEmpty)
+        XCTAssertEqual(labeled, 1)
+        XCTAssertEqual(merged.rules[0].contains, ["github.com"])
+        XCTAssertEqual(merged.rules[0].profile, "Profile 4")
+        XCTAssertEqual(merged.rules[0].name, "Haevy")
+        XCTAssertEqual(merged.rules[0].email, "haevy@example.com")
+    }
+
+    func testSetupDoesNotOverwriteExistingNameOrEmail() throws {
+        let config = AppConfig(
+            defaultProfile: "Profile 1",
+            rules: [
+                ConfigRule(
+                    contains: ["github.com"],
+                    profile: "Profile 4",
+                    name: "Mine",
+                    email: "mine@example.com"
+                ),
+                ConfigRule(
+                    contains: ["work"],
+                    profile: "Profile 9",
+                    name: "Keep Name"
+                )
+            ]
+        )
+        let discovered = [
+            ChromeProfileEntry(profile: "Profile 4", name: "Chrome", email: "chrome@example.com"),
+            ChromeProfileEntry(profile: "Profile 9", name: "Cloud", email: "work@bytedance.com")
+        ]
+
+        let (merged, added, labeled) = ChromeProfileSetup.merge(discovered: discovered, into: config)
+        XCTAssertTrue(added.isEmpty)
+        XCTAssertEqual(labeled, 1)
+        XCTAssertEqual(merged.rules[0].contains, ["github.com"])
+        XCTAssertEqual(merged.rules[0].profile, "Profile 4")
+        XCTAssertEqual(merged.rules[0].name, "Mine")
+        XCTAssertEqual(merged.rules[0].email, "mine@example.com")
+        XCTAssertEqual(merged.rules[1].contains, ["work"])
+        XCTAssertEqual(merged.rules[1].profile, "Profile 9")
+        XCTAssertEqual(merged.rules[1].name, "Keep Name")
+        XCTAssertEqual(merged.rules[1].email, "work@bytedance.com")
+    }
+
+    func testConfigStoreSetupFillsEmailFromPreferencesOnExistingRule() throws {
+        let tempHome = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let chromeRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempHome, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: chromeRoot, withIntermediateDirectories: true)
+
+        let paths = AppPaths(homeDirectory: tempHome)
+        try paths.ensureBaseDirectories()
+        try Data(#"{ "defaultProfile": "Profile 1", "rules": [{ "contains": ["github.com"], "profile": "Profile 9" }] }"#.utf8)
+            .write(to: paths.configURL)
+
+        try Data(#"{ "profile": { "info_cache": { "Profile 9": { "name": "Cloudvxz", "user_name": "" } } } }"#.utf8)
+            .write(to: chromeRoot.appendingPathComponent("Local State"))
+        try makeChromeProfileDirectory(at: chromeRoot, name: "Profile 9")
+        try Data(#"{ "account_info": [{ "email": "work@bytedance.com" }] }"#.utf8)
+            .write(
+                to: chromeRoot
+                    .appendingPathComponent("Profile 9", isDirectory: true)
+                    .appendingPathComponent("Preferences")
+            )
+
+        let store = try ConfigStore(paths: paths)
+        let result = try store.setupProfiles(userDataDirectory: chromeRoot)
+        XCTAssertTrue(result.added.isEmpty)
+        XCTAssertEqual(result.labeled, 1)
+        XCTAssertTrue(result.didChange)
+        XCTAssertEqual(store.currentConfig.rules.count, 1)
+        XCTAssertEqual(store.currentConfig.rules[0].contains, ["github.com"])
+        XCTAssertEqual(store.currentConfig.rules[0].profile, "Profile 9")
+        XCTAssertEqual(store.currentConfig.rules[0].name, "Cloudvxz")
+        XCTAssertEqual(store.currentConfig.rules[0].email, "work@bytedance.com")
     }
 
     func testConfigStoreSetupProfilesWritesOnlyWhenAdding() throws {
@@ -612,12 +743,66 @@ final class FastFinickyCoreTests: XCTestCase {
         XCTAssertEqual(store.currentConfig.profiles, [])
         XCTAssertEqual(store.currentConfig.rules.map(\.profile), ["Profile 2", "Profile 4"])
         XCTAssertEqual(store.currentConfig.rules[0].contains, ["example.com"])
+        XCTAssertEqual(store.currentConfig.rules[0].name, "Work")
         XCTAssertEqual(store.currentConfig.rules[1].name, "New")
 
         let before = try Data(contentsOf: paths.configURL)
         let second = try store.setupProfiles(userDataDirectory: chromeRoot)
         XCTAssertTrue(second.added.isEmpty)
         XCTAssertEqual(try Data(contentsOf: paths.configURL), before)
+    }
+
+    func testSetupPreservesOriginalTranslatedRulesOnDisk() throws {
+        let tempHome = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let chromeRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempHome, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: chromeRoot, withIntermediateDirectories: true)
+
+        let original = DefaultConfigFactory.translatedCurrentRules()
+        let originalPairs = original.rules.map { ($0.contains, $0.profile) }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+
+        let paths = AppPaths(homeDirectory: tempHome)
+        try paths.ensureBaseDirectories()
+        try encoder.encode(original).write(to: paths.configURL)
+
+        let overlapping = ["Profile 4", "Profile 9", "Profile 1", "Default"]
+        var infoCache: [String: [String: String]] = [:]
+        for name in overlapping {
+            infoCache[name] = ["name": name]
+            try makeChromeProfileDirectory(at: chromeRoot, name: name)
+        }
+        let localState = try JSONSerialization.data(
+            withJSONObject: ["profile": ["info_cache": infoCache]],
+            options: []
+        )
+        try localState.write(to: chromeRoot.appendingPathComponent("Local State"))
+
+        let store = try ConfigStore(paths: paths)
+        let result = try store.setupProfiles(userDataDirectory: chromeRoot)
+        XCTAssertEqual(Set(result.added.map(\.profile)), Set(["Default", "Profile 1"]))
+
+        let disk = try JSONSerialization.jsonObject(with: Data(contentsOf: paths.configURL)) as? [String: Any]
+        let diskRules = try XCTUnwrap(disk?["rules"] as? [[String: Any]])
+        XCTAssertEqual(diskRules.count, original.rules.count + 2)
+
+        for (index, pair) in originalPairs.enumerated() {
+            let contains = diskRules[index]["contains"] as? [String]
+            let profile = diskRules[index]["profile"] as? String
+            XCTAssertEqual(contains, pair.0, "contains changed at rules[\(index)]")
+            XCTAssertEqual(profile, pair.1, "profile changed at rules[\(index)]")
+        }
+
+        XCTAssertEqual(store.currentConfig.defaultProfile, "Profile 1")
+        XCTAssertEqual(
+            Array(store.currentConfig.rules.prefix(original.rules.count)).map(\.contains),
+            original.rules.map(\.contains)
+        )
+        XCTAssertEqual(
+            Array(store.currentConfig.rules.prefix(original.rules.count)).map(\.profile),
+            original.rules.map(\.profile)
+        )
     }
 
     func testLaunchAtLoginWritesAndRemovesAgentPlist() throws {

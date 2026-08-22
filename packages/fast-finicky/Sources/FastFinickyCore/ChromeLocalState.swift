@@ -116,6 +116,14 @@ enum ChromeLocalState {
             merged[directory.lowercased()] = ChromeProfileEntry(profile: directory)
         }
 
+        for (key, entry) in merged {
+            guard entry.email == nil else { continue }
+            let profileDirectory = userDataDirectory.appendingPathComponent(entry.profile, isDirectory: true)
+            if let email = emailFromPreferences(at: profileDirectory) {
+                merged[key] = ChromeProfileEntry(profile: entry.profile, name: entry.name, email: email)
+            }
+        }
+
         return merged.values.sorted { compareProfileDirectories($0.profile, $1.profile) }
     }
 
@@ -144,9 +152,7 @@ enum ChromeLocalState {
             }
 
             let name = nonemptyString(fields["name"])
-            let email = nonemptyString(fields["user_name"]).flatMap { value in
-                value.contains("@") ? value : nil
-            }
+            let email = emailIfValid(fields["user_name"])
             result[key] = ChromeProfileEntry(
                 profile: directory,
                 name: name,
@@ -179,6 +185,30 @@ enum ChromeLocalState {
         }
         let suffix = directory.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces)
         return Int(suffix)
+    }
+
+    static func emailFromPreferences(at profileDirectory: URL) -> String? {
+        let preferencesURL = profileDirectory.appendingPathComponent("Preferences", isDirectory: false)
+        guard let data = try? Data(contentsOf: preferencesURL, options: [.mappedIfSafe]),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+
+        if let accounts = root["account_info"] as? [Any] {
+            for account in accounts {
+                guard let fields = account as? [String: Any],
+                      let email = emailIfValid(fields["email"]) else {
+                    continue
+                }
+                return email
+            }
+        }
+
+        return nil
+    }
+
+    private static func emailIfValid(_ value: Any?) -> String? {
+        nonemptyString(value).flatMap { $0.contains("@") ? $0 : nil }
     }
 
     private static func nonemptyString(_ value: Any?) -> String? {

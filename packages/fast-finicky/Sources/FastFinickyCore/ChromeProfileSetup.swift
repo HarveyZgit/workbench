@@ -3,14 +3,16 @@ import Foundation
 public struct ProfileSetupResult: Equatable, Sendable {
     public let discoveredCount: Int
     public let added: [ChromeProfileEntry]
+    public let labeled: Int
 
     public var didChange: Bool {
-        !added.isEmpty
+        !added.isEmpty || labeled > 0
     }
 
-    public init(discoveredCount: Int, added: [ChromeProfileEntry]) {
+    public init(discoveredCount: Int, added: [ChromeProfileEntry], labeled: Int = 0) {
         self.discoveredCount = discoveredCount
         self.added = added
+        self.labeled = labeled
     }
 }
 
@@ -18,14 +20,44 @@ enum ChromeProfileSetup {
     static func merge(
         discovered: [ChromeProfileEntry],
         into config: AppConfig
-    ) -> (AppConfig, added: [ChromeProfileEntry]) {
+    ) -> (AppConfig, added: [ChromeProfileEntry], labeled: Int) {
+        var discoveredByKey: [String: ChromeProfileEntry] = [:]
+        for entry in discovered {
+            let key = entry.profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !key.isEmpty else { continue }
+            discoveredByKey[key] = entry
+        }
+
         var present = Set<String>()
+        var keptRules: [ConfigRule] = []
+        var labeled = 0
         for rule in config.rules {
             remember(rule.profile, into: &present)
+            let ruleKey = rule.profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard let extra = discoveredByKey[ruleKey] else {
+                keptRules.append(rule)
+                continue
+            }
+
+            let name = emptyToNil(rule.name) ?? extra.name
+            let email = emptyToNil(rule.email) ?? extra.email
+            if name != emptyToNil(rule.name) || email != emptyToNil(rule.email) {
+                labeled += 1
+                keptRules.append(
+                    ConfigRule(
+                        contains: rule.contains,
+                        profile: rule.profile,
+                        name: name,
+                        email: email
+                    )
+                )
+            } else {
+                keptRules.append(rule)
+            }
         }
 
         var incoming = discovered
-        var seen = Set(discovered.map { $0.profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+        var seen = Set(discoveredByKey.keys)
         for entry in config.profiles {
             let key = entry.profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             guard !key.isEmpty, !seen.contains(key) else { continue }
@@ -57,10 +89,10 @@ enum ChromeProfileSetup {
 
         let merged = AppConfig(
             defaultProfile: config.defaultProfile,
-            rules: config.rules + newRules,
+            rules: keptRules + newRules,
             profiles: []
         )
-        return (merged, added)
+        return (merged, added, labeled)
     }
 
     private static func remember(_ value: String, into present: inout Set<String>) {
