@@ -32,7 +32,7 @@ macOS 菜单栏应用：把链接按规则分流到指定的 Chrome Profile。�
 
 匹配输入是 `lowercase(hostname + pathname)`，忽略 query 和 hash。规则按顺序首条命中生效，未命中用 `defaultProfile`。`name` / `email` 只是对照 Chrome 里这个 profile 是谁，**不参与匹配**。
 
-菜单 **Setup** 或 `fast-finicky-cli --setup` 会扫描本机 Chrome，给还没有 rule 的 profile 追加一条，`contains` 留空。空 `contains` 不会命中任何 URL，链接仍走 `defaultProfile`，直到你填上真正的 host/path。不删已有 rules。
+菜单 **Setup** 或 `fast-finicky-cli --setup` 会扫描本机 Chrome，给还没有 rule 的 profile 追加一条，`contains` 留空。已有 rule 缺 `name`/`email` 时只补这两个对照字段，不改 `contains`/`profile`，也不删已有 rules。空 `contains` 不会命中任何 URL，链接仍走 `defaultProfile`，直到你填上真正的 host/path。邮箱来自 Chrome 登录账号；没登录 Google 账号的 profile 仍然没有 email。
 
 首次启动时，如果配置文件还不存在，会写入一份当前常用规则的默认配置。已有配置不会被覆盖。
 
