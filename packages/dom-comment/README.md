@@ -6,10 +6,11 @@
 
 ## 安装
 
-发 GitHub Release（tag 以 `dom-comment-v` 开头，附件名为 `dom-comment.zip`）之后：
+仓库是私有的，匿名 `curl` 下载 Release 会 404。用已登录的 GitHub CLI：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/HarveyZgit/workbench/master/packages/dom-comment/scripts/install.sh | bash
+gh release download dom-comment-v0.1.0 --repo HarveyZgit/workbench -p install.sh -p dom-comment.zip
+bash install.sh --zip ./dom-comment.zip
 ```
 
 脚本会下载 zip、链出 `~/.local/bin/dom-comment`，并运行 `dom-comment install`（登记 Native Messaging，交互选择 Skill 目录）。然后：
@@ -33,7 +34,7 @@ node dist/cli.js install
 ```sh
 cd packages/dom-comment
 rushx pack-release
-gh release create "dom-comment-v0.1.0" dist/dom-comment.zip --title "dom-comment 0.1.0"
+gh release create "dom-comment-v0.1.0" dist/dom-comment.zip scripts/install.sh --title "dom-comment 0.1.0"
 ```
 
 ## 使用

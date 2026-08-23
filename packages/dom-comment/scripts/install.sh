@@ -75,32 +75,20 @@ require_node() {
   fi
 }
 
-latest_zip_url() {
-  python3 - "$REPO" "$ASSET_NAME" <<'PY'
-import json, sys, urllib.request
-
-repo, asset = sys.argv[1], sys.argv[2]
-req = urllib.request.Request(
-    f"https://api.github.com/repos/{repo}/releases",
-    headers={"User-Agent": "dom-comment-install", "Accept": "application/vnd.github+json"},
-)
-with urllib.request.urlopen(req) as resp:
-    releases = json.load(resp)
-for rel in releases:
-    if rel.get("draft") or rel.get("prerelease"):
-        continue
-    tag = rel.get("tag_name") or ""
-    if not tag.startswith("dom-comment-v"):
-        continue
-    for item in rel.get("assets") or []:
-        if item.get("name") == asset and item.get("browser_download_url"):
-            print(item["browser_download_url"])
-            sys.exit(0)
-sys.stderr.write(
-    f"在 GitHub {repo} 找不到 tag 为 dom-comment-v* 且含 {asset} 的 Release。\n"
-)
-sys.exit(1)
-PY
+download_release_zip() {
+  if ! command -v gh >/dev/null 2>&1; then
+    printf '仓库是私有的，匿名 curl 会 404。请安装 GitHub CLI 并 gh auth login，或改用 --zip <file>。\n' >&2
+    exit 1
+  fi
+  local tag
+  tag="$(gh release list --repo "$REPO" --limit 50 --json tagName,isDraft,isPrerelease \
+    --jq '[.[] | select((.isDraft|not) and (.isPrerelease|not) and (.tagName | startswith("dom-comment-v"))) | .tagName][0]')"
+  if [[ -z "$tag" || "$tag" == "null" ]]; then
+    printf '在 %s 找不到 tag 为 dom-comment-v* 的 Release。\n' "$REPO" >&2
+    exit 1
+  fi
+  printf '下载 %s %s / %s\n' "$REPO" "$tag" "$ASSET_NAME"
+  gh release download "$tag" --repo "$REPO" -p "$ASSET_NAME" -D "$TMP"
 }
 
 copy_payload() {
@@ -131,11 +119,7 @@ elif [[ -n "$ZIP_PATH" ]]; then
   unzip -q "$ZIP_PATH" -d "$TMP/unpacked"
   copy_payload "$TMP/unpacked"
 else
-  command -v curl >/dev/null 2>&1 || { printf '需要 curl。\n' >&2; exit 1; }
-  command -v python3 >/dev/null 2>&1 || { printf '需要 python3 以便查找 GitHub Release。\n' >&2; exit 1; }
-  url="$(latest_zip_url)"
-  printf '下载 %s\n' "$url"
-  curl -fsSL "$url" -o "$TMP/$ASSET_NAME"
+  download_release_zip
   unzip -q "$TMP/$ASSET_NAME" -d "$TMP/unpacked"
   copy_payload "$TMP/unpacked"
 fi
