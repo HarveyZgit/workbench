@@ -65,7 +65,7 @@ rev 4 按「文档 = URL」存、工具栏直接开关模式、不存图。用�
 
 | # | 决策 | 理由 |
 | --- | --- | --- |
-| K1 | Chrome MV3 扩展，Load unpacked | 用户已定。 |
+| K1 | Chrome MV3 扩展，Load unpacked；CLI 经 npm 分发 | 扩展仍须手装；host / Skill / 运行时走 `dom-comment` CLI。 |
 | K2 | 概念同构、包与存储分离；不抽 markdown-comment core | core 仍绑 VS Code。 |
 | K3 | Native Messaging 写盘；另用 **持久 NM 连接 + Unix socket** 给 CLI→扩展（聚焦 tab） | 扩展不能写 `~`；CLI 又要叫 Chrome 聚焦已登录 tab。一次性 `sendNativeMessage` 无法从 CLI 发起。 |
 | K4 | 存储主键 = **当前 Chrome 会话 + tabId**；文件内 key = canonical URL | 用户指定。一次浏览里同一 tab 会换 URL，评论应留在这个 tab 下。 |

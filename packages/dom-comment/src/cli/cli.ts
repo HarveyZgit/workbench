@@ -1,11 +1,13 @@
 import { clip, foldWhitespace } from '../core/anchor.js';
 import { kindLabel, quoteOf } from '../core/markdown.js';
 import {
+  cmdExtension,
+  cmdInstall,
   cmdInstallHost,
+  cmdInstallInteractive,
   cmdInstallSkill,
   cmdOpenTab,
   cmdPingHost,
-  cmdSetup,
   cmdUninstallHost,
 } from './install.js';
 import { canonicalizeUrl } from '../core/identity.js';
@@ -292,15 +294,16 @@ function collectTargets(argv: string[]): string[] {
 }
 
 function usage(): void {
-  process.stdout.write(`dom-comment list [--open] [--all] [--json] [--name-only]
+  process.stdout.write(`dom-comment install [--target <skill-root>]
+dom-comment extension
+dom-comment list [--open] [--all] [--json] [--name-only]
 dom-comment list --tab <id> [--url <canonical>] [--open] [--hidden] [--json] [--name-only]
 dom-comment reply <threadId> <text>
 dom-comment resolve <threadId>
 dom-comment open --tab <id>
-dom-comment setup [--target <skill-root>]
+dom-comment ping-host
 dom-comment install-host [--extension-id <id>]
 dom-comment uninstall-host
-dom-comment ping-host
 dom-comment install-skill --target <skill-root>
 `);
 }
@@ -323,7 +326,21 @@ export function main(argv = process.argv.slice(ARGV_AFTER_NODE_AND_SCRIPT)): voi
       cmdOpen(flags, rest);
       break;
     case 'setup':
-      cmdSetup(flags, collectTargets(argv));
+    case 'install': {
+      const targets = collectTargets(argv);
+      if (targets.length > 0 || !process.stdin.isTTY) {
+        cmdInstall(flags, targets);
+      } else {
+        void cmdInstallInteractive(flags).catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          process.stderr.write(`${message}\n`);
+          process.exit(1);
+        });
+      }
+      break;
+    }
+    case 'extension':
+      cmdExtension();
       break;
     case 'install-host':
       cmdInstallHost(flags);

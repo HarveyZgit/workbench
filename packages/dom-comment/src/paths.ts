@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,6 +13,24 @@ export function packageRoot(): string {
   return path.resolve(here, '..');
 }
 
+export function isSourceTree(root = packageRoot()): boolean {
+  return fs.existsSync(path.join(root, 'src', 'cli.ts'));
+}
+
+export function extensionDir(root = packageRoot()): string {
+  return path.join(root, 'dist', 'chrome-mv3');
+}
+
+export function skillSourceDir(root = packageRoot()): string {
+  return path.join(root, 'resources', 'skills', 'dom-comment');
+}
+
 export function defaultStorageDir(): string {
-  return path.join(packageRoot(), 'data');
+  if (isSourceTree()) {
+    return path.join(packageRoot(), 'data');
+  }
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support', 'dom-comment');
+  }
+  return path.join(os.homedir(), '.dom-comment');
 }

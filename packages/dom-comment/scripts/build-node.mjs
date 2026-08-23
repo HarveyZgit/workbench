@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const packageRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const executableMode = 0o755;
-const outExt = path.join(packageRoot, '.output/chrome-mv3');
+const outExt = path.join(packageRoot, 'dist/chrome-mv3');
 await import(pathToFileURL(path.join(packageRoot, 'scripts/generate-icons.mjs')).href);
 
 await esbuild.build({

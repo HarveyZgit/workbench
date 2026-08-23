@@ -5,8 +5,9 @@ context: |
   它是 markdown-comment 的兄弟产品，不共享包、类型或存储。
 
   产品（设计 rev 7，见 docs/design.md）：
+  - 分发：GitHub Release zip + install.sh。`install` 登记 host 并让用户选择 Skill 目录；`extension` 打印扩展目录；运行时命令在同一 CLI。Chrome 扩展仍需手装。
   - Chrome MV3 扩展，本机 Load unpacked
-  - 工具栏 popup 开始/停止标注并打开页内清单；复制 tabid prompt 是降级
+  - 工具栏 popup 开始/停止标注并复制 skill prompt
   - 标注中：单击元素、划选文字、拖区域；Esc 退出后钉子仍在
   - 新评论提交即落盘；复制 `/dom-comment tabid:` 给 Agent；Esc 后页面标记 UI 消失
   - 存储主键是当前 Chrome 会话的 tabId；文件内用 canonical URL 分页面和截图

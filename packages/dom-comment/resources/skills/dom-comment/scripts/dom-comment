@@ -12,14 +12,27 @@ function isFile(p) {
   }
 }
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const pkg = path.resolve(here, '../../..');
-const bundled = path.join(pkg, 'dist/cli.js');
-const envCli = process.env.DOM_COMMENT_CLI;
+function findBundledCli(start) {
+  let dir = start;
+  for (let i = 0; i < 10; i += 1) {
+    const candidate = path.join(dir, 'dist/cli.js');
+    if (isFile(candidate)) {
+      return candidate;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      break;
+    }
+    dir = parent;
+  }
+  return '';
+}
 
-const cli = (envCli && isFile(envCli) && envCli) || (isFile(bundled) && bundled);
+const here = path.dirname(fileURLToPath(import.meta.url));
+const envCli = process.env.DOM_COMMENT_CLI;
+const cli = (envCli && isFile(envCli) && envCli) || findBundledCli(here);
 if (!cli) {
-  process.stderr.write('找不到 dist/cli.js。请在 packages/dom-comment 运行 rushx build。\n');
+  process.stderr.write('找不到 dom-comment CLI。请先 npm i -g / 构建，或设置 DOM_COMMENT_CLI。\n');
   process.exit(1);
 }
 const r = spawnSync(process.execPath, [cli, ...process.argv.slice(2)], { stdio: 'inherit' });

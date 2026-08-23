@@ -3,9 +3,10 @@ import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import * as readline from 'node:readline/promises';
 import { encodeFrame, tryDecodeFrames, type HostResponse } from '../native-host/protocol.js';
-import { defaultStorageDir, packageRoot } from '../paths.js';
-import { hostSockPath } from '../storage/index.js';
+import { extensionDir, packageRoot, skillSourceDir } from '../paths.js';
+import { hostSockPath, resolveStorageDir } from '../storage/index.js';
 
 const HOST_NAME = 'com.workbench.dom_comment';
 
@@ -26,6 +27,42 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
+export function expandHome(input: string): string {
+  const trimmed = input.trim();
+  if (trimmed === '~') {
+    return os.homedir();
+  }
+  if (trimmed.startsWith('~/') || trimmed.startsWith('~\\')) {
+    return path.join(os.homedir(), trimmed.slice(2));
+  }
+  return path.resolve(trimmed);
+}
+
+/** Existing `~/.<name>/skills` directories. No vendor names. */
+export function detectAgentSkillRoots(homeDir: string = os.homedir()): string[] {
+  const found: string[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(homeDir, { withFileTypes: true });
+  } catch {
+    return found;
+  }
+  for (const entry of entries) {
+    if (!entry.name.startsWith('.')) {
+      continue;
+    }
+    const skillsDir = path.join(homeDir, entry.name, 'skills');
+    try {
+      if (fs.statSync(skillsDir).isDirectory()) {
+        found.push(skillsDir);
+      }
+    } catch {
+      // no skills/ here
+    }
+  }
+  return found.sort();
+}
+
 export function readExtensionId(override?: string): string {
   if (override) {
     return override;
@@ -38,14 +75,22 @@ export function readExtensionId(override?: string): string {
   return raw.id;
 }
 
+function printExtensionHint(): void {
+  process.stdout.write(
+    `\nChrome 扩展目录：\n  ${extensionDir()}\n在 chrome://extensions 打开开发者模式，加载该文件夹。\n也可运行：dom-comment extension\n`,
+  );
+}
+
 export function cmdInstallHost(flags: Map<string, string | true>, opts?: { quiet?: boolean }): void {
   const root = packageRoot();
   const nativeJs = path.join(root, 'dist/native-host.js');
   if (!fs.existsSync(nativeJs)) {
-    fail('请先构建 native-host（rushx build）');
+    fail('找不到 native-host。请从 npm 安装完整包，或在源码树运行构建。');
   }
   const nodeBin = process.execPath;
-  const wrapper = path.join(root, 'dist/native-host-wrapper.sh');
+  const dataDir = resolveStorageDir();
+  fs.mkdirSync(dataDir, { recursive: true });
+  const wrapper = path.join(dataDir, 'native-host-wrapper.sh');
   const wrapperBody = `#!/bin/sh\nexec "${nodeBin}" "${nativeJs}" "$@"\n`;
   fs.writeFileSync(wrapper, wrapperBody, { mode: 0o755 });
   fs.chmodSync(wrapper, 0o755);
@@ -53,8 +98,6 @@ export function cmdInstallHost(flags: Map<string, string | true>, opts?: { quiet
   const id = readExtensionId(
     typeof flags.get('extension-id') === 'string' ? String(flags.get('extension-id')) : undefined,
   );
-  const dataDir = defaultStorageDir();
-  fs.mkdirSync(dataDir, { recursive: true });
   const runtime = {
     storageDir: dataDir,
     cliPath: path.join(root, 'dist/cli.js'),
@@ -90,9 +133,7 @@ export function cmdInstallHost(flags: Map<string, string | true>, opts?: { quiet
     fail('未找到 Chrome/Chromium 配置目录');
   }
   if (!opts?.quiet) {
-    process.stdout.write(
-      `下一步：chrome://extensions → 开发者模式 → 加载 ${path.join(root, '.output/chrome-mv3')}\n`,
-    );
+    printExtensionHint();
   }
 }
 
@@ -110,12 +151,14 @@ export function cmdUninstallHost(): void {
 
 function pointerNodePath(): string {
   try {
-    const raw = JSON.parse(fs.readFileSync(path.join(defaultStorageDir(), 'runtime.json'), 'utf8')) as {
+    const raw = JSON.parse(fs.readFileSync(path.join(resolveStorageDir(), 'runtime.json'), 'utf8')) as {
       nodePath?: string;
     };
     if (raw.nodePath && fs.existsSync(raw.nodePath)) {
       if (raw.nodePath !== process.execPath) {
-        process.stderr.write('wrapper 仍指向旧 Node，与当前 shell 不一致。若扩展连不上 host，请重跑 setup\n');
+        process.stderr.write(
+          'wrapper 仍指向旧 Node，与当前 shell 不一致。若扩展连不上 host，请重跑 install\n',
+        );
       }
       return raw.nodePath;
     }
@@ -129,7 +172,7 @@ export function cmdPingHost(): void {
   const root = packageRoot();
   const nativeJs = path.join(root, 'dist/native-host.js');
   if (!fs.existsSync(nativeJs)) {
-    fail('请先构建 native-host');
+    fail('找不到 native-host');
   }
   const child = spawn(pointerNodePath(), [nativeJs], { stdio: ['pipe', 'pipe', 'inherit'] });
   const req = { id: 'ping-1', op: 'ping' };
@@ -194,16 +237,16 @@ export function cmdOpenTab(tabId: number): void {
 
 export function cmdInstallSkill(targets: string[]): void {
   if (targets.length === 0) {
-    fail('用法：dom-comment install-skill --target <skill-root>');
+    fail('用法：dom-comment install --target <skill-root>');
   }
-  const canonical = path.join(packageRoot(), 'resources/skills/dom-comment');
+  const canonical = skillSourceDir();
   const locator = path.join(canonical, 'scripts/dom-comment');
   if (!fs.existsSync(path.join(canonical, 'SKILL.md')) || !fs.existsSync(locator)) {
     fail('找不到 Skill 源文件');
   }
   fs.chmodSync(locator, 0o755);
   for (const target of targets) {
-    const dest = path.join(path.resolve(target), 'dom-comment');
+    const dest = path.join(expandHome(target), 'dom-comment');
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     try {
       const st = fs.lstatSync(dest);
@@ -220,38 +263,77 @@ export function cmdInstallSkill(targets: string[]): void {
   }
 }
 
-export function cmdSetup(flags: Map<string, string | true>, extraTargets: string[]): void {
-  const root = packageRoot();
-  const extDir = path.join(root, '.output/chrome-mv3');
-  if (!fs.existsSync(path.join(root, 'dist/cli.js')) || !fs.existsSync(extDir)) {
-    fail('请先构建：在 packages/dom-comment 运行 rushx build（或 rushx setup）');
+export function cmdExtension(): void {
+  const dir = extensionDir();
+  if (!fs.existsSync(path.join(dir, 'manifest.json'))) {
+    fail('找不到扩展产物。请从 npm 安装完整包，或在源码树运行构建。');
   }
-  cmdInstallHost(flags, { quiet: true });
-  process.stdout.write('已安装本机写入宿主（Chrome Native Messaging）。\n');
+  process.stdout.write(`${dir}\n`);
+}
 
-  const agentsSkills = path.join(os.homedir(), '.agents/skills');
-  const targets = [...extraTargets];
-  if (targets.length === 0 && fs.existsSync(agentsSkills)) {
-    targets.push(agentsSkills);
+async function promptSkillTargets(): Promise<string[]> {
+  const found = detectAgentSkillRoots();
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    if (found.length === 0) {
+      const extra = (
+        await rl.question('未发现 ~/.<name>/skills。输入要安装 Skill 的目录（空则跳过）：')
+      ).trim();
+      return extra ? [expandHome(extra)] : [];
+    }
+    process.stdout.write('把 Skill 装到哪些目录？\n');
+    found.forEach((dir, i) => {
+      process.stdout.write(`  [${i + 1}] ${dir}\n`);
+    });
+    process.stdout.write('  [c] 其他路径\n');
+    process.stdout.write('  [n] 不安装 Skill\n');
+    const answer = (await rl.question('输入序号（逗号分隔）：')).trim();
+    if (!answer || answer === 'n') {
+      return [];
+    }
+    const out: string[] = [];
+    let needCustom = false;
+    for (const part of answer.split(/[,，\s]+/).filter(Boolean)) {
+      if (part === 'c') {
+        needCustom = true;
+        continue;
+      }
+      const n = Number(part);
+      if (Number.isInteger(n) && n >= 1 && n <= found.length) {
+        out.push(found[n - 1]);
+      }
+    }
+    if (needCustom) {
+      const extra = (await rl.question('其他路径：')).trim();
+      if (extra) {
+        out.push(expandHome(extra));
+      }
+    }
+    return [...new Set(out)];
+  } finally {
+    rl.close();
   }
+}
+
+export function cmdInstall(flags: Map<string, string | true>, targets: string[]): void {
+  cmdInstallHost(flags, { quiet: true });
+  process.stdout.write('已登记 Chrome Native Messaging。\n');
   if (targets.length > 0) {
     cmdInstallSkill(targets);
   } else {
-    process.stdout.write(
-      '未找到 ~/.agents/skills，已跳过 Skill。需要时：dom-comment install-skill --target <dir>\n',
-    );
+    process.stdout.write('未安装 Skill。需要时：dom-comment install --target <dir>\n');
   }
+  printExtensionHint();
+}
 
-  try {
-    spawn('open', [extDir], { detached: true, stdio: 'ignore' }).unref();
-  } catch {
-    // ignore
+export async function cmdInstallInteractive(flags: Map<string, string | true>): Promise<void> {
+  cmdInstallHost(flags, { quiet: true });
+  process.stdout.write('已登记 Chrome Native Messaging。\n');
+  const targets = await promptSkillTargets();
+  if (targets.length > 0) {
+    cmdInstallSkill(targets);
+  } else {
+    process.stdout.write('已跳过 Skill。\n');
   }
-  process.stdout.write(`
-还差一步（Chrome 不允许脚本代装扩展）：
-  1. chrome://extensions → 打开「开发者模式」
-  2. 「加载已解压的扩展程序」→ 选中已打开的文件夹
-     ${extDir}
-装过之后刷新扩展即可。以后改代码再 rushx setup 会覆盖 host 和 Skill。
-`);
+  printExtensionHint();
 }

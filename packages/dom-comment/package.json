@@ -1,6 +1,6 @@
 {
   "name": "dom-comment",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "在页面上标记元素、文字或区域并评论。",
   "license": "MIT",
@@ -8,9 +8,21 @@
   "bin": {
     "dom-comment": "./dist/cli.js"
   },
+  "files": [
+    "dist/cli.js",
+    "dist/native-host.js",
+    "dist/chrome-mv3/*.js",
+    "dist/chrome-mv3/*.html",
+    "dist/chrome-mv3/*.png",
+    "dist/chrome-mv3/manifest.json",
+    "resources/skills/dom-comment",
+    "chrome-extension.json",
+    "README.md"
+  ],
   "scripts": {
     "build": "node scripts/build-node.mjs",
-    "setup": "node scripts/build-node.mjs && node dist/cli.js setup",
+    "setup": "node scripts/build-node.mjs && node dist/cli.js install",
+    "pack-release": "node scripts/build-node.mjs && bash scripts/pack-release.sh",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test tests/*.test.ts"
   },
