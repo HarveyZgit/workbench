@@ -1,4 +1,5 @@
 import { clip, foldWhitespace } from '../core/anchor.js';
+import { kindLabel, quoteOf } from '../core/markdown.js';
 import {
   cmdInstallHost,
   cmdInstallSkill,
@@ -10,10 +11,11 @@ import {
 import { canonicalizeUrl } from '../core/identity.js';
 import { reply as opsReply, resolve as opsResolve } from '../core/ops.js';
 import { LIST_QUOTE_CLIP } from '../core/types.js';
-import type { StoredAnchor, StoredPage, StoredThread } from '../core/types.js';
+import type { StoredPage, StoredThread } from '../core/types.js';
 import {
   currentSession,
   findThread,
+  listBatches,
   loadTab,
   resolveStorageDir,
   saveTab,
@@ -31,21 +33,11 @@ function shortId(id: string): string {
   return id.slice(0, SHORT_ID_LEN);
 }
 
-function quoteOf(anchor: StoredAnchor): string {
-  if (anchor.quote) {
-    return anchor.quote;
-  }
-  if (anchor.kind === 'element') {
-    return anchor.hints?.ariaLabel || anchor.css || '';
-  }
-  return '区域';
-}
-
 function headOf(thread: StoredThread): string {
-  const kind = thread.anchor.kind === 'area' ? '区域' : '元素';
   const extra = thread.anchor.kind === 'element' && thread.anchor.tagName ? ` ${thread.anchor.tagName}` : '';
   const shot = thread.screenshot ? '截图' : '无截图';
-  return `- [${kind}]${extra} 「${clip(quoteOf(thread.anchor), LIST_QUOTE_CLIP)}」  #${shortId(thread.id)}  [${shot}]`;
+  const num = thread.number ? ` ${thread.number}.` : '';
+  return `- [${kindLabel(thread.anchor)}]${extra}${num} 「${clip(quoteOf(thread.anchor), LIST_QUOTE_CLIP)}」  #${shortId(thread.id)}  [${shot}]`;
 }
 
 function parseArgs(argv: string[]): { cmd: string; flags: Map<string, string | true>; rest: string[] } {
@@ -100,11 +92,81 @@ function pageVisible(page: StoredPage, flags: Map<string, string | true>): Store
   });
 }
 
+function hostPath(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.host}${u.pathname}`;
+  } catch {
+    return url;
+  }
+}
+
+function cmdListBatches(flags: Map<string, string | true>): void {
+  const dir = resolveStorageDir();
+  const openOnly = !flags.has('all');
+  const batches = listBatches(dir, { openOnly });
+  if (flags.has('json')) {
+    const out = batches.map((batch) => ({
+      batchId: batch.batchId,
+      tabId: batch.tabId,
+      url: batch.url,
+      title: batch.title,
+      updatedAt: batch.updatedAt,
+      open: batch.open,
+      threads: batch.items.map((item) => ({
+        tabId: batch.tabId,
+        url: item.url,
+        threadId: item.thread.id,
+        number: item.thread.number,
+        status: item.thread.status,
+        quote: item.thread.anchor.quote,
+        kind: item.thread.anchor.kind,
+        screenshotAbs: item.thread.screenshot
+          ? screenshotAbsPath(dir, batch.tabId, item.thread.screenshot)
+          : '',
+        comments: item.thread.comments.map((c) => ({ author: c.author, body: c.body })),
+      })),
+    }));
+    const jsonIndent = 2;
+    process.stdout.write(`${JSON.stringify(out, null, jsonIndent)}\n`);
+    return;
+  }
+  if (batches.length === 0) {
+    process.stdout.write('（没有网页标记。）\n');
+    return;
+  }
+  if (flags.has('name-only')) {
+    const lines = batches.map((batch) => {
+      const state = batch.open ? 'open' : 'resolved';
+      return `#${shortId(batch.batchId)} [${state}] ${batch.items.length} 条  ${batch.title || hostPath(batch.url)}`;
+    });
+    process.stdout.write(`${lines.join('\n')}\n`);
+    return;
+  }
+  const blocks = batches.map((batch) => {
+    const state = batch.open ? 'open' : 'resolved';
+    const lines = [
+      `#${shortId(batch.batchId)} [${state}] ${batch.items.length} 条`,
+      `${batch.title || '（无标题）'} — ${hostPath(batch.url)}`,
+    ];
+    for (const item of batch.items) {
+      const resolved = item.thread.status === 'resolved' ? ' [已解决]' : '';
+      lines.push(`${headOf(item.thread)}${resolved}`);
+      for (const c of item.thread.comments) {
+        lines.push(`    - ${c.author}: ${foldWhitespace(c.body)}`);
+      }
+    }
+    return lines.join('\n');
+  });
+  process.stdout.write(`${blocks.join('\n\n')}\n`);
+}
+
 function cmdList(flags: Map<string, string | true>, rest: string[]): void {
   const dir = resolveStorageDir();
   const tabRaw = flagStr(flags, 'tab') || rest[0];
   if (!tabRaw) {
-    fail('请使用 --tab <id>。不要默认列出全部标签。');
+    cmdListBatches(flags);
+    return;
   }
   const tabId = parseTabId(tabRaw);
   const tab = loadTab(dir, tabId);
@@ -230,8 +292,8 @@ function collectTargets(argv: string[]): string[] {
 }
 
 function usage(): void {
-  process.stdout
-    .write(`dom-comment list --tab <id> [--url <canonical>] [--open] [--hidden] [--json] [--name-only]
+  process.stdout.write(`dom-comment list [--open] [--all] [--json] [--name-only]
+dom-comment list --tab <id> [--url <canonical>] [--open] [--hidden] [--json] [--name-only]
 dom-comment reply <threadId> <text>
 dom-comment resolve <threadId>
 dom-comment open --tab <id>

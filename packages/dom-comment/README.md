@@ -25,26 +25,16 @@ rushx setup
 ## 使用
 
 1. 点工具栏打开弹窗，点「开始标记」。
-2. 悬停蓝框或拖过 8px 框选，写评论；保存时裁切目标区域截图。
-3. Esc 退出（页上有「标注中 · 按 Esc 退出」）。
-4. 弹窗复制 prompt 粘到 Agent：
-
-```text
-查看当前标签页的所有评论
-/dom-comment tabid:1847
-
-查看当前页面的所有评论
-/dom-comment tabid:1847 url:https://example.com/app
-```
-
-5. 侧栏（命令「打开评论列表」）可看当前 tab 的线程并标记已解决。
+2. 单击元素、划选文字，或直接拖出区域，写评论。保存时立刻落盘并裁切截图。
+3. 打开工具栏弹窗，点「复制 skill prompt」得到 `/dom-comment tabid:…`。Esc 退出后页面上的钉子会收掉，数据还在。
+4. 把这一行贴给 Agent。
 
 复现：Agent 先看截图；`open --tab` 只聚焦原标签。不上 Playwright / CDP。
 
 ## CLI
 
 ```sh
-node dist/cli.js list --tab 1847
+node dist/cli.js list --open
 node dist/cli.js list --tab 1847 --url 'https://example.com/app' --json
 node dist/cli.js reply <threadId> '已处理'
 node dist/cli.js resolve <threadId>
@@ -68,4 +58,4 @@ rush typecheck --to dom-comment
 rush build --to dom-comment
 ```
 
-扩展用 esbuild 打 MV3（未上 WXT，UI 是 Shadow DOM + 接近 shadcn 的原生组件，避免 Rush 里再引一套 Vite）。OpenSpec change：`openspec/changes/add-tab-comments`。
+扩展用 esbuild 打 MV3（未上 WXT，UI 是 Shadow DOM + 接近 shadcn 的原生组件，避免 Rush 里再引一套 Vite）。OpenSpec change：`openspec/changes/reshape-annotation-loop`。

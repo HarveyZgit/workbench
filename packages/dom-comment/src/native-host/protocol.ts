@@ -1,7 +1,18 @@
 import { buildAnchor } from '../core/anchor.js';
 import { canonicalizeUrl } from '../core/identity.js';
-import { createThread, editComment, reply, resolve, updateRelocate } from '../core/ops.js';
+import {
+  createThread,
+  deleteComment,
+  deleteThread,
+  discardPending,
+  editComment,
+  publishPending,
+  reply,
+  resolve,
+  updateRelocate,
+} from '../core/ops.js';
 import type { CapturedTarget, StoredTabFile, StoredThread } from '../core/types.js';
+import * as fs from 'node:fs';
 import {
   currentSession,
   findThread,
@@ -10,7 +21,9 @@ import {
   reclaimLiveTabs,
   resolveStorageDir,
   saveTab,
+  screenshotAbsPath,
   screenshotRelPath,
+  unlinkScreenshot,
   writeScreenshot,
   writeSession,
 } from '../storage/index.js';
@@ -33,6 +46,7 @@ export type HostRequest =
     }
   | { id: string; op: 'reply'; threadId: string; body: string; author: 'user' | 'agent' }
   | { id: string; op: 'editComment'; threadId: string; commentId: string; body: string }
+  | { id: string; op: 'deleteComment'; threadId: string; commentId: string }
   | { id: string; op: 'resolve'; threadId: string }
   | {
       id: string;
@@ -41,11 +55,33 @@ export type HostRequest =
       url: string;
       updates: { threadId: string; state: 'located' | 'orphaned' }[];
     }
-  | { id: string; op: 'focusTab'; tabId: number };
+  | { id: string; op: 'focusTab'; tabId: number }
+  | { id: string; op: 'publishTab'; tabId: number }
+  | { id: string; op: 'deleteThread'; threadId: string }
+  | { id: string; op: 'discardPending'; tabId: number }
+  | { id: string; op: 'loadScreenshot'; tabId: number; rel: string };
 
 export type HostResponse =
-  | { id: string; ok: true; tab?: StoredTabFile; thread?: StoredThread; sessionId?: string }
+  | {
+      id: string;
+      ok: true;
+      tab?: StoredTabFile;
+      thread?: StoredThread;
+      sessionId?: string;
+      batchId?: string;
+      pngBase64?: string;
+    }
   | { id: string; ok: false; error: string };
+
+function assertShotRel(rel: unknown): string {
+  if (typeof rel !== 'string' || rel.includes('..') || rel.includes('\\') || rel.startsWith('/')) {
+    throw new Error('invalid screenshot path');
+  }
+  if (!/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\.png$/.test(rel)) {
+    throw new Error('invalid screenshot path');
+  }
+  return rel;
+}
 
 function assertTabId(tabId: unknown): number {
   if (typeof tabId !== 'number' || !Number.isFinite(tabId) || tabId <= 0 || !Number.isInteger(tabId)) {
@@ -78,6 +114,13 @@ export function handleRequest(req: HostRequest, storageDir = resolveStorageDir()
         const tabId = assertTabId(req.tabId);
         const tab = loadTab(storageDir, tabId);
         return { id: req.id, ok: true, tab };
+      }
+      case 'loadScreenshot': {
+        const tabId = assertTabId(req.tabId);
+        const rel = assertShotRel(req.rel);
+        const abs = screenshotAbsPath(storageDir, tabId, rel);
+        const bytes = fs.readFileSync(abs);
+        return { id: req.id, ok: true, pngBase64: bytes.toString('base64') };
       }
       case 'createThread': {
         const tabId = assertTabId(req.tabId);
@@ -113,6 +156,18 @@ export function handleRequest(req: HostRequest, storageDir = resolveStorageDir()
         saveTab(storageDir, hit.tab);
         return { id: req.id, ok: true, thread: hit.thread, tab: hit.tab };
       }
+      case 'deleteComment': {
+        const hit = findThread(storageDir, req.threadId);
+        if (!hit) {
+          throw new Error('thread not found');
+        }
+        const result = deleteComment(hit.tab, hit.thread.id, req.commentId);
+        if (result.removedThread && result.screenshot) {
+          unlinkScreenshot(storageDir, hit.tab.tabId, result.screenshot);
+        }
+        saveTab(storageDir, hit.tab);
+        return { id: req.id, ok: true, thread: result.thread, tab: hit.tab };
+      }
       case 'resolve': {
         const hit = findThread(storageDir, req.threadId);
         if (!hit) {
@@ -126,6 +181,37 @@ export function handleRequest(req: HostRequest, storageDir = resolveStorageDir()
         const tabId = assertTabId(req.tabId);
         const tab = loadTab(storageDir, tabId);
         updateRelocate(tab, req.updates, new Date().toISOString());
+        saveTab(storageDir, tab);
+        return { id: req.id, ok: true, tab };
+      }
+      case 'publishTab': {
+        const tabId = assertTabId(req.tabId);
+        const session = currentSession(storageDir);
+        const tab = prepareTab(storageDir, tabId, session);
+        const published = publishPending(tab);
+        saveTab(storageDir, tab);
+        return { id: req.id, ok: true, tab, batchId: published.batchId };
+      }
+      case 'deleteThread': {
+        const hit = findThread(storageDir, req.threadId);
+        if (!hit) {
+          throw new Error('thread not found');
+        }
+        const shot = hit.thread.screenshot;
+        const {tabId} = hit.tab;
+        deleteThread(hit.tab, hit.thread.id);
+        unlinkScreenshot(storageDir, tabId, shot);
+        saveTab(storageDir, hit.tab);
+        return { id: req.id, ok: true, tab: hit.tab };
+      }
+      case 'discardPending': {
+        const tabId = assertTabId(req.tabId);
+        const session = currentSession(storageDir);
+        const tab = prepareTab(storageDir, tabId, session);
+        const { removed } = discardPending(tab);
+        for (const thread of removed) {
+          unlinkScreenshot(storageDir, tabId, thread.screenshot);
+        }
         saveTab(storageDir, tab);
         return { id: req.id, ok: true, tab };
       }

@@ -44,25 +44,86 @@ function png(size, paint) {
   ]);
 }
 
-function plus(x, y, s) {
-  const m = s / 2;
-  const t = Math.max(2, s / 8);
-  const on = Math.abs(x - m) < t || Math.abs(y - m) < t;
-  return on ? [255, 255, 255, 255] : [37, 99, 235, 255];
+const FOREST = [26, 107, 84, 255];
+const PAPER = [244, 245, 243, 255];
+const INK = [28, 28, 26, 255];
+
+function inRound(x, y, s, r) {
+  const rr = r * r;
+  const corners = [
+    [r, r],
+    [s - 1 - r, r],
+    [r, s - 1 - r],
+    [s - 1 - r, s - 1 - r],
+  ];
+  if (x >= r && x <= s - 1 - r) {
+    return true;
+  }
+  if (y >= r && y <= s - 1 - r) {
+    return true;
+  }
+  for (const [cx, cy] of corners) {
+    const dx = x - cx;
+    const dy = y - cy;
+    if (dx * dx + dy * dy <= rr) {
+      return true;
+    }
+  }
+  return false;
 }
 
-function xmark(x, y, s) {
-  const t = Math.max(2, s / 10);
+function hbar(x, y, x0, x1, y0, t) {
+  return x >= x0 && x <= x1 && y >= y0 && y <= y0 + t - 1;
+}
+
+function vbar(x, y, y0, y1, x0, t) {
+  return y >= y0 && y <= y1 && x >= x0 && x <= x0 + t - 1;
+}
+
+function viewfinder(x, y, s) {
+  const inset = Math.max(2, Math.round(s * 0.2));
+  const len = Math.max(4, Math.round(s * 0.34));
+  const t = Math.max(2, Math.round(s * 0.14));
+  const hi = s - 1 - inset;
+  return (
+    hbar(x, y, inset, inset + len - 1, inset, t) ||
+    vbar(x, y, inset, inset + len - 1, inset, t) ||
+    hbar(x, y, hi - len + 1, hi, inset, t) ||
+    vbar(x, y, inset, inset + len - 1, hi - t + 1, t) ||
+    hbar(x, y, inset, inset + len - 1, hi - t + 1, t) ||
+    vbar(x, y, hi - len + 1, hi, inset, t) ||
+    hbar(x, y, hi - len + 1, hi, hi - t + 1, t) ||
+    vbar(x, y, hi - len + 1, hi, hi - t + 1, t)
+  );
+}
+
+function idle(x, y, s) {
+  const r = Math.max(2, Math.round(s * 0.18));
+  if (!inRound(x, y, s, r)) {
+    return [0, 0, 0, 0];
+  }
+  return viewfinder(x, y, s) ? PAPER : FOREST;
+}
+
+function active(x, y, s) {
+  const r = Math.max(2, Math.round(s * 0.18));
+  if (!inRound(x, y, s, r)) {
+    return [0, 0, 0, 0];
+  }
+  const t = Math.max(2, Math.round(s * 0.12));
+  const m = (s - 1) / 2;
   const d1 = Math.abs(x - y);
   const d2 = Math.abs(x - (s - 1 - y));
-  const on = d1 < t || d2 < t;
-  return on ? [255, 255, 255, 255] : [37, 99, 235, 255];
+  const inset = Math.max(3, Math.round(s * 0.22));
+  const inside = x >= inset && x <= s - 1 - inset && y >= inset && y <= s - 1 - inset;
+  const on = inside && (d1 < t || d2 < t) && Math.abs(x - m) + Math.abs(y - m) < s * 0.72;
+  return on ? PAPER : INK;
 }
 
 const dir = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), 'public');
 mkdirSync(dir, { recursive: true });
 for (const size of [16, 32]) {
-  writeFileSync(path.join(dir, `icon-plus-${size}.png`), png(size, plus));
-  writeFileSync(path.join(dir, `icon-x-${size}.png`), png(size, xmark));
+  writeFileSync(path.join(dir, `icon-plus-${size}.png`), png(size, idle));
+  writeFileSync(path.join(dir, `icon-x-${size}.png`), png(size, active));
 }
 console.log('icons written', dir);

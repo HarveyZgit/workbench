@@ -4,15 +4,14 @@ context: |
   DOM Comment 是 AI Workbench 中的独立 package（packages/dom-comment）。
   它是 markdown-comment 的兄弟产品，不共享包、类型或存储。
 
-  产品（设计 rev 6，见 docs/design.md）：
+  产品（设计 rev 7，见 docs/design.md）：
   - Chrome MV3 扩展，本机 Load unpacked
-  - 工具栏打开 popup：图标开始/停止标注；两段可复制 prompt
-    `/dom-comment tabid:<id>` 与 `/dom-comment tabid:<id> url:<canonical>`
-  - 标注中 Esc 退出，页上必须有提示条
-  - 元素 hover+click 与拖拽框选；保存瞬间对目标区域裁切 PNG
+  - 工具栏 popup 开始/停止标注并打开页内清单；复制 tabid prompt 是降级
+  - 标注中：单击元素、划选文字、拖区域；Esc 退出后钉子仍在
+  - 新评论提交即落盘；复制 `/dom-comment tabid:` 给 Agent；Esc 后页面标记 UI 消失
   - 存储主键是当前 Chrome 会话的 tabId；文件内用 canonical URL 分页面和截图
-  - Agent 查找先解析 tabid/url 参数，再看口语；禁止默认 dump 全部 tab
-  - 复现：先看裁切 PNG；`open --tab` 只聚焦原 tab。v1 不上 Playwright / CDP / cookie 导出
+  - Agent 默认 `list --open`；有 tabid/url 则参数优先；禁止默认 dump 全部 tab
+  - 复现：先看裁切 PNG；`open --tab` 只聚焦原 tab。不上 Playwright / CDP / cookie 导出
 
   约束：
   - 先有 OpenSpec change 的 tasks.md，再写 src、加依赖、登记 Rush

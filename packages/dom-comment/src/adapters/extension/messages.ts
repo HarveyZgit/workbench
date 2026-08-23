@@ -12,6 +12,8 @@ export interface CropRect {
 export type ExtMessage =
   | { type: 'SET_MODE'; on: boolean }
   | { type: 'SET_MODE_REQUEST'; on: boolean }
+  | { type: 'SHOW_QUEUE' }
+  | { type: 'FOCUS_THREAD'; threadId: string; tabId?: number }
   | {
       type: 'CREATE_THREAD';
       tabId: number;
@@ -31,7 +33,14 @@ export type ExtMessage =
   | { type: 'RESOLVE_THREAD'; threadId: string }
   | { type: 'REPLY_THREAD'; threadId: string; body: string }
   | { type: 'EDIT_COMMENT'; threadId: string; commentId: string; body: string }
-  | { type: 'PREPARE_CAPTURE' };
+  | { type: 'DELETE_COMMENT'; threadId: string; commentId: string }
+  | { type: 'PUBLISH_TAB' }
+  | { type: 'PUBLISH_RESULT'; ok: boolean; batchId?: string; error?: string }
+  | { type: 'DELETE_THREAD'; threadId: string; tabId?: number }
+  | { type: 'DISCARD_PENDING' }
+  | { type: 'PREPARE_CAPTURE' }
+  | { type: 'LOAD_SCREENSHOT'; tabId: number; threadId: string; rel: string }
+  | { type: 'LOAD_SCREENSHOT_RESULT'; ok: boolean; threadId: string; dataUrl?: string };
 
 function settle(result: unknown): void {
   if (result !== undefined && result !== null && typeof (result as Promise<unknown>).then === 'function') {

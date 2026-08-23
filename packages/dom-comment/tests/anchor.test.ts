@@ -50,6 +50,26 @@ test('tag-only is below threshold', () => {
   assert.ok(scoreCandidate(a, cand({ text: '保存更改', before: '', after: '' })) < RELOCATE_THRESHOLD);
 });
 
+test('text css+strong accepted like element', () => {
+  const text = {
+    kind: 'text' as const,
+    css: 'p.lead',
+    xpath: '/html/body/p',
+    tagName: 'p',
+    quote: '保存更改后应当出现成功状态',
+    before: '',
+    after: '',
+    startOffset: 0,
+    endOffset: 12,
+    rect: { x: 0, y: 0, width: 100, height: 20 },
+    snapshot: { pageTitle: '', outerHTML: '', textContent: '保存更改后应当出现成功状态' },
+  };
+  const i = pickCandidate(text, [
+    cand({ cssMatched: true, tagName: 'p', text: '保存更改后应当出现成功状态', before: '', after: '' }),
+  ]);
+  assert.equal(i, 0);
+});
+
 test('area rectMatched+strong accepted', () => {
   const area = {
     kind: 'area' as const,

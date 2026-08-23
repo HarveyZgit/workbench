@@ -293,6 +293,71 @@ export interface ThreadHit {
   thread: StoredThread;
 }
 
+export function unlinkScreenshot(dir: string, tabId: number, rel: string): void {
+  if (!rel) {
+    return;
+  }
+  try {
+    fs.unlinkSync(screenshotAbsPath(dir, tabId, rel));
+  } catch {
+    // gone
+  }
+}
+
+export interface BatchHit {
+  batchId: string;
+  tabId: number;
+  url: string;
+  title: string;
+  updatedAt: string;
+  open: boolean;
+  items: ThreadHit[];
+}
+
+export function listBatches(dir: string, opts?: { openOnly?: boolean; tabId?: number }): BatchHit[] {
+  const session = currentSession(dir);
+  const tabIds = opts?.tabId ? [opts.tabId] : listTabIds(dir);
+  const groups = new Map<string, BatchHit>();
+  for (const tabId of tabIds) {
+    const tab = loadTab(dir, tabId);
+    if (tab.sessionId !== session) {
+      continue;
+    }
+    for (const [url, page] of Object.entries(tab.pages)) {
+      for (const thread of page.threads) {
+        const batchId = thread.batchId || `tab-${tabId}`;
+        let group = groups.get(batchId);
+        if (!group) {
+          group = {
+            batchId,
+            tabId,
+            url,
+            title: page.title || '',
+            updatedAt: page.updatedAt,
+            open: false,
+            items: [],
+          };
+          groups.set(batchId, group);
+        }
+        group.items.push({ tab, url, thread });
+        if (thread.status === 'open') {
+          group.open = true;
+        }
+        if (page.updatedAt > group.updatedAt) {
+          group.updatedAt = page.updatedAt;
+          group.url = url;
+          group.title = page.title || group.title;
+        }
+      }
+    }
+  }
+  const rows = [...groups.values()].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  if (opts?.openOnly) {
+    return rows.filter((row) => row.open);
+  }
+  return rows;
+}
+
 export function findThread(dir: string, threadIdOrPrefix: string): ThreadHit | null {
   const exact: ThreadHit[] = [];
   const prefix: ThreadHit[] = [];

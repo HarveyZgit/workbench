@@ -38,7 +38,24 @@ export interface CapturedArea {
   textContent: string;
 }
 
-export type CapturedTarget = CapturedElement | CapturedArea;
+export interface CapturedText {
+  kind: 'text';
+  css: string;
+  xpath: string;
+  tagName: string;
+  id?: string;
+  hints?: { testId?: string; ariaLabel?: string };
+  quote: string;
+  before: string;
+  after: string;
+  startOffset: number;
+  endOffset: number;
+  outerHTML: string;
+  textContent: string;
+  rect: AreaRect;
+}
+
+export type CapturedTarget = CapturedElement | CapturedArea | CapturedText;
 
 export interface Snapshot {
   pageTitle: string;
@@ -68,7 +85,23 @@ export interface StoredAreaAnchor {
   snapshot: Snapshot;
 }
 
-export type StoredAnchor = StoredElementAnchor | StoredAreaAnchor;
+export interface StoredTextAnchor {
+  kind: 'text';
+  css: string;
+  xpath: string;
+  tagName: string;
+  id?: string;
+  hints?: { testId?: string; ariaLabel?: string };
+  quote: string;
+  before: string;
+  after: string;
+  startOffset: number;
+  endOffset: number;
+  rect: AreaRect;
+  snapshot: Snapshot;
+}
+
+export type StoredAnchor = StoredElementAnchor | StoredAreaAnchor | StoredTextAnchor;
 
 export interface RelocateStatus {
   state: 'located' | 'orphaned';
@@ -82,10 +115,16 @@ export interface StoredComment {
   createdAt: string;
 }
 
+export type ThreadVisibility = 'pending' | 'published';
+
 export interface StoredThread {
   id: string;
+  number: number;
   anchor: StoredAnchor;
   status: 'open' | 'resolved';
+  /** Missing on pre-rev-7 files: treat as published. */
+  visibility?: ThreadVisibility;
+  batchId?: string;
   comments: StoredComment[];
   relocateStatus?: RelocateStatus;
   screenshot: string;
@@ -116,4 +155,12 @@ export interface RelocateCandidate {
   text: string;
   before: string;
   after: string;
+}
+
+export function isPublishedThread(thread: StoredThread): boolean {
+  return thread.visibility !== 'pending';
+}
+
+export function threadNumber(thread: StoredThread, fallback: number): number {
+  return Number.isInteger(thread.number) && thread.number > 0 ? thread.number : fallback;
 }

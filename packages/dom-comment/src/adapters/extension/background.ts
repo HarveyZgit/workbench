@@ -14,7 +14,15 @@ let port: NativePort | null = null;
 let reqSeq = 1;
 const waiters = new Map<
   string,
-  (msg: { ok: boolean; error?: string; tab?: unknown; thread?: unknown; sessionId?: string }) => void
+  (msg: {
+    ok: boolean;
+    error?: string;
+    tab?: unknown;
+    thread?: unknown;
+    sessionId?: string;
+    batchId?: string;
+    pngBase64?: string;
+  }) => void
 >();
 
 function nextId(): string {
@@ -39,7 +47,7 @@ function connect(): NativePort {
         });
         return;
       }
-      const {id} = msg;
+      const { id } = msg;
       if (id && waiters.has(id)) {
         waiters.get(id)!({
           ok: Boolean(msg.ok),
@@ -47,6 +55,8 @@ function connect(): NativePort {
           tab: (msg as { tab?: unknown }).tab,
           thread: (msg as { thread?: unknown }).thread,
           sessionId: (msg as { sessionId?: string }).sessionId,
+          batchId: (msg as { batchId?: string }).batchId,
+          pngBase64: (msg as { pngBase64?: string }).pngBase64,
         });
         waiters.delete(id);
       }
@@ -65,9 +75,15 @@ function connect(): NativePort {
   return port;
 }
 
-function hostCall(
-  payload: Record<string, unknown>,
-): Promise<{ ok: boolean; error?: string; tab?: unknown; thread?: unknown; sessionId?: string }> {
+function hostCall(payload: Record<string, unknown>): Promise<{
+  ok: boolean;
+  error?: string;
+  tab?: unknown;
+  thread?: unknown;
+  sessionId?: string;
+  batchId?: string;
+  pngBase64?: string;
+}> {
   const id = String(payload.id || nextId());
   payload.id = id;
   return new Promise((resolve) => {
@@ -260,8 +276,68 @@ chrome.runtime.onMessage.addListener((msg: ExtMessage, sender, sendResponse) => 
   if (msg.type === 'SET_MODE_REQUEST') {
     void setMode(msg.on);
   }
+  if (msg.type === 'FOCUS_THREAD') {
+    const id = msg.tabId ?? tabId;
+    if (id !== undefined) {
+      void setMode(true).then(() => {
+        postToTab(id, { type: 'SET_FOCUS_THREAD', threadId: msg.threadId });
+      });
+    }
+  }
   if (msg.type === 'CREATE_THREAD' && tabId !== undefined) {
     void handleCreate(msg, tabId, sender.tab?.windowId);
+  }
+  if (msg.type === 'PUBLISH_TAB') {
+    const id = tabId ?? undefined;
+    if (id !== undefined) {
+      void ensureSession()
+        .then(() => hostCall({ id: nextId(), op: 'publishTab', tabId: id }))
+        .then((res) => {
+          const out: ExtMessage = res.ok
+            ? { type: 'PUBLISH_RESULT', ok: true, batchId: res.batchId }
+            : { type: 'PUBLISH_RESULT', ok: false, error: res.error || '发布失败' };
+          postToTab(id, out);
+          if (res.ok) {
+            postToTab(id, { type: 'THREADS_CHANGED', tabId: id });
+          }
+        });
+    }
+  }
+  if (msg.type === 'DELETE_THREAD') {
+    const id = tabId ?? msg.tabId;
+    void hostCall({ id: nextId(), op: 'deleteThread', threadId: msg.threadId }).then(() => {
+      if (id !== undefined) {
+        postToTab(id, { type: 'THREADS_CHANGED', tabId: id });
+      }
+      sendResponse({ type: 'THREADS_CHANGED', tabId: id || 0 });
+    });
+    return true;
+  }
+  if (msg.type === 'DISCARD_PENDING' && tabId !== undefined) {
+    void hostCall({ id: nextId(), op: 'discardPending', tabId }).then(() => {
+      postToTab(tabId, { type: 'THREADS_CHANGED', tabId });
+    });
+  }
+  if (msg.type === 'LOAD_SCREENSHOT') {
+    const id = msg.tabId > 0 ? msg.tabId : tabId;
+    if (id === undefined) {
+      return undefined;
+    }
+    void ensureSession()
+      .then(() => hostCall({ id: nextId(), op: 'loadScreenshot', tabId: id, rel: msg.rel }))
+      .then((res) => {
+        const out: ExtMessage = {
+          type: 'LOAD_SCREENSHOT_RESULT',
+          ok: Boolean(res.ok && res.pngBase64),
+          threadId: msg.threadId,
+          dataUrl: res.pngBase64 ? `data:image/png;base64,${res.pngBase64}` : undefined,
+        };
+        if (tabId !== undefined) {
+          postToTab(tabId, out);
+        }
+        sendResponse(out);
+      });
+    return true;
   }
   if (msg.type === 'LOAD_TAB') {
     const id = msg.tabId > 0 ? msg.tabId : tabId;
@@ -310,6 +386,18 @@ chrome.runtime.onMessage.addListener((msg: ExtMessage, sender, sendResponse) => 
       threadId: msg.threadId,
       commentId: msg.commentId,
       body: msg.body,
+    }).then(() => {
+      if (tabId !== undefined) {
+        postToTab(tabId, { type: 'THREADS_CHANGED', tabId });
+      }
+    });
+  }
+  if (msg.type === 'DELETE_COMMENT') {
+    void hostCall({
+      id: nextId(),
+      op: 'deleteComment',
+      threadId: msg.threadId,
+      commentId: msg.commentId,
     }).then(() => {
       if (tabId !== undefined) {
         postToTab(tabId, { type: 'THREADS_CHANGED', tabId });

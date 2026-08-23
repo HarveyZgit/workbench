@@ -47,6 +47,23 @@ export function buildAnchor(captured: CapturedTarget, pageTitle: string): Stored
       snapshot,
     };
   }
+  if (captured.kind === 'text') {
+    return {
+      kind: 'text',
+      css: captured.css,
+      xpath: captured.xpath,
+      tagName: captured.tagName,
+      id: captured.id,
+      hints: captured.hints,
+      quote,
+      before,
+      after,
+      startOffset: captured.startOffset,
+      endOffset: captured.endOffset,
+      rect: { ...captured.rect },
+      snapshot,
+    };
+  }
   return {
     kind: 'element',
     css: captured.css,
@@ -143,7 +160,7 @@ export function pickCandidate(anchor: StoredAnchor, cs: RelocateCandidate[]): nu
   for (let i = 0; i < cs.length; i += 1) {
     const c = cs[i];
     const strong = quoteStrength(anchor, c) === 'strong';
-    if (anchor.kind === 'element' && c.cssMatched && strong) {
+    if ((anchor.kind === 'element' || anchor.kind === 'text') && c.cssMatched && strong) {
       immediate.push(i);
     }
     if (anchor.kind === 'area' && c.rectMatched && strong) {
@@ -158,7 +175,7 @@ export function pickCandidate(anchor: StoredAnchor, cs: RelocateCandidate[]): nu
     const idHits: number[] = [];
     for (let i = 0; i < cs.length; i += 1) {
       const c = cs[i];
-      const loc = anchor.kind === 'element' ? c.cssMatched : c.rectMatched;
+      const loc = anchor.kind === 'area' ? c.rectMatched : c.cssMatched;
       if (loc) {
         locatorHits.push(i);
       }

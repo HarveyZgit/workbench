@@ -24,7 +24,7 @@ function render(): void {
   const items: string[] = [];
   for (const page of pages) {
     for (const thread of page.threads) {
-      const kind = thread.anchor.kind === 'area' ? '区域' : '元素';
+      const kind = thread.anchor.kind === 'area' ? '区域' : thread.anchor.kind === 'text' ? '文字' : '元素';
       const resolved = thread.status === 'resolved' ? ' · 已解决' : '';
       const comments = thread.comments
         .map((c) => `<div>${escapeHtml(c.author)}: ${escapeHtml(c.body)}</div>`)

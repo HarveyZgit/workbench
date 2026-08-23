@@ -1,5 +1,10 @@
 import { foldWhitespace, pickCandidate } from '../../core/anchor.js';
-import type { RelocateCandidate, StoredAnchor, StoredTabFile } from '../../core/types.js';
+import {
+  threadNumber,
+  type RelocateCandidate,
+  type StoredAnchor,
+  type StoredTabFile,
+} from '../../core/types.js';
 
 function candidateFromEl(el: Element, extra: Partial<RelocateCandidate>): RelocateCandidate {
   const text = foldWhitespace((el as HTMLElement).innerText || el.textContent || '');
@@ -17,38 +22,37 @@ function candidateFromEl(el: Element, extra: Partial<RelocateCandidate>): Reloca
   };
 }
 
+function docRectToView(rect: { x: number; y: number; width: number; height: number }): DOMRect {
+  return new DOMRect(rect.x - window.scrollX, rect.y - window.scrollY, rect.width, rect.height);
+}
+
 export function locateAnchor(anchor: StoredAnchor): { el?: Element; rect: DOMRect } | null {
+  if (anchor.kind === 'area') {
+    return { rect: docRectToView(anchor.rect) };
+  }
   const cs: RelocateCandidate[] = [];
   const els: Element[] = [];
-  if (anchor.kind === 'element') {
-    try {
-      const found = [...document.querySelectorAll(anchor.css)];
-      for (const el of found) {
-        els.push(el);
-        cs.push(candidateFromEl(el, { cssMatched: true }));
-      }
-    } catch {
-      // bad selector
+  try {
+    const found = [...document.querySelectorAll(anchor.css)];
+    for (const el of found) {
+      els.push(el);
+      cs.push(candidateFromEl(el, { cssMatched: true }));
     }
-    if (cs.length === 0 && anchor.id) {
-      const el = document.getElementById(anchor.id);
-      if (el) {
-        els.push(el);
-        cs.push(candidateFromEl(el, { idMatched: true }));
-      }
+  } catch {
+    // bad selector
+  }
+  if (cs.length === 0 && anchor.id) {
+    const el = document.getElementById(anchor.id);
+    if (el) {
+      els.push(el);
+      cs.push(candidateFromEl(el, { idMatched: true }));
     }
-  } else {
-    return {
-      rect: new DOMRect(
-        anchor.rect.x - window.scrollX,
-        anchor.rect.y - window.scrollY,
-        anchor.rect.width,
-        anchor.rect.height,
-      ),
-    };
   }
   const idx = pickCandidate(anchor, cs);
   if (idx === null || !els[idx]) {
+    if (anchor.kind === 'text') {
+      return { rect: docRectToView(anchor.rect) };
+    }
     return null;
   }
   return { el: els[idx], rect: els[idx].getBoundingClientRect() };
@@ -57,12 +61,13 @@ export function locateAnchor(anchor: StoredAnchor): { el?: Element; rect: DOMRec
 export function pinModels(
   tab: StoredTabFile,
   url: string,
-): { x: number; y: number; w: number; h: number; area: boolean; id: string }[] {
+): { x: number; y: number; w: number; h: number; area: boolean; id: string; number: number }[] {
   const page = tab.pages[url];
   if (!page) {
     return [];
   }
   const pins = [];
+  let i = 0;
   for (const thread of page.threads) {
     if (thread.status !== 'open') {
       continue;
@@ -71,6 +76,7 @@ export function pinModels(
     if (!hit) {
       continue;
     }
+    i += 1;
     pins.push({
       x: hit.rect.left,
       y: hit.rect.top,
@@ -78,6 +84,7 @@ export function pinModels(
       h: hit.rect.height,
       area: thread.anchor.kind === 'area',
       id: thread.id,
+      number: threadNumber(thread, i),
     });
   }
   return pins;

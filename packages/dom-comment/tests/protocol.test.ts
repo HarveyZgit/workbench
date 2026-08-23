@@ -50,6 +50,59 @@ test('createThread writes png and json', () => {
   assert.equal(fs.existsSync(path.join(dir, '7', page.threads[0].screenshot)), true);
 });
 
+test('createThread is immediately stored', () => {
+  const dir = tmpDir();
+  writeSession(dir, 'S1');
+  const created = handleRequest(
+    {
+      id: 'p1',
+      op: 'createThread',
+      tabId: 7,
+      url: 'https://ex.com/app',
+      title: 'App',
+      captured,
+      body: '草稿',
+      screenshotPngBase64: '',
+    },
+    dir,
+  );
+  assert.equal(created.ok, true);
+  const tab = loadTab(dir, 7);
+  assert.equal(tab.pages['https://ex.com/app'].threads[0].visibility, 'published');
+  const empty = handleRequest({ id: 'p0', op: 'publishTab', tabId: 8 }, dir);
+  assert.equal(empty.ok, false);
+});
+
+test('loadScreenshot returns png bytes', () => {
+  const dir = tmpDir();
+  writeSession(dir, 'S1');
+  const png = Buffer.from('png-bytes');
+  const created = handleRequest(
+    {
+      id: 's1',
+      op: 'createThread',
+      tabId: 7,
+      url: 'https://ex.com/app',
+      title: 'App',
+      captured,
+      body: '看图',
+      screenshotPngBase64: png.toString('base64'),
+    },
+    dir,
+  );
+  assert.equal(created.ok, true);
+  const tab = loadTab(dir, 7);
+  const rel = tab.pages['https://ex.com/app'].threads[0].screenshot;
+  const shot = handleRequest({ id: 's2', op: 'loadScreenshot', tabId: 7, rel }, dir);
+  assert.equal(shot.ok, true);
+  if (!shot.ok) {
+    return;
+  }
+  assert.equal(shot.pngBase64, png.toString('base64'));
+  const bad = handleRequest({ id: 's3', op: 'loadScreenshot', tabId: 7, rel: '../secret.png' }, dir);
+  assert.equal(bad.ok, false);
+});
+
 test('empty body fails', () => {
   const dir = tmpDir();
   writeSession(dir, 'S1');

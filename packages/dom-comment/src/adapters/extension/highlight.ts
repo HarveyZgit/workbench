@@ -1,12 +1,12 @@
 const OVERLAY_NAME = 'DOM-COMMENT-OVERLAY';
 const UI_NAME = 'DOM-COMMENT-UI';
-const BLUE = '#2563EB';
-const BUBBLE = `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path fill="${BLUE}" d="M12 3c4.97 0 9 3.13 9 7s-4.03 7-9 7c-.62 0-1.22-.05-1.8-.14L6 20v-4.27C4.16 14.4 3 12.35 3 10c0-3.87 4.03-7 9-7z"/></svg>`;
+const QUEUE_NAME = 'DOM-COMMENT-QUEUE';
+const BLUE = '#1A6B54';
 
-function bubble(id: string, left: number, top: number, interactive: boolean): string {
+function numberPin(id: string, n: number, left: number, top: number, interactive: boolean): string {
   const pe = interactive ? 'auto' : 'none';
   const pin = interactive ? `data-pin="${id}"` : '';
-  return `<div ${pin} style="position:fixed;left:${left}px;top:${top}px;width:24px;height:24px;pointer-events:${pe};cursor:${interactive ? 'pointer' : 'default'};filter:drop-shadow(0 1px 2px rgba(0,0,0,.28));line-height:0">${BUBBLE}</div>`;
+  return `<div ${pin} style="position:fixed;left:${left}px;top:${top}px;width:22px;height:22px;border-radius:50%;background:${BLUE};color:#fff;font:700 12px/22px system-ui,sans-serif;text-align:center;pointer-events:${pe};cursor:${interactive ? 'pointer' : 'default'};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.28);box-sizing:border-box">${n}</div>`;
 }
 
 export function isOurHost(el: EventTarget | null): boolean {
@@ -16,16 +16,20 @@ export function isOurHost(el: EventTarget | null): boolean {
   const root = el.getRootNode();
   if (root instanceof ShadowRoot && root.host) {
     const tag = root.host.tagName;
-    return tag === OVERLAY_NAME || tag === UI_NAME;
+    return tag === OVERLAY_NAME || tag === UI_NAME || tag === QUEUE_NAME;
   }
-  return el.closest(OVERLAY_NAME.toLowerCase()) !== null || el.closest(UI_NAME.toLowerCase()) !== null;
+  return (
+    el.closest(OVERLAY_NAME.toLowerCase()) !== null ||
+    el.closest(UI_NAME.toLowerCase()) !== null ||
+    el.closest(QUEUE_NAME.toLowerCase()) !== null
+  );
 }
 
 export function skipTarget(el: Element | null): boolean {
   if (!el || el === document.documentElement || el === document.body) {
     return true;
   }
-  if (el.tagName === OVERLAY_NAME || el.tagName === UI_NAME) {
+  if (el.tagName === OVERLAY_NAME || el.tagName === UI_NAME || el.tagName === QUEUE_NAME) {
     return true;
   }
   return isOurHost(el);
@@ -80,8 +84,8 @@ export function renderOverlay(opts: {
   banner: boolean;
   hover: DOMRect | null;
   rubber: { x: number; y: number; w: number; h: number } | null;
-  pins: { x: number; y: number; w: number; h: number; area: boolean; id: string }[];
-  draft?: { x: number; y: number; w: number; h: number } | null;
+  pins: { x: number; y: number; w: number; h: number; area: boolean; id: string; number: number }[];
+  draft?: { x: number; y: number; w: number; h: number; number?: number } | null;
 }): void {
   const host = ensureOverlayHost();
   const root = host.shadowRoot!;
@@ -92,13 +96,13 @@ export function renderOverlay(opts: {
     ? `<div style="position:fixed;left:${opts.rubber.x}px;top:${opts.rubber.y}px;width:${opts.rubber.w}px;height:${opts.rubber.h}px;border:2px dashed ${BLUE};background:rgba(37,99,235,.08);pointer-events:none;box-sizing:border-box;"></div>`
     : '';
   const banner = opts.banner
-    ? `<div style="position:fixed;left:50%;top:12px;transform:translateX(-50%);background:${BLUE};color:#fff;font:13px/1.4 system-ui,sans-serif;padding:6px 12px;border-radius:999px;pointer-events:none;">标注中 · 按 Esc 退出</div>`
+    ? `<div style="position:fixed;left:50%;top:12px;transform:translateX(-50%);background:${BLUE};color:#fff;font:13px/1.4 system-ui,sans-serif;padding:6px 12px;border-radius:999px;pointer-events:none;">标注中 · Esc 退出 · 长按空格看原页面</div>`
     : '';
   const pins = opts.pins
     .map((p) => {
-      const bx = p.x + Math.max(0, p.w * 0.55);
-      const by = p.y + p.h / 2 - 12;
-      const mark = bubble(p.id, bx, by, true);
+      const bx = Math.min(window.innerWidth - 26, Math.max(4, p.x + p.w - 10));
+      const by = Math.max(4, p.y - 8);
+      const mark = numberPin(p.id, p.number, bx, by, true);
       if (p.area) {
         return `<div data-pin="${p.id}" style="position:fixed;left:${p.x}px;top:${p.y}px;width:${p.w}px;height:${p.h}px;border:2px solid ${BLUE};background:rgba(37,99,235,.08);pointer-events:auto;cursor:pointer;box-sizing:border-box;"></div>${mark}`;
       }
@@ -106,10 +110,11 @@ export function renderOverlay(opts: {
     })
     .join('');
   const draft = opts.draft
-    ? bubble(
+    ? numberPin(
         'draft',
-        opts.draft.x + Math.max(0, opts.draft.w * 0.55),
-        opts.draft.y + opts.draft.h / 2 - 12,
+        opts.draft.number || 0,
+        Math.min(window.innerWidth - 26, Math.max(4, opts.draft.x + opts.draft.w - 10)),
+        Math.max(4, opts.draft.y - 8),
         false,
       )
     : '';

@@ -4,8 +4,8 @@
 | --- | --- |
 | 文档标题 | DOM Comment：Chrome 扩展上的 DOM 元素与区域评论 |
 | 作者 | Harvey / AI Workbench |
-| 日期 | 2026-08-22 |
-| 修订 | rev 6（复现冻结为截图 + 聚焦原 tab；Playwright / CDP 不做） |
+| 日期 | 2026-08-23 |
+| 修订 | rev 7（提交即落盘；复制 `/dom-comment tabid:`；Esc 收起 UI） |
 | 状态 | Draft |
 | 代码主场 | `/Users/harvey/Code/workbench-dom-comment`（worktree，分支 `feat/dom-comment`） |
 | 包路径 | `packages/dom-comment`（`package.json` `name`: `dom-comment`） |
@@ -15,13 +15,13 @@
 
 ## Overview
 
-DOM Comment 让人在 **自己的 Chrome** 里对真实网页做 Codex 式标注：工具栏打开弹窗 → 点图标开始标记 → 悬停蓝框 / 拖拽框选 → 弹出评论框。**保存的那一瞬间**给目标区域裁一张 PNG 快照。人和 Agent 共用本机 JSON + 截图文件。
+DOM Comment 让人在 **自己的 Chrome** 里对真实网页做标注：工具栏弹窗开始标记 → 单击元素 / 划选文字 / 拖区域 → 页内编号钉子和悬浮清单。写完即裁切 PNG 并落盘。复制 `/dom-comment tabid:…` 交给 Agent。Esc 退出后页面上的标记 UI 收掉，数据仍在。
 
-Agent **不**和页面直连。用户从弹窗复制 prompt（`/dom-comment tabid:…` 或带 `url:`）粘到 Agent 会话；Skill 按参数优先查找。需要复现时：**先看评论瞬间的裁切 PNG**；还要看活页则 `open --tab` **聚焦原 tab**（同一 Chrome、登录态还在）。v1 **不上** Playwright、**不** CDP 挂浏览器、**不**导出 cookie 开无头分身。
+Agent **不**和页面直连。默认说「看看我刚才的网页标记」，Skill 跑 `list --open`。复制 `/dom-comment tabid:…` 只是降级。需要复现时：**先看评论瞬间的裁切 PNG**；还要看活页则 `open --tab` **聚焦原 tab**。不上 Playwright / CDP。
 
-存储按 **Chrome tab id** 分文件；文件内再用 canonical URL 分页面（评论和截图都挂在对应 URL 下）。tab id 只在当前 Chrome 会话内有意义。
+存储仍按 **Chrome tab id** 分文件；文件内用 canonical URL 分页面。
 
-**实现门闩：** 先有 OpenSpec change 的 `tasks.md`，再写产品代码、加依赖、登记 Rush。本文是该 change 的源。
+**实现门闩：** 先有 OpenSpec change 的 `tasks.md`，再写产品代码。本文是源。
 
 ---
 
@@ -35,16 +35,15 @@ rev 4 按「文档 = URL」存、工具栏直接开关模式、不存图。用�
 
 ## Goals & Non-Goals
 
-### Goals（v1）
+### Goals（v1 / rev 7）
 
-- OpenSpec change 齐后再写代码。
-- 工具栏打开弹窗：图标开始/停止标记；两段可复制 Agent prompt。
-- 标注中：元素蓝描边、拖拽框选、Esc 退出；页面上有「标注中，Esc 退出」提示。
-- 单击或有效框选后同一套「添加评论」编写框；提交时裁切 PNG 快照并落盘。
-- 数据：`{tabId}.json`，内层按 URL 挂 threads 与截图路径。
-- CLI / Skill：`tabid:` 优先，其次 `url:`，再才是用户口语。
-- Agent 复现：读截图；必要时 `dom-comment open --tab` 聚焦已登录的原 tab。不上 Playwright / CDP。
-- 单用户、本机、macOS Load unpacked。shadcn 用于弹窗、编写框、侧栏。
+- 工具栏弹窗：开始/停止标记、评论数量、复制 `/dom-comment tabid:`。
+- 标注中：元素单击、划选文字、直接拖区域；Esc 退出后页面标记 UI 消失；长按空格看原页面。
+- 页内悬浮清单：编号列表、删除、复制 `/dom-comment tabid:`。Esc 后 UI 消失。
+- 保存瞬间裁切 PNG 并立刻落盘，CLI 马上能读。
+- 数据：仍 `{tabId}.json`。
+- Skill：先 `tabid:` / `url:`，否则 `list --open`。
+- Agent 复现：读截图；必要时 `open --tab`。不上 Playwright / CDP。
 
 ### Non-Goals
 
@@ -53,8 +52,8 @@ rev 4 按「文档 = URL」存、工具栏直接开关模式、不存图。用�
 - 协同服务器、多用户、商店上架、Firefox/Safari。
 - Windows / Linux native host；Edge 登记。
 - `file://` / `chrome://` / 跨域 iframe 内部。
-- 全文评论、Markdown 划词评论。
-- 扩展内回复已有线程（v1 用户只创建；跟进走 Agent CLI）。
+- 扩展内把评论推进某个 Agent 聊天（没有「发给 ChatGPT」按钮）。
+- 改名 PageMark、换 `~/.pagemark`、重写 Native Messaging 协议。
 - Playwright（含 `launchPersistentContext`、cookie/`storageState` 导出、无头分身）。
 - CDP 挂正在跑的 Chrome（`--remote-debugging-port`、`chrome://inspect`、`chrome.debugger`）。
 - 无痕窗口 / 空 profile 去重新登录目标站。
@@ -70,8 +69,8 @@ rev 4 按「文档 = URL」存、工具栏直接开关模式、不存图。用�
 | K2 | 概念同构、包与存储分离；不抽 markdown-comment core | core 仍绑 VS Code。 |
 | K3 | Native Messaging 写盘；另用 **持久 NM 连接 + Unix socket** 给 CLI→扩展（聚焦 tab） | 扩展不能写 `~`；CLI 又要叫 Chrome 聚焦已登录 tab。一次性 `sendNativeMessage` 无法从 CLI 发起。 |
 | K4 | 存储主键 = **当前 Chrome 会话 + tabId**；文件内 key = canonical URL | 用户指定。一次浏览里同一 tab 会换 URL，评论应留在这个 tab 下。 |
-| K5 | 元素 hover+click **与** 框选；**保存瞬间裁切 PNG** | 用户指定。文本 quote 仍要，截图给 Agent 看布局/登录后的 UI。 |
-| K6 | 工具栏打开 **popup**，不直接 toggle；popup 内图标才进入标注 | 用户指定。有 `default_popup` 则 `action.onClicked` 不触发。 |
+| K5 | 单击元素、划选文字、直接拖区域；**保存瞬间裁切 PNG** | 拖满 8px 就是框选，不按 Shift。截图给 Agent 看当时画面。 |
+| K6 | 工具栏 **popup** 只负责启动；页内悬浮清单负责队列和发布 | action popup 失焦即关，不能当编辑器。 |
 | K7 | WXT + React + Tailwind + shadcn | popup / 编写框 / 侧栏。hover 仍是 vanilla overlay。 |
 | K8 | hover / 橡皮筋 / 标注中提示条：vanilla overlay | 热路径不打 React、不打 host。 |
 | K9 | 编写框进 Shadow `dom-comment-ui`；overlay 用 `dom-comment-overlay` | 防页面 CSS。 |
@@ -79,13 +78,14 @@ rev 4 按「文档 = URL」存、工具栏直接开关模式、不存图。用�
 | K11 | 每条线程一张 **裁切 PNG**（元素盒或框选盒）+ 文本 snapshot | Codex 同款「那一瞬间」。不把 PNG 塞进 JSON。 |
 | K12 | 侧栏仍做列表；工具栏 **必须有 popup**，故单击工具栏不再切换模式 | 与 K6 一致。 |
 | K13 | 生产权限：`nativeMessaging` + `storage` + `offscreen`（若 SW 保活失败）+ http(s) host。PR 4 加 `sidePanel`。不加 `tabs` / 生产 `scripting`。`captureVisibleTab` 靠 host_permissions | 截可见 tab 再裁切，不要 `tabCapture` 流。 |
-| K14 | 钉 / 区域回放框 / 扩展内 resolve → PR 6 | 第一期：标 → 截图落盘 → 复制 prompt → Agent list/reply。 |
-| K15 | Skill 名 `dom-comment`；prompt 形态 `/dom-comment tabid:N` 与 `/dom-comment tabid:N url:…` | 用户指定。查找 **先参数，后口语**。 |
+| K14 | 编号钉只在标注模式显示；复制 `/dom-comment tabid:` | 退出后页面恢复干净。 |
+| K15 | Skill 名 `dom-comment`；默认 `list --open`；`tabid:` / `url:` 降级 | 查找先参数，否则最近未解决批次。 |
 | K16 | 先 OpenSpec，再产品 PR | 包指南。 |
 | K17 | 标注模式仍是扩展全局布尔 | 进入后所有 http(s) tab 可标；Esc 全局退出。 |
 | K18 | URL（文件内页面 key）：保留 query、去追踪参数；默认丢 hash，HashRouter `#/` / `#!/` 保留 | 用户已确认。 |
 | K19 | tab 文件带 `sessionId`；新 Chrome 会话若 tabId 冲突则把旧文件旋到 `archive/` | tabId 重启后会复用，不能把两次浏览写进同一文件。 |
 | K20 | Agent 复现 = **截图 + 聚焦原 tab（A）**。v1 不做 Playwright / CDP / cookie 导出 | 用户拍板。headless 无法占用正在用的 Chrome profile；CDP 是另一套产品。截图是「那一瞬间」；活页只唤回已登录的那个 tab。 |
+| K21 | 提交即落盘；复制 `/dom-comment tabid:`（可带 url）；Esc 隐藏页面标记 UI | 人不再当发布闸门。 |
 
 ---
 
@@ -487,7 +487,7 @@ type ExtMessage =
 | CDP attach（inspect / `chrome.debugger`） | **推迟**。会遥控整只浏览器或弹出调试黄条；v1 不做。 |
 | 本地 HTTP daemon | 写盘仍 NM；CLI→扩展用 Unix socket 更窄。不另开 HTTP。 |
 | 无 popup、工具栏直接 toggle | 否。用户要复制 prompt。 |
-| 页内悬浮 + | 否。K6。 |
+| 页内悬浮清单 | **rev 7 采用**。popup 只启动；持续编辑必须在页面上。 |
 
 ---
 

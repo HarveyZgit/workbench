@@ -4,7 +4,14 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
 import { buildAnchor } from '../src/core/anchor.js';
-import { createThread, editComment, reply, updateRelocate } from '../src/core/ops.js';
+import {
+  createThread,
+  deleteComment,
+  discardPending,
+  editComment,
+  reply,
+  updateRelocate,
+} from '../src/core/ops.js';
 import type { CapturedElement } from '../src/core/types.js';
 import {
   currentSession,
@@ -130,12 +137,7 @@ test('empty body is rejected', () => {
   assert.throws(() => createThread(tab, 'https://ex.com/', 't', anchor, '   ', ''), /empty body/);
 });
 
-test('CLI list --tab and reply by short id', () => {
-  const dir = tmpDir();
-  writeSession(dir, 'S1');
-  const prev = process.env.DOM_COMMENT_STORAGE_DIR;
-  process.env.DOM_COMMENT_STORAGE_DIR = dir;
-  const { thread } = capturedCreate(dir, TAB_CLI, 'https://ex.com/app', '文案太长');
+function withStdout(fn: () => void): string {
   const chunks: string[] = [];
   const orig = process.stdout.write.bind(process.stdout);
   process.stdout.write = ((s: string | Uint8Array) => {
@@ -143,8 +145,21 @@ test('CLI list --tab and reply by short id', () => {
     return true;
   }) as typeof process.stdout.write;
   try {
-    main(['list', '--tab', String(TAB_CLI)]);
-    const text = chunks.join('');
+    fn();
+  } finally {
+    process.stdout.write = orig;
+  }
+  return chunks.join('');
+}
+
+test('CLI list --tab and reply by short id', () => {
+  const dir = tmpDir();
+  writeSession(dir, 'S1');
+  const prev = process.env.DOM_COMMENT_STORAGE_DIR;
+  process.env.DOM_COMMENT_STORAGE_DIR = dir;
+  const { thread } = capturedCreate(dir, TAB_CLI, 'https://ex.com/app', '文案太长');
+  try {
+    const text = withStdout(() => main(['list', '--tab', String(TAB_CLI)]));
     assert.match(text, new RegExp(`tab ${TAB_CLI}`));
     assert.match(text, /\[元素\]/);
     assert.match(text, /文案太长/);
@@ -152,13 +167,50 @@ test('CLI list --tab and reply by short id', () => {
     const hit = findThread(dir, thread.id);
     assert.equal(hit?.thread.comments[1].body, '已改成保存');
   } finally {
-    process.stdout.write = orig;
     if (prev === undefined) {
       delete process.env.DOM_COMMENT_STORAGE_DIR;
     } else {
       process.env.DOM_COMMENT_STORAGE_DIR = prev;
     }
   }
+});
+
+test('create is immediately listable', () => {
+  const dir = tmpDir();
+  writeSession(dir, 'S1');
+  const prev = process.env.DOM_COMMENT_STORAGE_DIR;
+  process.env.DOM_COMMENT_STORAGE_DIR = dir;
+  capturedCreate(dir, TAB_CLI, 'https://ex.com/app', '写完就能看');
+  try {
+    const tab = loadTab(dir, TAB_CLI);
+    assert.equal(tab.pages['https://ex.com/app'].threads[0].visibility, 'published');
+    const listed = withStdout(() => main(['list', '--open']));
+    assert.match(listed, /写完就能看/);
+    assert.match(listed, /tab-42|#/);
+  } finally {
+    if (prev === undefined) {
+      delete process.env.DOM_COMMENT_STORAGE_DIR;
+    } else {
+      process.env.DOM_COMMENT_STORAGE_DIR = prev;
+    }
+  }
+});
+
+test('discard pending keeps already saved threads', () => {
+  const dir = tmpDir();
+  writeSession(dir, 'S1');
+  capturedCreate(dir, TAB_SMALL, 'https://ex.com/a', '先保存');
+  const tab = loadTab(dir, TAB_SMALL);
+  tab.pages['https://ex.com/a'].threads[0].visibility = 'pending';
+  saveTab(dir, tab);
+  capturedCreate(dir, TAB_SMALL, 'https://ex.com/a', '第二');
+  const again = loadTab(dir, TAB_SMALL);
+  const { removed } = discardPending(again);
+  saveTab(dir, again);
+  assert.equal(removed.length, 1);
+  const final = loadTab(dir, TAB_SMALL);
+  assert.equal(final.pages['https://ex.com/a'].threads.length, 1);
+  assert.equal(final.pages['https://ex.com/a'].threads[0].comments[0].body, '第二');
 });
 
 test('updateRelocate skips unknown ids and keeps comments', () => {
@@ -178,6 +230,25 @@ test('updateRelocate skips unknown ids and keeps comments', () => {
   const final = loadTab(dir, TAB_SMALL);
   assert.equal(final.pages['https://ex.com/a'].threads[0].relocateStatus?.state, 'orphaned');
   assert.equal(final.pages['https://ex.com/a'].threads[0].comments.length, 1);
+});
+
+test('deleteComment removes one comment and drops empty thread', () => {
+  const dir = tmpDir();
+  writeSession(dir, 'S1');
+  const { thread } = capturedCreate(dir, TAB_SMALL, 'https://ex.com/a', '第一页');
+  const tab = loadTab(dir, TAB_SMALL);
+  reply(tab, thread.id, { author: 'agent', body: '已看' });
+  saveTab(dir, tab);
+  const afterReply = loadTab(dir, TAB_SMALL);
+  const first = afterReply.pages['https://ex.com/a'].threads[0];
+  deleteComment(afterReply, first.id, first.comments[1].id);
+  saveTab(dir, afterReply);
+  const one = loadTab(dir, TAB_SMALL).pages['https://ex.com/a'].threads[0];
+  assert.equal(one.comments.length, 1);
+  deleteComment(afterReply, first.id, first.comments[0].id);
+  saveTab(dir, afterReply);
+  const empty = loadTab(dir, TAB_SMALL);
+  assert.equal(empty.pages['https://ex.com/a'], undefined);
 });
 
 test('editComment updates body', () => {

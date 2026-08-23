@@ -2,7 +2,7 @@
   "name": "dom-comment",
   "version": "0.0.0",
   "private": true,
-  "description": "在页面上标记 DOM 元素并评论。",
+  "description": "在页面上标记元素、文字或区域并评论。",
   "license": "MIT",
   "type": "module",
   "bin": {

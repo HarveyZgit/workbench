@@ -1,11 +1,12 @@
 import * as esbuild from 'esbuild';
 import { chmod, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const packageRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const executableMode = 0o755;
 const outExt = path.join(packageRoot, '.output/chrome-mv3');
+await import(pathToFileURL(path.join(packageRoot, 'scripts/generate-icons.mjs')).href);
 
 await esbuild.build({
   entryPoints: {
@@ -51,8 +52,8 @@ const ext = JSON.parse(await readFile(path.join(packageRoot, 'chrome-extension.j
 const manifest = {
   manifest_version: 3,
   name: 'DOM Comment',
-  description: '在页面上标记 DOM 元素或框选区域并评论',
-  version: '0.0.1',
+  description: '在页面上标记元素、文字或区域并评论',
+  version: '0.0.2',
   key: ext.key,
   action: {
     default_title: '进入标注模式',
@@ -72,7 +73,7 @@ const manifest = {
   host_permissions: ['<all_urls>'],
   commands: {
     'toggle-annotate': {
-      suggested_key: { default: 'Alt+Shift+D', mac: 'Alt+Shift+D' },
+      suggested_key: { default: 'Ctrl+Period', mac: 'Command+Period' },
       description: '切换标注模式',
     },
     'open-side-panel': {
