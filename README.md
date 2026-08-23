@@ -1,6 +1,6 @@
 # AI Workbench
 
-一个用于长期维护个人 AI 资产的 Monorepo：小工具、Agent Skills、Rules、CLI、MCP 服务，以及它们共享的配置与发布能力。
+一个用于长期维护个人 AI 工具的 Monorepo：CLI、编辑器扩展、本机小工具，以及它们共享的配置与发布能力。独立 Agent Skills / Rules / Evals 在 [HarveyZgit/agents](https://github.com/HarveyZgit/agents)。
 
 这里的目标不是把所有东西塞进一个大项目，而是让每项资产都能独立演进、清晰复用，并保持可验证、可发布、可安装。
 
@@ -11,9 +11,7 @@
 | `packages/markdown-comment` | Markdown 评论工具：已迁入 VS Code 扩展、CLI 与 Agent Skill | 架构迁移中 |
 | `packages/fast-finicky` | macOS 菜单栏 Chrome Profile 分流（Swift，不进 Rush） | 已启用 |
 | `tools/repo` | 仓库级 ESLint、Prettier 与 Git hooks | 已启用 |
-| `resources/skills` | 独立 workflow Skill 源文件（`review-and-commit`、`session-handoff`、`context-doctor`、`eli5`），经 `npx skills add HarveyZgit/workbench` 安装 | 已启用 |
-| `resources/rules` | 原子化通用准则片段，未来分发到各 Agent 宿主的全局配置 | 体系已建，分发未实现 |
-| `resources/evals` | 按 Skill 隔离的评测定义、夹具、测试与 iteration 产物 | 已启用 |
+| [HarveyZgit/agents](https://github.com/HarveyZgit/agents) | 独立 workflow Skills、Rules、Evals | 已拆出 |
 
 后续资产按类型放入清晰的顶层目录或独立 package；每个可发布/可安装的工具都应有自己的 README、使用入口和验证方式。
 
@@ -46,6 +44,8 @@ node common/scripts/install-run-rush.js update
 
 `rush update` 会装依赖、生成 lockfile，并安装 Git hooks（husky / lint-staged / commitlint）。之后请用 `rush`，**不要在仓库根目录直接跑 `pnpm` / `npm install`**。
 
+独立 catalog 以 git submodule 挂在 `vendor/agents`。克隆后执行 `git submodule update --init vendor/agents` 才能检出。`resources/skills`、`resources/rules`、`resources/evals` 是指向该 submodule 对应目录的符号链接。
+
 ### 常用命令
 
 Rush 的 `--to` 用的是 **package.json 的 `name`**，不是目录名：
@@ -76,7 +76,7 @@ rushx package          # 打 VSIX
 rushx watch            # 扩展开发时的增量构建
 ```
 
-改 Skills / 安装路径时再跑：
+改本仓库里的包绑定 Skill 时再跑：
 
 ```sh
 python3 scripts/test-agent-neutrality.py
@@ -103,7 +103,7 @@ python3 scripts/check-agent-neutrality.py
 
 - 新资产优先做成边界明确、可单独验证的 package。
 - 面向 Agent 的能力同时提供简洁的人类文档和可执行的 Skill/CLI 入口。
-- 独立 workflow Skill 用 `npx skills add HarveyZgit/workbench` 安装；包绑定型 Skill 随所属 package 构建和安装。安装与约定见 [`resources/skills/README.md`](resources/skills/README.md)。
+- 独立 workflow Skill 在 [HarveyZgit/agents](https://github.com/HarveyZgit/agents)，用 `npx skills add HarveyZgit/agents` 安装；包绑定型 Skill 随所属 package 构建和安装。
 - 不把个人运行时数据、构建产物或本机配置提交进仓库。
 - 变更应附带适当的测试或可复现验证命令。
 

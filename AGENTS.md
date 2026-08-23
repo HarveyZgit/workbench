@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repository is a personal Monorepo for AI assets: tools, Skills, rules, CLIs, MCP services, and their shared configuration. Keep every asset independently understandable, testable, and installable.
+This repository is a personal Monorepo for AI tools: CLIs, editor extensions, and local utilities. The standalone catalog lives in HarveyZgit/agents and is linked into `resources/` via the `vendor/agents` submodule. Keep every asset independently understandable, testable, and installable.
 
 The repository is written primarily for a Chinese-speaking maintainer. User-facing documentation and product copy should normally be Chinese; use English when it is conventional for code, package metadata, or commit messages.
 
@@ -10,8 +10,8 @@ The repository is written primarily for a Chinese-speaking maintainer. User-faci
 
 - Read [README.md](README.md) for repository scope and development entry points.
 - `packages/markdown-comment` contains the migrated VS Code implementation. It remains a legacy, VS Code-centred implementation while the editor-neutral core is extracted.
-- Standalone workflow Skill sources live in `resources/skills/<skill-name>/SKILL.md`; package-bound Skills live with their owning package. See [resources/skills/README.md](resources/skills/README.md) for host-neutrality rules and `npx skills` installation. Platform-specific discovery or publishing files are thin adapters only.
-- Atomic host-neutral guideline fragments live in `resources/rules/`. See [resources/rules/README.md](resources/rules/README.md) for the asset-classification model and fragment format before adding one.
+- Standalone workflow Skills, rules, and evals live in [HarveyZgit/agents](https://github.com/HarveyZgit/agents) and are linked into `resources/` via `vendor/agents`. Package-bound Skills live with their owning package. Platform-specific discovery or publishing files are thin adapters only.
+- Atomic host-neutral guideline fragments live in `resources/rules/` (symlink into `vendor/agents`). See [resources/rules/README.md](resources/rules/README.md) for the asset-classification model and fragment format before adding one.
 
 ## Markdown Comment design
 
