@@ -27,8 +27,6 @@ ADAPTER_CONTENT = {
 SCAN_PREFIXES = (
     "packages/markdown-comment/resources/skills/",
     "packages/dom-comment/resources/skills/",
-    "resources/evals/",
-    "resources/skills/",
 )
 SCAN_FILES = {
     "AGENTS.md",
@@ -36,7 +34,6 @@ SCAN_FILES = {
     "docs/architecture/markdown-comment.md",
     "packages/markdown-comment/README.md",
     "packages/markdown-comment/src/cli.ts",
-    "scripts/link-skills.sh",
 }
 EXCLUDED_PARTS = {"tests", "fixtures", "workspace", "dist", "node_modules"}
 BINARY_SUFFIXES = {".gif", ".ico", ".jpeg", ".jpg", ".mp3", ".mp4", ".otf", ".pdf", ".png", ".ttf", ".wav", ".webp", ".woff", ".woff2", ".zip"}

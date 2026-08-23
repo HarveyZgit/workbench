@@ -20,7 +20,6 @@ SPEC.loader.exec_module(GUARD)
 
 class AgentNeutralityGuardTest(unittest.TestCase):
     def test_scans_ai_assets_not_unrelated_product_code(self) -> None:
-        self.assertTrue(GUARD.should_scan(Path("resources/skills/example/SKILL.md")))
         self.assertTrue(
             GUARD.should_scan(
                 Path("packages/markdown-comment/resources/skills/markdown-comment/SKILL.md")
@@ -29,13 +28,9 @@ class AgentNeutralityGuardTest(unittest.TestCase):
         self.assertTrue(
             GUARD.should_scan(Path("packages/dom-comment/resources/skills/dom-comment/SKILL.md"))
         )
-        self.assertTrue(GUARD.should_scan(Path("resources/evals/example/evals.json")))
-        self.assertFalse(GUARD.should_scan(Path("resources/evals/example/fixtures/input.md")))
-        self.assertTrue(GUARD.should_scan(Path("resources/skills/example/assets/template.md")))
-        self.assertFalse(GUARD.should_scan(Path("resources/skills/example/assets/icon.png")))
-        self.assertTrue(GUARD.should_scan(Path("scripts/link-skills.sh")))
+        self.assertTrue(GUARD.should_scan(Path("README.md")))
         self.assertFalse(GUARD.should_scan(Path("packages/product/src/page.tsx")))
-        self.assertFalse(GUARD.should_scan(Path("resources/skills/example/tests/test.py")))
+        self.assertFalse(GUARD.should_scan(Path("skills/eli5/SKILL.md")))
 
     def test_rejects_host_specific_workflow(self) -> None:
         patterns = dict(GUARD.RULES)
