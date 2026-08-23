@@ -25,6 +25,9 @@ class AgentNeutralityGuardTest(unittest.TestCase):
                 Path("packages/markdown-comment/resources/skills/markdown-comment/SKILL.md")
             )
         )
+        self.assertTrue(
+            GUARD.should_scan(Path("packages/dom-comment/resources/skills/dom-comment/SKILL.md"))
+        )
         self.assertTrue(GUARD.should_scan(Path("README.md")))
         self.assertFalse(GUARD.should_scan(Path("packages/product/src/page.tsx")))
         self.assertFalse(GUARD.should_scan(Path("skills/eli5/SKILL.md")))

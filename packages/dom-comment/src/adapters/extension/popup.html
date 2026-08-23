@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        width: 240px;
+        color: #1c1c1a;
+        background: #f4f5f3;
+        font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      .wrap {
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .btn {
+        height: 34px;
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        font: 650 13px inherit;
+        cursor: pointer;
+      }
+      .btn:focus-visible { outline: 2px solid #1a6b54; outline-offset: 2px; }
+      .btn:active { transform: scale(.98); }
+      .btn-primary { background: #1a6b54; color: #f4f5f3; }
+      .btn-primary:hover { background: #155a47; }
+      .btn-ghost { background: transparent; border-color: #d8dad4; color: #1c1c1a; }
+      .btn-ghost:hover { background: #e8e9e5; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <button class="btn btn-primary" id="toggle" type="button">开始标记</button>
+      <button class="btn btn-ghost" id="copy" type="button">复制 skill prompt</button>
+    </div>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

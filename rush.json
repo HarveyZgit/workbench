@@ -32,6 +32,11 @@
       "packageName": "repo-tools",
       "projectFolder": "tools/repo",
       "shouldPublish": false
+    },
+    {
+      "packageName": "dom-comment",
+      "projectFolder": "packages/dom-comment",
+      "shouldPublish": false
     }
   ]
 }

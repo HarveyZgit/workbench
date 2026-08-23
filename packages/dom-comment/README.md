@@ -1,0 +1,74 @@
+# DOM Comment
+
+在自己的 Chrome 里标记页面元素或框选区域，写下评论，并让 Agent 通过 CLI / Skill 读取、回复。
+
+本包是 `markdown-comment` 的兄弟产品，不共用存储或类型。
+
+## 安装
+
+仓库是私有的，匿名 `curl` 下载 Release 会 404。用已登录的 GitHub CLI：
+
+```sh
+gh release download dom-comment-v0.1.0 --repo HarveyZgit/workbench -p install.sh -p dom-comment.zip
+bash install.sh --zip ./dom-comment.zip
+```
+
+脚本会下载 zip、链出 `~/.local/bin/dom-comment`，并运行 `dom-comment install`（登记 Native Messaging，交互选择 Skill 目录）。然后：
+
+```sh
+dom-comment extension
+```
+
+把打印出的目录拿到 `chrome://extensions` → 开发者模式 →「加载已解压的扩展程序」。Chrome 不允许脚本代装扩展。
+
+源码树开发：
+
+```sh
+cd packages/dom-comment
+rushx build
+node dist/cli.js install
+```
+
+打 Release zip：
+
+```sh
+cd packages/dom-comment
+rushx pack-release
+gh release create "dom-comment-v0.1.0" dist/dom-comment.zip scripts/install.sh --title "dom-comment 0.1.0"
+```
+
+## 使用
+
+1. 点工具栏打开弹窗，点「开始标记」。
+2. 单击元素、划选文字，或直接拖出区域，写评论。保存时立刻落盘并裁切截图。
+3. 打开工具栏弹窗，点「复制 skill prompt」得到 `/dom-comment tabid:…`。Esc 退出后页面上的钉子会收掉，数据还在。
+4. 把这一行贴给 Agent，或直接说「看看我刚才的网页标记」。
+
+Agent 只根据评论和截图判断，不要把浏览器唤到前台。`open --tab` 仅在用户明确要求聚焦原标签时使用。不上 Playwright / CDP / headless。
+
+## CLI
+
+```sh
+dom-comment install [--target <skill-root>]
+dom-comment extension
+dom-comment list --open
+dom-comment list --tab 1847 --url 'https://example.com/app' --json
+dom-comment reply <threadId> '已处理'
+dom-comment resolve <threadId>
+dom-comment open --tab 1847
+dom-comment ping-host
+```
+
+源码树里评论写在包内 `data/`（已 gitignore）。zip 安装后写到用户目录（macOS 为 `~/Library/Application Support/dom-comment`）。测试可用 `DOM_COMMENT_STORAGE_DIR`。
+
+Native Messaging 清单仍必须写在 Chrome 的 `NativeMessagingHosts/`（浏览器 API 要求）。
+
+## 开发
+
+```sh
+rush test --to dom-comment
+rush typecheck --to dom-comment
+rush build --to dom-comment
+```
+
+扩展打进 `dist/chrome-mv3`。OpenSpec change：`openspec/changes/npm-cli-package`。
