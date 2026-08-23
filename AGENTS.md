@@ -10,7 +10,7 @@ The repository is written primarily for a Chinese-speaking maintainer. User-faci
 
 - Read [README.md](README.md) for repository scope and development entry points.
 - `packages/markdown-comment` contains the migrated VS Code implementation. It remains a legacy, VS Code-centred implementation while the editor-neutral core is extracted.
-- Standalone workflow Skill sources live in `resources/skills/<skill-name>/SKILL.md`; package-bound Skills live with their owning package. See [resources/skills/README.md](resources/skills/README.md) for host-neutrality rules and explicit-target installation. Platform-specific discovery or publishing files are thin adapters only.
+- Standalone workflow Skill sources live in `resources/skills/<skill-name>/SKILL.md`; package-bound Skills live with their owning package. See [resources/skills/README.md](resources/skills/README.md) for host-neutrality rules and `npx skills` installation. Platform-specific discovery or publishing files are thin adapters only.
 - Atomic host-neutral guideline fragments live in `resources/rules/`. See [resources/rules/README.md](resources/rules/README.md) for the asset-classification model and fragment format before adding one.
 
 ## Markdown Comment design

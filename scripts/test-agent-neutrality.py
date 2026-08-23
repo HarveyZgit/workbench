@@ -30,7 +30,7 @@ class AgentNeutralityGuardTest(unittest.TestCase):
         self.assertFalse(GUARD.should_scan(Path("resources/evals/example/fixtures/input.md")))
         self.assertTrue(GUARD.should_scan(Path("resources/skills/example/assets/template.md")))
         self.assertFalse(GUARD.should_scan(Path("resources/skills/example/assets/icon.png")))
-        self.assertTrue(GUARD.should_scan(Path("scripts/link-skills.sh")))
+        self.assertTrue(GUARD.should_scan(Path("README.md")))
         self.assertFalse(GUARD.should_scan(Path("packages/product/src/page.tsx")))
         self.assertFalse(GUARD.should_scan(Path("resources/skills/example/tests/test.py")))
 

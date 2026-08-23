@@ -11,7 +11,7 @@
 | `packages/markdown-comment` | Markdown 评论工具：已迁入 VS Code 扩展、CLI 与 Agent Skill | 架构迁移中 |
 | `packages/fast-finicky` | macOS 菜单栏 Chrome Profile 分流（Swift，不进 Rush） | 已启用 |
 | `tools/repo` | 仓库级 ESLint、Prettier 与 Git hooks | 已启用 |
-| `resources/skills` | 独立 workflow Skill 源文件（`review-and-commit`、`session-handoff`、`context-doctor`），经 `scripts/link-skills.sh` 分发到本机各 Agent | 已启用 |
+| `resources/skills` | 独立 workflow Skill 源文件（`review-and-commit`、`session-handoff`、`context-doctor`、`eli5`），经 `npx skills add HarveyZgit/workbench` 安装 | 已启用 |
 | `resources/rules` | 原子化通用准则片段，未来分发到各 Agent 宿主的全局配置 | 体系已建，分发未实现 |
 | `resources/evals` | 按 Skill 隔离的评测定义、夹具、测试与 iteration 产物 | 已启用 |
 
@@ -103,7 +103,7 @@ python3 scripts/check-agent-neutrality.py
 
 - 新资产优先做成边界明确、可单独验证的 package。
 - 面向 Agent 的能力同时提供简洁的人类文档和可执行的 Skill/CLI 入口。
-- 独立 workflow Skill 用 `scripts/link-skills.sh --target <skill-dir>` 软链到用户显式指定的目录；包绑定型 Skill 随所属 package 构建和安装。安装与约定见 [`resources/skills/README.md`](resources/skills/README.md)。
+- 独立 workflow Skill 用 `npx skills add HarveyZgit/workbench` 安装；包绑定型 Skill 随所属 package 构建和安装。安装与约定见 [`resources/skills/README.md`](resources/skills/README.md)。
 - 不把个人运行时数据、构建产物或本机配置提交进仓库。
 - 变更应附带适当的测试或可复现验证命令。
 
