@@ -44,6 +44,8 @@ node common/scripts/install-run-rush.js update
 
 `rush update` 会装依赖、生成 lockfile，并安装 Git hooks（husky / lint-staged / commitlint）。之后请用 `rush`，**不要在仓库根目录直接跑 `pnpm` / `npm install`**。
 
+独立 catalog 以 git submodule 挂在 `vendor/agents`。克隆后执行 `git submodule update --init vendor/agents` 才能检出。`resources/skills`、`resources/rules`、`resources/evals` 是指向该 submodule 对应目录的符号链接。
+
 ### 常用命令
 
 Rush 的 `--to` 用的是 **package.json 的 `name`**，不是目录名：
