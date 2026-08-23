@@ -889,12 +889,179 @@ final class FastFinickyCoreTests: XCTestCase {
         XCTAssertThrowsError(try login.setEnabled(true))
         XCTAssertFalse(login.isEnabled)
     }
+
+    func testAppUpdaterComparesVersionsNumerically() {
+        XCTAssertTrue(AppUpdater.isNewer(latest: "0.1.10", than: "0.1.9"))
+        XCTAssertTrue(AppUpdater.isNewer(latest: "v0.2.0", than: "0.1.9"))
+        XCTAssertTrue(AppUpdater.isNewer(latest: "1.0.0", than: "0.9.9"))
+        XCTAssertFalse(AppUpdater.isNewer(latest: "0.1.2", than: "0.1.2"))
+        XCTAssertFalse(AppUpdater.isNewer(latest: "v0.1.2", than: "0.1.2"))
+        XCTAssertFalse(AppUpdater.isNewer(latest: "0.1.1", than: "0.1.2"))
+    }
+
+    func testAppUpdaterFindsAppAtRootOrOneLevelDown() throws {
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        let updater = AppUpdater(commandRunner: { _ in })
+
+        XCTAssertThrowsError(try updater.findApp(in: temp)) { error in
+            XCTAssertEqual(error as? AppUpdateError, .zipMissingApp)
+        }
+
+        let nestedDir = temp.appendingPathComponent("wrapped", isDirectory: true)
+        let nestedApp = nestedDir.appendingPathComponent("Fast Finicky.app")
+        try FileManager.default.createDirectory(at: nestedApp, withIntermediateDirectories: true)
+        XCTAssertEqual(try updater.findApp(in: temp).lastPathComponent, "Fast Finicky.app")
+
+        let direct = temp.appendingPathComponent("Fast Finicky.app")
+        try FileManager.default.createDirectory(at: direct, withIntermediateDirectories: true)
+        XCTAssertEqual(try updater.findApp(in: temp).path, direct.path)
+    }
+
+    func testAppUpdaterValidatesBundleIdentity() throws {
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let updater = AppUpdater(commandRunner: { _ in })
+        let app = try makeUpdateAppBundle(at: temp.appendingPathComponent("Fast Finicky.app"), identifier: "com.harvey.fastfinicky", version: "0.1.3")
+        XCTAssertEqual(try updater.validate(appAt: app), "0.1.3")
+
+        let other = try makeUpdateAppBundle(at: temp.appendingPathComponent("Other.app"), identifier: "com.example.other", version: "9.0")
+        XCTAssertThrowsError(try updater.validate(appAt: other)) { error in
+            XCTAssertEqual(error as? AppUpdateError, .wrongBundleIdentifier("com.example.other"))
+        }
+    }
+
+    func testAppUpdaterExtractClearsQuarantineAndStages() throws {
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        let zip = temp.appendingPathComponent("Fast-Finicky-0.1.3-macos-arm64.zip")
+        try Data().write(to: zip)
+        let fixture = try makeUpdateAppBundle(
+            at: temp.appendingPathComponent("fixture.app"),
+            identifier: "com.harvey.fastfinicky",
+            version: "0.1.3"
+        )
+        let currentApp = temp.appendingPathComponent("installed").appendingPathComponent("Fast Finicky.app")
+        try FileManager.default.createDirectory(at: currentApp, withIntermediateDirectories: true)
+
+        var commands: [[String]] = []
+        let updater = AppUpdater(commandRunner: { arguments in
+            commands.append(arguments)
+            if arguments.starts(with: ["/usr/bin/ditto", "-x", "-k"]) {
+                let dest = URL(fileURLWithPath: arguments[4])
+                try FileManager.default.copyItem(
+                    at: fixture,
+                    to: dest.appendingPathComponent("Fast Finicky.app")
+                )
+            }
+            if arguments.starts(with: ["/usr/bin/ditto"]), arguments.count == 3 {
+                try FileManager.default.copyItem(
+                    at: URL(fileURLWithPath: arguments[1]),
+                    to: URL(fileURLWithPath: arguments[2])
+                )
+            }
+        })
+
+        let work = temp.appendingPathComponent("work", isDirectory: true)
+        let extracted = try updater.extract(zip: zip, to: work)
+        XCTAssertEqual(extracted.version, "0.1.3")
+        XCTAssertTrue(commands.contains(["/usr/bin/xattr", "-cr", zip.path]))
+        XCTAssertTrue(commands.contains(["/usr/bin/xattr", "-cr", extracted.appURL.path]))
+
+        let staging = try updater.stage(extracted, nextTo: currentApp)
+        XCTAssertEqual(staging.lastPathComponent, "Fast Finicky.app.new")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: staging.path))
+        XCTAssertTrue(commands.contains(["/usr/bin/xattr", "-cr", staging.path]))
+    }
+
+    func testReplacementScriptSwapsBundlesWithoutNesting() throws {
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        let current = temp.appendingPathComponent("Fast Finicky.app")
+        let staging = temp.appendingPathComponent("Fast Finicky.app.new")
+        try FileManager.default.createDirectory(at: current, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: current.appendingPathComponent("marker"))
+        try Data("new".utf8).write(to: staging.appendingPathComponent("marker"))
+
+        let scriptURL = temp.appendingPathComponent("replace.sh")
+        try AppUpdater.replacementScript().write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [scriptURL.path, current.path, staging.path, "999999"]
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+
+        XCTAssertEqual(process.terminationStatus, 0)
+        XCTAssertEqual(try String(contentsOf: current.appendingPathComponent("marker")), "new")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staging.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: current.appendingPathExtension("old").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: current.appendingPathComponent("Fast Finicky.app.new").path))
+    }
+
+    func testReplacementScriptDoesNotMoveIntoExistingAppWhenRenameFails() throws {
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        let current = temp.appendingPathComponent("Fast Finicky.app")
+        let staging = temp.appendingPathComponent("Fast Finicky.app.new")
+        try FileManager.default.createDirectory(at: current, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: current.appendingPathComponent("marker"))
+        try Data("new".utf8).write(to: staging.appendingPathComponent("marker"))
+
+        let scriptURL = temp.appendingPathComponent("replace.sh")
+        try AppUpdater.replacementScript().write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: temp.path)
+
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: temp.path)
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [scriptURL.path, current.path, staging.path, "999999"]
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+
+        XCTAssertNotEqual(process.terminationStatus, 0)
+        XCTAssertEqual(try String(contentsOf: current.appendingPathComponent("marker")), "old")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: staging.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: current.appendingPathComponent("Fast Finicky.app.new").path))
+    }
 }
 
 private func makeChromeProfileDirectory(at root: URL, name: String) throws {
     let directory = root.appendingPathComponent(name, isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     try Data("{}".utf8).write(to: directory.appendingPathComponent("Preferences"))
+}
+
+private func makeUpdateAppBundle(at url: URL, identifier: String, version: String) throws -> URL {
+    let macos = url.appendingPathComponent("Contents/MacOS", isDirectory: true)
+    try FileManager.default.createDirectory(at: macos, withIntermediateDirectories: true)
+    try Data("fake".utf8).write(to: macos.appendingPathComponent("FastFinicky"))
+    let plist = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+      <key>CFBundleIdentifier</key>
+      <string>\(identifier)</string>
+      <key>CFBundleShortVersionString</key>
+      <string>\(version)</string>
+    </dict>
+    </plist>
+    """
+    try Data(plist.utf8).write(to: url.appendingPathComponent("Contents/Info.plist"))
+    return url
 }
 
 private func makeFakeChromeApp() throws -> URL {

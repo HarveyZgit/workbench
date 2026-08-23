@@ -38,9 +38,11 @@ macOS 菜单栏应用：把链接按规则分流到指定的 Chrome Profile。�
 
 日志：`~/.local/state/fast-finicky/logs/YYYY-MM-DD.log`，只保留最近 7 天。
 
-菜单：`Add Current Page…` / `Open Config` / `Reload Config` / `Setup` / `Open Log` / `Launch at Login` / `Quit`。
+菜单：`Add Current Page…` / `Open Config` / `Reload Config` / `Setup` / `Open Log` / `Install Update…` / `Launch at Login` / `Quit`。
 
 `Add Current Page…` 在 Google Chrome 为当前前台应用时可用。点开后读取当前标签 URL，选一个 profile，把规则插到 `rules` 最前面。输入框会填入当前 URL；保存时按 host + path 写入 `contains`（忽略 query/hash）。首次使用需允许控制 Chrome。
+
+`Install Update…` 选一份 Fast Finicky 的 release zip（默认打开「下载」）。校验 bundle id 后清掉隔离属性，替换正在运行的 `.app` 并重启。以后升级不用再手敲 `xattr`。第一次从浏览器解压安装仍可能要 `xattr` 一次（未签名 + 隔离属性）。不请求 GitHub API。
 
 `Launch at Login` 勾选后写入 `~/Library/LaunchAgents/com.harvey.fastfinicky.plist`，开机用当前这个 `.app` 路径启动。再点一次取消勾选即关闭。
 

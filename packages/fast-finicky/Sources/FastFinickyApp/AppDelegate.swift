@@ -2,6 +2,7 @@ import AppKit
 import Carbon
 import FastFinickyCore
 import Foundation
+import UniformTypeIdentifiers
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let paths = AppPaths()
@@ -14,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var configStore: ConfigStore?
     private var watcher: ConfigWatcher?
     private var statusItem: NSStatusItem?
+    private var updateInstallInFlight = false
+    private let updater = AppUpdater()
 
     override init() {
         let logger = DailyLogger(paths: paths, retentionDays: 7)
@@ -47,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 "config": paths.configURL.path
             ])
         }
+        removeStaleUpdateStaging()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -175,6 +179,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc
+    func installUpdate(_ sender: Any?) {
+        let currentApp = Bundle.main.bundleURL
+        guard currentApp.pathExtension == "app" else {
+            presentUpdateError(AppUpdateError.notAnAppBundle)
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.zip]
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        panel.message = "Choose a Fast Finicky release zip"
+        panel.prompt = "Install"
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let zipURL = panel.url else {
+            return
+        }
+
+        do {
+            let workDirectory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("fast-finicky-update-\(UUID().uuidString)", isDirectory: true)
+            let extracted = try updater.extract(zip: zipURL, to: workDirectory)
+            defer { try? FileManager.default.removeItem(at: workDirectory) }
+
+            let current = Self.currentAppVersion()
+            if !confirmInstall(extractedVersion: extracted.version, currentVersion: current) {
+                return
+            }
+
+            updateInstallInFlight = true
+            let staging = try updater.stage(extracted, nextTo: currentApp)
+            try launchReplacement(currentApp: currentApp, staging: staging)
+            logger.log("update_install", fields: [
+                "zip": zipURL.path,
+                "from": current,
+                "to": extracted.version
+            ])
+            NSApp.terminate(nil)
+        } catch {
+            updateInstallInFlight = false
+            removeStaleUpdateStaging()
+            presentUpdateError(error)
+        }
+    }
+
+    @objc
     func openLog(_ sender: Any?) {
         do {
             let logURL = try logger.ensureTodayLogFile()
@@ -276,6 +328,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.runModal()
     }
 
+    private func confirmInstall(extractedVersion: String, currentVersion: String) -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = extractedVersion.isEmpty
+            ? "Install this Fast Finicky zip?"
+            : "Install Fast Finicky \(extractedVersion)?"
+        if currentVersion.isEmpty {
+            alert.informativeText = "This replaces the running app and clears quarantine. You do not need xattr."
+        } else if extractedVersion.isEmpty {
+            alert.informativeText = "This replaces \(currentVersion) and clears quarantine. You do not need xattr."
+        } else if AppUpdater.isNewer(latest: extractedVersion, than: currentVersion) {
+            alert.informativeText = "This replaces \(currentVersion) and clears quarantine. You do not need xattr."
+        } else {
+            alert.informativeText = "This zip is \(extractedVersion); you currently have \(currentVersion). Install anyway? Quarantine will be cleared."
+        }
+        alert.addButton(withTitle: "Install")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private func launchReplacement(currentApp: URL, staging: URL) throws {
+        let scriptURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fast-finicky-replace-\(UUID().uuidString).sh")
+        try AppUpdater.replacementScript().write(to: scriptURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [
+            scriptURL.path,
+            currentApp.path,
+            staging.path,
+            String(ProcessInfo.processInfo.processIdentifier)
+        ]
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+    }
+
+    private func presentUpdateError(_ error: Error) {
+        logger.log("menu_error", fields: [
+            "action": "install_update",
+            "error": error.localizedDescription
+        ])
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Could not install update"
+        alert.informativeText = error.localizedDescription
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    private func removeStaleUpdateStaging() {
+        let app = Bundle.main.bundleURL
+        guard app.pathExtension == "app" else { return }
+        try? FileManager.default.removeItem(at: AppUpdater.stagingURL(nextTo: app))
+        try? FileManager.default.removeItem(at: AppUpdater.backupURL(nextTo: app))
+    }
+
+    private static func currentAppVersion() -> String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         if let loginItem = menu.item(withTitle: "Launch at Login") {
             loginItem.state = launchAtLogin.isEnabled ? .on : .off
@@ -286,6 +404,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         if menuItem.action == #selector(addCurrentPage(_:)) {
             return FrontChromePage.isChromeFrontmost()
+        }
+        if menuItem.action == #selector(installUpdate(_:)) {
+            return Bundle.main.bundleURL.pathExtension == "app" && !updateInstallInFlight
         }
         return true
     }
@@ -416,6 +537,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(withTitle: "Reload Config", action: #selector(reloadConfig(_:)), keyEquivalent: "r")
         menu.addItem(withTitle: "Setup", action: #selector(setupProfiles(_:)), keyEquivalent: "s")
         menu.addItem(withTitle: "Open Log", action: #selector(openLog(_:)), keyEquivalent: "l")
+        menu.addItem(withTitle: "Install Update…", action: #selector(installUpdate(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Launch at Login", action: #selector(toggleLaunchAtLogin(_:)), keyEquivalent: "")
         menu.addItem(.separator())

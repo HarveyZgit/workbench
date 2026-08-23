@@ -23,7 +23,7 @@
 
 - Apple Event 接收
 - 菜单栏入口
-- `Add Current Page… / Open Config / Reload Config / Setup / Open Log / Launch at Login / Quit`
+- `Add Current Page… / Open Config / Reload Config / Setup / Open Log / Install Update… / Launch at Login / Quit`
 - 无设置窗口、无 WebView
 
 ### 2. 极简规则引擎
@@ -62,3 +62,4 @@
 - 菜单 `Setup` 扫描 Chrome，给还没有 rule 的 profile **追加 rule**：`name`/`email` 作对照，`contains` 留空（空规则不匹配 URL）。已有 rule 缺 `name`/`email` 时只补这两个字段，不改 `contains`/`profile`，也不删 rules。邮箱先读 Local State `info_cache.user_name`（须含 `@`），没有再读该 profile 的 Preferences `account_info[].email`。
 - 菜单 `Launch at Login` 开关 `~/Library/LaunchAgents/com.harvey.fastfinicky.plist`，用 `/usr/bin/open -ga <当前.app>` 开机启动；取消勾选则 unload 并删除 plist。启用时会清掉旧的 `dev.fastfinicky.app` agent。
 - 菜单 `Add Current Page…`：Chrome 为前台时可用；AppleScript 读当前标签 URL，在菜单栏下方打开 utility 面板（当前页面只读、Profile 下拉、Contains 输入、Cancel/Add），新 rule 插到列表最前。
+- 菜单 `Install Update…`：从本机 zip 安装。`ditto` 解压，校验 `com.harvey.fastfinicky`，`xattr -cr` 去掉隔离属性，把新 `.app` 放到当前 bundle 旁边，退出后 helper 替换并 `open`。不访问 GitHub。需要正在跑 `.app`（`swift run` 不可用）。
