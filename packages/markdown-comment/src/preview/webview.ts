@@ -691,7 +691,8 @@ function requestLocalResources(): void {
     if (!source || /^https:/i.test(source) || /^data:image\//i.test(source)) {
       return;
     }
-    image.removeAttribute('src');
+    image.classList.add('mdc-image-pending');
+    image.classList.remove('mdc-image-error');
     sources.add(source);
   });
   if (sources.size === 0) {
@@ -1169,10 +1170,16 @@ window.addEventListener('message', (e: MessageEvent) => {
       const resolved = source ? resources.get(source) : undefined;
       if (resolved?.uri) {
         image.src = resolved.uri;
+        image.classList.remove('mdc-image-pending', 'mdc-image-error');
         image.removeAttribute('title');
       } else if (resolved?.error) {
         image.removeAttribute('src');
+        image.classList.remove('mdc-image-pending');
+        image.classList.add('mdc-image-error');
         image.title = resolved.error;
+        if (!image.alt) {
+          image.alt = resolved.error;
+        }
       }
     });
   }

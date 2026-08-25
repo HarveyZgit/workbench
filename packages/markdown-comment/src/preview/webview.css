@@ -31,6 +31,7 @@ body.vscode-high-contrast {
 }
 
 .hljs-string,
+.hljs-subst,
 .hljs-attr,
 .hljs-symbol,
 .hljs-template-tag,
@@ -60,6 +61,26 @@ body.vscode-high-contrast {
   position: relative;
   display: inline-block;
   max-width: 100%;
+}
+
+.mdc-image-wrap img {
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.mdc-image-pending,
+.mdc-image-error {
+  min-width: 48px;
+  min-height: 48px;
+  box-sizing: border-box;
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.12));
+  border: 1px dashed var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+}
+
+.mdc-image-error {
+  padding: 8px 10px;
+  color: var(--vscode-errorForeground, #f85149);
+  font-size: 12px;
 }
 
 .mdc-image-tools {
