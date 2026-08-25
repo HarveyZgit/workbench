@@ -72,3 +72,5 @@ rush build --to dom-comment
 ```
 
 扩展打进 `dist/chrome-mv3`。OpenSpec change：`openspec/changes/npm-cli-package`。
+
+手工复跑见 [tests/manual/cases.md](tests/manual/cases.md)（先跑文首 15 分钟冒烟）。
