@@ -4,7 +4,12 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
-import { cmdInstallSkill, detectAgentSkillRoots, expandHome } from '../src/cli/install.js';
+import {
+  chromeNativeMessagingProfileRoots,
+  cmdInstallSkill,
+  detectAgentSkillRoots,
+  expandHome,
+} from '../src/cli/install.js';
 import { extensionDir, isSourceTree, packageRoot, skillSourceDir } from '../src/paths.js';
 
 function tmpDir(): string {
@@ -58,4 +63,12 @@ test('install.sh --from-dir --skip-setup links the CLI', () => {
   const linked = path.join(binDir, 'dom-comment');
   assert.ok(fs.lstatSync(linked).isSymbolicLink());
   assert.ok(fs.existsSync(path.join(prefix, 'pkg', 'dist', 'cli.js')));
+});
+
+test('chromeNativeMessagingProfileRoots includes macOS and Linux user dirs', () => {
+  const roots = chromeNativeMessagingProfileRoots('/tmp/home');
+  const paths = roots.map((item) => item.profileRoot);
+  assert.ok(paths.includes('/tmp/home/Library/Application Support/Google/Chrome'));
+  assert.ok(paths.includes('/tmp/home/.config/google-chrome'));
+  assert.ok(paths.includes('/tmp/home/.config/chromium'));
 });

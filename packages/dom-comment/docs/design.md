@@ -50,7 +50,7 @@ rev 4 按「文档 = URL」存、工具栏直接开关模式、不存图。用�
 - 抽取 `comment-core`；与 markdown-comment 合并存储。
 - 画笔 / 高亮涂抹 / 全页未裁切截图当唯一载体（要的是 **目标区域裁切**）。
 - 协同服务器、多用户、商店上架、Firefox/Safari。
-- Windows / Linux native host；Edge 登记。
+- Windows native host；Edge 登记。自定义 `--user-data-dir` 仍需手写清单。Linux 用户级 Chrome/Chromium（`~/.config/google-chrome` / `~/.config/chromium`）由 `install` 登记。
 - `file://` / `chrome://` / 跨域 iframe 内部。
 - 扩展内把评论推进某个 Agent 聊天（没有「发给 ChatGPT」按钮）。
 - 改名 PageMark、换 `~/.pagemark`、重写 Native Messaging 协议。

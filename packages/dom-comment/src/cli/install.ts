@@ -10,17 +10,29 @@ import { hostSockPath, resolveStorageDir } from '../storage/index.js';
 
 const HOST_NAME = 'com.workbench.dom_comment';
 
-const BROWSERS: { name: string; profileRoot: string }[] = [
-  {
-    name: 'Google Chrome',
-    profileRoot: path.join(os.homedir(), 'Library/Application Support/Google/Chrome'),
-  },
-  {
-    name: 'Chrome Canary',
-    profileRoot: path.join(os.homedir(), 'Library/Application Support/Google/Chrome Canary'),
-  },
-  { name: 'Chromium', profileRoot: path.join(os.homedir(), 'Library/Application Support/Chromium') },
-];
+export function chromeNativeMessagingProfileRoots(
+  homeDir: string = os.homedir(),
+): { name: string; profileRoot: string }[] {
+  return [
+    {
+      name: 'Google Chrome',
+      profileRoot: path.join(homeDir, 'Library/Application Support/Google/Chrome'),
+    },
+    {
+      name: 'Chrome Canary',
+      profileRoot: path.join(homeDir, 'Library/Application Support/Google/Chrome Canary'),
+    },
+    { name: 'Chromium', profileRoot: path.join(homeDir, 'Library/Application Support/Chromium') },
+    {
+      name: 'Google Chrome (Linux)',
+      profileRoot: path.join(homeDir, '.config/google-chrome'),
+    },
+    {
+      name: 'Chromium (Linux)',
+      profileRoot: path.join(homeDir, '.config/chromium'),
+    },
+  ];
+}
 
 function fail(msg: string): never {
   process.stderr.write(`${msg}\n`);
@@ -114,7 +126,7 @@ export function cmdInstallHost(flags: Map<string, string | true>, opts?: { quiet
     type: 'stdio',
     allowed_origins: [`chrome-extension://${id}/`],
   };
-  for (const browser of BROWSERS) {
+  for (const browser of chromeNativeMessagingProfileRoots()) {
     if (!fs.existsSync(browser.profileRoot) || !fs.statSync(browser.profileRoot).isDirectory()) {
       skipped.push(`${browser.name}（无配置目录）`);
       continue;
@@ -138,7 +150,7 @@ export function cmdInstallHost(flags: Map<string, string | true>, opts?: { quiet
 }
 
 export function cmdUninstallHost(): void {
-  for (const browser of BROWSERS) {
+  for (const browser of chromeNativeMessagingProfileRoots()) {
     const dest = path.join(browser.profileRoot, 'NativeMessagingHosts', `${HOST_NAME}.json`);
     try {
       fs.unlinkSync(dest);
