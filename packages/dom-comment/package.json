@@ -24,7 +24,8 @@
     "setup": "node scripts/build-node.mjs && node dist/cli.js install",
     "pack-release": "node scripts/build-node.mjs && bash scripts/pack-release.sh",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-exclude='tests/**' --test-coverage-exclude='**/adapters/extension/**' --import tsx tests/*.test.ts"
   },
   "engines": {
     "node": ">=22 <23"
