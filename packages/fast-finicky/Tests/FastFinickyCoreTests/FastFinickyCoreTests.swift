@@ -129,6 +129,7 @@ final class FastFinickyCoreTests: XCTestCase {
         let launcher = BrowserLauncher(
             commandRunner: { command in
                 state.recordedCommand = command
+                return 4242
             },
             chromeAppLocator: { chromeAppURL },
             activateChrome: {
@@ -146,6 +147,8 @@ final class FastFinickyCoreTests: XCTestCase {
         XCTAssertEqual(result.appURL, chromeAppURL)
         XCTAssertEqual(result.strategy, .directBinary)
         XCTAssertEqual(result.targetKind, .webURL)
+        XCTAssertFalse(result.chromeWasRunning)
+        XCTAssertEqual(result.spawnedProcessIdentifier, 4242)
 
         let command = try XCTUnwrap(state.recordedCommand)
         XCTAssertEqual(
@@ -170,6 +173,7 @@ final class FastFinickyCoreTests: XCTestCase {
         let launcher = BrowserLauncher(
             commandRunner: { command in
                 state.recordedCommand = command
+                return nil
             },
             chromeAppLocator: { chromeAppURL },
             activateChrome: {
@@ -292,6 +296,7 @@ final class FastFinickyCoreTests: XCTestCase {
         let launcher = BrowserLauncher(
             commandRunner: { command in
                 state.recordedCommand = command
+                return nil
             },
             chromeAppLocator: { chromeAppURL },
             activateChrome: {
@@ -320,6 +325,8 @@ final class FastFinickyCoreTests: XCTestCase {
 
         XCTAssertEqual(result.strategy, .reuseRunningInstance)
         XCTAssertEqual(result.targetKind, .webURL)
+        XCTAssertTrue(result.chromeWasRunning)
+        XCTAssertNil(result.spawnedProcessIdentifier)
         XCTAssertNil(state.recordedCommand)
         XCTAssertEqual(state.activationAttempts, 0)
         XCTAssertEqual(state.reusedURL, targetURL)
@@ -335,6 +342,7 @@ final class FastFinickyCoreTests: XCTestCase {
         let launcher = BrowserLauncher(
             commandRunner: { command in
                 state.recordedCommand = command
+                return nil
             },
             chromeAppLocator: { chromeAppURL },
             activateChrome: {
@@ -360,6 +368,7 @@ final class FastFinickyCoreTests: XCTestCase {
         let result = try launcher.launch(targetURL: targetURL, profile: "Profile 7")
 
         XCTAssertEqual(result.strategy, .directBinary)
+        XCTAssertTrue(result.chromeWasRunning)
         XCTAssertFalse(state.reuseCalled)
         XCTAssertEqual(state.activationAttempts, 0)
         XCTAssertNil(state.scheduledRetryDelay)
@@ -378,6 +387,7 @@ final class FastFinickyCoreTests: XCTestCase {
         let launcher = BrowserLauncher(
             commandRunner: { command in
                 state.recordedCommand = command
+                return nil
             },
             chromeAppLocator: { chromeAppURL },
             activateChrome: {
@@ -413,6 +423,7 @@ final class FastFinickyCoreTests: XCTestCase {
         let launcher = BrowserLauncher(
             commandRunner: { command in
                 state.recordedCommand = command
+                return nil
             },
             chromeAppLocator: { chromeAppURL },
             activateChrome: {
@@ -1094,6 +1105,137 @@ final class FastFinickyCoreTests: XCTestCase {
         XCTAssertTrue(warmer.didFaultPagesForTesting())
     }
 
+    func testChromeOpenProbeReuseIsReadyImmediately() {
+        XCTAssertEqual(
+            ChromeOpenObserver.status(
+                strategy: .reuseRunningInstance,
+                chromeWasRunning: true,
+                spawnedProcessRunning: nil,
+                chromeFinishedLaunching: true,
+                spawnedAppFinishedLaunching: false
+            ),
+            .ready
+        )
+    }
+
+    func testChromeOpenProbeSpawnedProcessExitIsHandoff() {
+        XCTAssertEqual(
+            ChromeOpenObserver.status(
+                strategy: .directBinary,
+                chromeWasRunning: true,
+                spawnedProcessRunning: false,
+                chromeFinishedLaunching: true,
+                spawnedAppFinishedLaunching: false
+            ),
+            .exited
+        )
+    }
+
+    func testChromeOpenProbeIgnoresSystemChromeWhenSpawnStillRunning() {
+        XCTAssertNil(
+            ChromeOpenObserver.status(
+                strategy: .directBinary,
+                chromeWasRunning: true,
+                spawnedProcessRunning: true,
+                chromeFinishedLaunching: true,
+                spawnedAppFinishedLaunching: false
+            )
+        )
+    }
+
+    func testChromeOpenProbeColdStartReadyWhenChromeFinishedLaunching() {
+        XCTAssertEqual(
+            ChromeOpenObserver.status(
+                strategy: .directBinary,
+                chromeWasRunning: false,
+                spawnedProcessRunning: true,
+                chromeFinishedLaunching: true,
+                spawnedAppFinishedLaunching: false
+            ),
+            .ready
+        )
+    }
+
+    func testChromeOpenProbeOpenFallbackWaitsPastOpenExitOnColdStart() {
+        XCTAssertNil(
+            ChromeOpenObserver.status(
+                strategy: .openCommandFallback,
+                chromeWasRunning: false,
+                spawnedProcessRunning: false,
+                chromeFinishedLaunching: false,
+                spawnedAppFinishedLaunching: false
+            )
+        )
+        XCTAssertEqual(
+            ChromeOpenObserver.status(
+                strategy: .openCommandFallback,
+                chromeWasRunning: false,
+                spawnedProcessRunning: false,
+                chromeFinishedLaunching: true,
+                spawnedAppFinishedLaunching: false
+            ),
+            .ready
+        )
+    }
+
+    func testChromeOpenObserverRecordsElapsedWhenSpawnExits() {
+        let clock = FakeClock(now: Date(timeIntervalSince1970: 1_000))
+        let startedAt = clock.now
+        let result = LaunchResult(
+            appURL: URL(fileURLWithPath: "/tmp/Google Chrome.app"),
+            strategy: .directBinary,
+            targetKind: .webURL,
+            chromeWasRunning: true,
+            spawnedProcessIdentifier: 99
+        )
+
+        let polls = Counter()
+        let observation = ChromeOpenObserver.wait(
+            startedAt: startedAt,
+            result: result,
+            timeout: 1,
+            pollInterval: 0.05,
+            now: { clock.now },
+            sleep: { clock.advance($0) },
+            isProcessRunning: { _ in
+                polls.value += 1
+                return polls.value < 2
+            },
+            isChromeFinishedLaunching: { true },
+            isSpawnedAppFinishedLaunching: { _ in false }
+        )
+
+        XCTAssertEqual(observation.status, .exited)
+        XCTAssertEqual(observation.elapsedMs, 50)
+    }
+
+    func testChromeOpenObserverTimesOutWhenChromeNeverBecomesReady() {
+        let clock = FakeClock(now: Date(timeIntervalSince1970: 1_000))
+        let startedAt = clock.now
+        let result = LaunchResult(
+            appURL: URL(fileURLWithPath: "/tmp/Google Chrome.app"),
+            strategy: .directBinary,
+            targetKind: .webURL,
+            chromeWasRunning: false,
+            spawnedProcessIdentifier: 99
+        )
+
+        let observation = ChromeOpenObserver.wait(
+            startedAt: startedAt,
+            result: result,
+            timeout: 0.2,
+            pollInterval: 0.05,
+            now: { clock.now },
+            sleep: { clock.advance($0) },
+            isProcessRunning: { _ in true },
+            isChromeFinishedLaunching: { false },
+            isSpawnedAppFinishedLaunching: { _ in false }
+        )
+
+        XCTAssertEqual(observation.status, .timeout)
+        XCTAssertGreaterThanOrEqual(observation.elapsedMs, 200)
+    }
+
 }
 
 private func makeChromeProfileDirectory(at root: URL, name: String) throws {
@@ -1156,6 +1298,22 @@ private func makeFakeChromeApp(frameworkBytes: Int = 0) throws -> URL {
     }
 
     return rootURL
+}
+
+private final class FakeClock: @unchecked Sendable {
+    var now: Date
+
+    init(now: Date) {
+        self.now = now
+    }
+
+    func advance(_ interval: TimeInterval) {
+        now = now.addingTimeInterval(interval)
+    }
+}
+
+private final class Counter: @unchecked Sendable {
+    var value = 0
 }
 
 private final class LauncherTestState: @unchecked Sendable {

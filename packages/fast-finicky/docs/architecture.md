@@ -57,6 +57,7 @@
 - 日志目录固定为 `~/.local/state/fast-finicky/logs/`
 - 日志按天写入 `YYYY-MM-DD.log`
 - 只保留最近 `7` 天
+- `[route] elapsed_ms` 只覆盖分流 + spawn/reuse 交出去的时间（`process.run()` 立刻返回）。Chrome 真正接住链接的墙钟时间写在后续 `[open]`：`elapsed_ms` + `status=ready|exited|timeout` + `chrome_was_running`。在热路径之外轮询，最多 20s。`directBinary` 在 Chrome 已运行时看子进程退出（singleton 交接）；冷启动看 `isFinishedLaunching`。
 - 配置文件变更后自动 reload
 - reload 失败时继续使用上一版有效配置
 - 菜单 `Setup` 扫描 Chrome，给还没有 rule 的 profile **追加 rule**：`name`/`email` 作对照，`contains` 留空（空规则不匹配 URL）。已有 rule 缺 `name`/`email` 时只补这两个字段，不改 `contains`/`profile`，也不删 rules。邮箱先读 Local State `info_cache.user_name`（须含 `@`），没有再读该 profile 的 Preferences `account_info[].email`。

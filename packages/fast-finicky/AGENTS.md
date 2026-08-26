@@ -35,6 +35,7 @@ Key files:
 - [ConfigStore.swift](Sources/FastFinickyCore/ConfigStore.swift)
 - [DailyLogger.swift](Sources/FastFinickyCore/DailyLogger.swift)
 - [ChromeWarmer.swift](Sources/FastFinickyCore/ChromeWarmer.swift)
+- [ChromeOpenObserver.swift](Sources/FastFinickyCore/ChromeOpenObserver.swift)
 - [AppUpdater.swift](Sources/FastFinickyCore/AppUpdater.swift)
 - [Info.plist](App/Info.plist)
 
@@ -86,7 +87,7 @@ If you revisit performance work here, treat profile correctness as the non-negot
 
 ## Keep-Warm (cold-launch latency)
 
-The `directBinary` path spawns the full Chrome binary so it can honor `--profile-directory`. Measured cost: ~0.1s warm, but ~6.8s when Chrome's shared framework (`Google Chrome Framework`, ~458 MB, profile-independent) has been evicted from the page cache after idle / memory pressure. This is the "runs a while, then clicks take 3-5s" symptom — and it is downstream of `process.run()`, so the route log's `elapsed_ms` does not capture it.
+The `directBinary` path spawns the full Chrome binary so it can honor `--profile-directory`. Measured cost: ~0.1s warm, but ~6.8s when Chrome's shared framework (`Google Chrome Framework`, ~458 MB, profile-independent) has been evicted from the page cache after idle / memory pressure. This is the "runs a while, then clicks take 3-5s" symptom — and it is downstream of `process.run()`, so `[route] elapsed_ms` is only Fast Finicky's own handoff. The follow-up `[open]` line is the wall-clock open time (spawned process exits, Chrome `isFinishedLaunching`, or 20s timeout).
 
 [ChromeWarmer.swift](Sources/FastFinickyCore/ChromeWarmer.swift) keeps that single shared framework resident, which covers every profile at once:
 
@@ -124,6 +125,7 @@ Behavior:
 - Logs are daily and old files are pruned after 7 days
 - `Open Log` should open today's log file directly
 - Route logs include launch-path metadata so hot-path changes can be compared from logs instead of only by feel
+- `[route] elapsed_ms` is routing + spawn/reuse handoff. `[open] elapsed_ms` is when Chrome actually took the URL (`status=ready|exited|timeout`, plus `chrome_was_running`). Do not wait for that on the Apple Event thread.
 
 Do not reintroduce `.finicky.js` compatibility unless asked.
 
@@ -182,6 +184,7 @@ Always try to verify:
 - a representative URL dry-run resolves to the expected Chrome profile
 - Chrome is brought to the foreground after a launch
 - route logs show the expected `launch_strategy` / `target_kind`
+- each successful open is followed by an `[open]` line with `elapsed_ms` and `status`
 
 If browser-launch logic changed, also verify:
 

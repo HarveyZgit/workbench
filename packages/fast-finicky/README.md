@@ -36,7 +36,7 @@ macOS 菜单栏应用：把链接按规则分流到指定的 Chrome Profile。�
 
 首次启动时，如果配置文件还不存在，会写入一份当前常用规则的默认配置。已有配置不会被覆盖。
 
-日志：`~/.local/state/fast-finicky/logs/YYYY-MM-DD.log`，只保留最近 7 天。
+日志：`~/.local/state/fast-finicky/logs/YYYY-MM-DD.log`，只保留最近 7 天。`[route] elapsed_ms` 是分流自己的耗时；每次打开的体感耗时看 `[open] elapsed_ms`（`status` 为 `ready` / `exited` / `timeout`）。
 
 菜单：`Add Current Page…` / `Open Config` / `Reload Config` / `Setup` / `Open Log` / `Install Update…` / `Launch at Login` / `Quit`。
 
