@@ -51,10 +51,7 @@ test('detectAgentSkillRoots only finds dot-folder skills dirs', () => {
   fs.mkdirSync(path.join(home, '.plain'), { recursive: true });
   write(path.join(home, '.filehome', 'skills'), 'not-a-dir');
   const found = detectAgentSkillRoots(home);
-  assert.deepEqual(
-    found,
-    [path.join(home, '.claude', 'skills'), path.join(home, '.codex', 'skills')].sort(),
-  );
+  assert.deepEqual(found, [path.join(home, '.claude', 'skills'), path.join(home, '.codex', 'skills')].sort());
   assert.equal(detectAgentSkillRoots(path.join(home, 'missing-home')).length, 0);
 });
 
@@ -229,4 +226,21 @@ test('reconcile no-ops on empty, reinstalls missing ours, drops foreign-real roo
   assert.equal(state.roots.includes(path.resolve(foreign)), false);
   assert.equal(linkStatus(ours, canonicalDir(gs)).kind, 'ours');
   assert.equal(fs.readFileSync(canonicalSkillFile(gs), 'utf8'), '# newer\n');
+});
+
+test('reconcile drops foreign-link roots and classifies file targets as foreign', () => {
+  const gs = tmp('mdc-gs-');
+  const ours = path.join(tmp('mdc-root-'), 'skills');
+  installSkill(gs, [ours], '# body\n');
+  fs.rmSync(path.join(ours, SKILL_NAME), { force: true });
+  fs.symlinkSync(os.tmpdir(), path.join(ours, SKILL_NAME));
+  reconcile(gs, '# body\n');
+  assert.equal(readState(gs).roots.includes(path.resolve(ours)), false);
+
+  const fileTarget = path.join(tmp('mdc-file-'), SKILL_NAME);
+  fs.writeFileSync(fileTarget, 'not-a-dir', 'utf8');
+  const fileRoot = path.join(tmp('mdc-root-'), 'skills');
+  fs.mkdirSync(fileRoot, { recursive: true });
+  fs.symlinkSync(fileTarget, path.join(fileRoot, SKILL_NAME));
+  assert.equal(linkStatus(fileRoot, canonicalDir(gs)).kind, 'foreign-link');
 });
