@@ -21,16 +21,26 @@ public struct LaunchResult: Equatable, Sendable {
     public let appURL: URL
     public let strategy: LaunchStrategy
     public let targetKind: LaunchTargetKind
+    public let chromeWasRunning: Bool
+    public let spawnedProcessIdentifier: Int32?
 
-    public init(appURL: URL, strategy: LaunchStrategy, targetKind: LaunchTargetKind) {
+    public init(
+        appURL: URL,
+        strategy: LaunchStrategy,
+        targetKind: LaunchTargetKind,
+        chromeWasRunning: Bool,
+        spawnedProcessIdentifier: Int32? = nil
+    ) {
         self.appURL = appURL
         self.strategy = strategy
         self.targetKind = targetKind
+        self.chromeWasRunning = chromeWasRunning
+        self.spawnedProcessIdentifier = spawnedProcessIdentifier
     }
 }
 
 public struct BrowserLauncher: ChromeLaunching {
-    private let commandRunner: @Sendable (LaunchCommand) throws -> Void
+    private let commandRunner: @Sendable (LaunchCommand) throws -> Int32?
     private let chromeAppLocator: @Sendable () throws -> URL
     private let activateChrome: @Sendable () -> Bool
     private let activationRetryScheduler: @Sendable (TimeInterval, @escaping @Sendable () -> Void) -> Void
@@ -51,7 +61,7 @@ public struct BrowserLauncher: ChromeLaunching {
     }
 
     init(
-        commandRunner: @escaping @Sendable (LaunchCommand) throws -> Void,
+        commandRunner: @escaping @Sendable (LaunchCommand) throws -> Int32?,
         chromeAppLocator: @escaping @Sendable () throws -> URL,
         activateChrome: @escaping @Sendable () -> Bool,
         activationRetryScheduler: @escaping @Sendable (TimeInterval, @escaping @Sendable () -> Void) -> Void,
@@ -81,7 +91,8 @@ public struct BrowserLauncher: ChromeLaunching {
             return LaunchResult(
                 appURL: appURL,
                 strategy: .reuseRunningInstance,
-                targetKind: targetKind
+                targetKind: targetKind,
+                chromeWasRunning: true
             )
         }
 
@@ -91,7 +102,7 @@ public struct BrowserLauncher: ChromeLaunching {
             appURL: appURL,
             chromeAlreadyRunning: chromeAlreadyRunning
         )
-        try commandRunner(command)
+        let spawnedPID = try commandRunner(command)
 
         // A running Chrome already owns the singleton. Activating it here
         // fronts existing windows before the URL has been handed off.
@@ -102,7 +113,9 @@ public struct BrowserLauncher: ChromeLaunching {
         return LaunchResult(
             appURL: appURL,
             strategy: targetURL.isFileURL ? .openCommandFallback : .directBinary,
-            targetKind: targetKind
+            targetKind: targetKind,
+            chromeWasRunning: chromeAlreadyRunning,
+            spawnedProcessIdentifier: spawnedPID
         )
     }
 
@@ -185,7 +198,7 @@ public struct BrowserLauncher: ChromeLaunching {
         throw FastFinickyError.chromeNotFound
     }
 
-    private static func runCommand(_ command: LaunchCommand) throws {
+    private static func runCommand(_ command: LaunchCommand) throws -> Int32? {
         let process = Process()
         process.qualityOfService = .userInitiated
         process.executableURL = command.executableURL
@@ -196,6 +209,7 @@ public struct BrowserLauncher: ChromeLaunching {
         // Foundation retains `process` until this handler runs, which also reaps the child.
         process.terminationHandler = { _ in }
         try process.run()
+        return process.processIdentifier
     }
 
     private static func openWithRunningChrome(targetURL: URL, appURL: URL, profile: String) throws {

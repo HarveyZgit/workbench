@@ -498,6 +498,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 "result": "launched",
                 "launch_strategy": launchResult.strategy.rawValue,
                 "target_kind": launchResult.targetKind.rawValue,
+                "chrome_was_running": launchResult.chromeWasRunning ? "true" : "false",
                 "elapsed_ms": Self.elapsedMilliseconds(since: startedAt)
             ]
             if let matchedRuleIndex = decision.matchedRuleIndex {
@@ -508,6 +509,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
 
             logger.log("route", fields: fields)
+            Self.logOpenTiming(
+                logger: logger,
+                startedAt: startedAt,
+                launchResult: launchResult,
+                source: source,
+                urlString: urlString,
+                profile: decision.profile
+            )
             return true
         } catch {
             logger.log("route_error", fields: [
@@ -522,6 +531,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private static func elapsedMilliseconds(since startedAt: Date) -> String {
         String(Int(Date().timeIntervalSince(startedAt) * 1_000))
+    }
+
+    private static func logOpenTiming(
+        logger: DailyLogger,
+        startedAt: Date,
+        launchResult: LaunchResult,
+        source: String,
+        urlString: String,
+        profile: String
+    ) {
+        DispatchQueue.global(qos: .utility).async {
+            let observation = ChromeOpenObserver.wait(startedAt: startedAt, result: launchResult)
+            logger.log("open", fields: [
+                "source": source,
+                "url": urlString,
+                "profile": profile,
+                "launch_strategy": launchResult.strategy.rawValue,
+                "target_kind": launchResult.targetKind.rawValue,
+                "chrome_was_running": launchResult.chromeWasRunning ? "true" : "false",
+                "status": observation.status.rawValue,
+                "elapsed_ms": String(observation.elapsedMs)
+            ])
+        }
     }
 
     private func setupStatusItem() {

@@ -3,7 +3,12 @@ import Darwin
 
 /// Keeps Chrome's shared framework pages resident for `directBinary` launches.
 ///
-/// Constraints: profile-independent; no `mlock`; remap when `Versions/Current` changes inode.
+/// The first map (and every remap) always faults pages into this process so RSS
+/// holds the framework (~0.5 GB). `mincore` is system-wide and can look warm
+/// even when this process has no PTEs — so a high mincore must not skip the
+/// first touch. Timer ticks may skip once pages are faulted and mincore stays
+/// at or above the threshold. Constraints: profile-independent; no `mlock`
+/// (pages stay reclaimable); remap when `Versions/Current` changes inode.
 public final class ChromeWarmer: @unchecked Sendable {
     private let chromeAppLocator: @Sendable () throws -> URL
     private let logger: DailyLogger?
@@ -22,6 +27,7 @@ public final class ChromeWarmer: @unchecked Sendable {
     private var mappedResolvedPath: String?
     private var mappedDevice: dev_t = 0
     private var mappedInode: ino_t = 0
+    private var didFaultPages = false
 
     private var currentInterval: TimeInterval
     private var consecutiveEvictions: Int = 0
@@ -83,36 +89,45 @@ public final class ChromeWarmer: @unchecked Sendable {
     }
 
     private func warmLocked(trigger: String) {
-        ensureMappedLocked()
+        let mappedFresh = ensureMappedLocked()
         guard let address = mapAddress, mapLength > 0 else { return }
 
         let before = residentFractionLocked() ?? 0
-        let needsWarm = before < residencyThreshold
+        let needsWarm = mappedFresh || !didFaultPages || before < residencyThreshold
 
         if needsWarm {
             madvise(address, mapLength, MADV_WILLNEED)
             touchLocked(address: address, length: mapLength)
+            didFaultPages = true
         }
 
         if trigger == "timer" {
-            adjustIntervalLocked(evicted: needsWarm)
+            adjustIntervalLocked(evicted: before < residencyThreshold)
         }
 
         // Stay quiet on the common "still warm" timer tick; only log real work.
         guard needsWarm || trigger != "timer" else { return }
 
         let after = needsWarm ? (residentFractionLocked() ?? before) : before
-        logger?.log("warm", fields: [
+        var fields: [String: String] = [
             "trigger": trigger,
             "warmed": needsWarm ? "true" : "false",
+            "faulted": needsWarm ? "true" : "false",
             "resident_before": String(format: "%.2f", before),
             "resident_after": String(format: "%.2f", after),
             "interval_s": String(Int(currentInterval)),
             "size_mb": String(mapLength / 1_048_576)
-        ])
+        ]
+        if let rss = processResidentSizeBytes() {
+            fields["rss_mb"] = String(rss / 1_048_576)
+        }
+        logger?.log("warm", fields: fields)
     }
 
-    private func ensureMappedLocked() {
+    /// Returns true only when this call created a new mapping.
+    /// Reused mappings (same inode/device/resolved path) and errors return false.
+    @discardableResult
+    private func ensureMappedLocked() -> Bool {
         let appURL: URL
         do {
             appURL = try chromeAppLocator()
@@ -121,7 +136,7 @@ public final class ChromeWarmer: @unchecked Sendable {
                 "stage": "locate",
                 "error": error.localizedDescription
             ])
-            return
+            return false
         }
 
         let path = Self.frameworkBinaryURL(forChromeApp: appURL).path
@@ -131,7 +146,7 @@ public final class ChromeWarmer: @unchecked Sendable {
                 "stage": "stat",
                 "path": path
             ])
-            return
+            return false
         }
 
         let resolvedPath = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
@@ -139,7 +154,7 @@ public final class ChromeWarmer: @unchecked Sendable {
            mappedInode == probe.st_ino,
            mappedDevice == probe.st_dev,
            mappedResolvedPath == resolvedPath {
-            return
+            return false
         }
 
         unmapLocked()
@@ -151,14 +166,14 @@ public final class ChromeWarmer: @unchecked Sendable {
                 "path": path,
                 "errno": String(errno)
             ])
-            return
+            return false
         }
 
         var info = stat()
         guard fstat(descriptor, &info) == 0, info.st_size > 0 else {
             close(descriptor)
             logger?.log("warm_error", fields: ["stage": "fstat", "path": path])
-            return
+            return false
         }
 
         let length = Int(info.st_size)
@@ -166,7 +181,7 @@ public final class ChromeWarmer: @unchecked Sendable {
         if address == MAP_FAILED || address == nil {
             close(descriptor)
             logger?.log("warm_error", fields: ["stage": "mmap", "errno": String(errno)])
-            return
+            return false
         }
 
         fileDescriptor = descriptor
@@ -176,6 +191,7 @@ public final class ChromeWarmer: @unchecked Sendable {
         mappedResolvedPath = resolvedPath
         mappedDevice = info.st_dev
         mappedInode = info.st_ino
+        return true
     }
 
     private func unmapLocked() {
@@ -192,6 +208,7 @@ public final class ChromeWarmer: @unchecked Sendable {
         mappedResolvedPath = nil
         mappedDevice = 0
         mappedInode = 0
+        didFaultPages = false
     }
 
     /// Fraction of mapped pages currently resident in core, or nil if unavailable.
@@ -225,6 +242,21 @@ public final class ChromeWarmer: @unchecked Sendable {
             offset += pageSize
         }
         touchSink = accumulator
+    }
+
+    /// This process's resident_size in bytes, or nil if `task_info` fails.
+    private func processResidentSizeBytes() -> UInt64? {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(
+            MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size
+        )
+        let status = withUnsafeMutablePointer(to: &info) { pointer -> kern_return_t in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), rebound, &count)
+            }
+        }
+        guard status == KERN_SUCCESS else { return nil }
+        return UInt64(info.resident_size)
     }
 
     private func adjustIntervalLocked(evicted: Bool) {
@@ -276,5 +308,9 @@ public final class ChromeWarmer: @unchecked Sendable {
             guard mapAddress != nil, mappedInode != 0 else { return nil }
             return (UInt64(mappedInode), mapLength)
         }
+    }
+
+    func didFaultPagesForTesting() -> Bool {
+        queue.sync { didFaultPages }
     }
 }

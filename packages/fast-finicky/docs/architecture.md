@@ -50,13 +50,14 @@
 
 ### 4. Keep-warm
 
-`directBinary` 会 spawn 完整 Chrome 二进制。框架页被换出后冷启动可到数秒。`ChromeWarmer` 对 `Google Chrome Framework` 做 `mmap`，用 `mincore` 检查驻留，必要时再 `madvise(WILLNEED)` + 逐页 touch。`Current` 符号链接换 inode 时重新 map。退出时在 isolation queue 上 `stop()` / unmap，避免 timer 与 `deinit` 并发。
+`directBinary` 会 spawn 完整 Chrome 二进制。框架页被换出后冷启动可到数秒。`ChromeWarmer` 对 `Google Chrome Framework` 做 `mmap`。`mincore` 是系统级的：Chrome 自己已把框架留在 cache 时 mincore 也会很高，但 Fast Finicky 的页表里可能还没有 PTE，进程 RSS 仍然很小。因此首次 map（以及 inode 变化后的 remap）必须逐页 touch，把框架 fault 进本进程，让本进程 RSS ≈ 框架大小（~458MB / 0.5GB）。Activity Monitor 的 Memory 看的是 phys_footprint，干净的 file-backed 页经常不算进去，会显得很小；用 `ps -o rss=` 或 warm 日志的 `rss_mb`。timer tick 在已经 fault 过且 mincore ≥ 0.9 时可以跳过 touch。不做 `mlock`，页仍可回收。`Current` 符号链接换 inode 时重新 map。退出时在 isolation queue 上 `stop()` / unmap，避免 timer 与 `deinit` 并发。
 
 ### 5. 日志与热重载
 
 - 日志目录固定为 `~/.local/state/fast-finicky/logs/`
 - 日志按天写入 `YYYY-MM-DD.log`
 - 只保留最近 `7` 天
+- `[route] elapsed_ms` 只覆盖分流 + spawn/reuse 交出去的时间（`process.run()` 立刻返回）。Chrome 真正接住链接的墙钟时间写在后续 `[open]`：`elapsed_ms` + `status=ready|exited|timeout` + `chrome_was_running`。在热路径之外轮询，最多 20s。`directBinary` 在 Chrome 已运行时看子进程退出（singleton 交接）；冷启动看 `isFinishedLaunching`。
 - 配置文件变更后自动 reload
 - reload 失败时继续使用上一版有效配置
 - 菜单 `Setup` 扫描 Chrome，给还没有 rule 的 profile **追加 rule**：`name`/`email` 作对照，`contains` 留空（空规则不匹配 URL）。已有 rule 缺 `name`/`email` 时只补这两个字段，不改 `contains`/`profile`，也不删 rules。邮箱先读 Local State `info_cache.user_name`（须含 `@`），没有再读该 profile 的 Preferences `account_info[].email`。

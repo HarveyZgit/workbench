@@ -35,6 +35,7 @@ Key files:
 - [ConfigStore.swift](Sources/FastFinickyCore/ConfigStore.swift)
 - [DailyLogger.swift](Sources/FastFinickyCore/DailyLogger.swift)
 - [ChromeWarmer.swift](Sources/FastFinickyCore/ChromeWarmer.swift)
+- [ChromeOpenObserver.swift](Sources/FastFinickyCore/ChromeOpenObserver.swift)
 - [AppUpdater.swift](Sources/FastFinickyCore/AppUpdater.swift)
 - [Info.plist](App/Info.plist)
 
@@ -86,16 +87,19 @@ If you revisit performance work here, treat profile correctness as the non-negot
 
 ## Keep-Warm (cold-launch latency)
 
-The `directBinary` path spawns the full Chrome binary so it can honor `--profile-directory`. Measured cost: ~0.1s warm, but ~6.8s when Chrome's shared framework (`Google Chrome Framework`, ~458 MB, profile-independent) has been evicted from the page cache after idle / memory pressure. This is the "runs a while, then clicks take 3-5s" symptom — and it is downstream of `process.run()`, so the route log's `elapsed_ms` does not capture it.
+The `directBinary` path spawns the full Chrome binary so it can honor `--profile-directory`. Measured cost: ~0.1s warm, but ~6.8s when Chrome's shared framework (`Google Chrome Framework`, ~458 MB, profile-independent) has been evicted from the page cache after idle / memory pressure. This is the "runs a while, then clicks take 3-5s" symptom — and it is downstream of `process.run()`, so `[route] elapsed_ms` is only Fast Finicky's own handoff. The follow-up `[open]` line is the wall-clock open time (spawned process exits, Chrome `isFinishedLaunching`, or 20s timeout).
 
 [ChromeWarmer.swift](Sources/FastFinickyCore/ChromeWarmer.swift) keeps that single shared framework resident, which covers every profile at once:
 
 - `mmap`s the framework binary (shares Chrome's own physical pages — ~no extra private memory).
-- On a 30s timer, checks residency with `mincore` first; only `madvise(WILLNEED)` + touches pages when a fraction has been evicted, so a warm tick is a near-free no-op.
+- `mincore` is system-wide. If Chrome already has the framework resident, mincore is high even when Fast Finicky has no PTEs.
+- First map (and remap) MUST touch every page so this process RSS ≈ framework size (~458MB / 0.5GB). That is how the tool holds 0.5GB RSS.
+- Activity Monitor "Memory" is phys_footprint and often excludes clean file-backed pages — it will look small. Measure with `ps -o rss=` or the warm log `rss_mb`.
+- On a 30s timer, skip the touch when this process already faulted the pages and `mincore` is still ≥ 0.9; otherwise `madvise(WILLNEED)` + touch. A warm tick that is already resident is a near-free no-op.
 - `warmNow()` is called after each launch to stay hot during active use.
 - Backs the interval off (up to 300s) when eviction recurs, to avoid thrashing under real memory pressure; resets to 30s once warm again.
-- Does not `mlock`/wire memory — pages stay reclaimable, so the OS can take them back under genuine pressure (the one case where a cold launch can still happen).
-- Emits `warm` / `warm_error` log lines; warm ticks that change nothing stay silent.
+- Still no `mlock` / wired memory — pages stay reclaimable, so the OS can take them back under genuine pressure (the one case where a cold launch can still happen).
+- Emits `warm` / `warm_error` log lines (`rss_mb`, `faulted`); warm ticks that change nothing stay silent.
 
 Constraints if you touch this:
 
@@ -121,6 +125,7 @@ Behavior:
 - Logs are daily and old files are pruned after 7 days
 - `Open Log` should open today's log file directly
 - Route logs include launch-path metadata so hot-path changes can be compared from logs instead of only by feel
+- `[route] elapsed_ms` is routing + spawn/reuse handoff. `[open] elapsed_ms` is when Chrome actually took the URL (`status=ready|exited|timeout`, plus `chrome_was_running`). Do not wait for that on the Apple Event thread.
 
 Do not reintroduce `.finicky.js` compatibility unless asked.
 
@@ -179,6 +184,7 @@ Always try to verify:
 - a representative URL dry-run resolves to the expected Chrome profile
 - Chrome is brought to the foreground after a launch
 - route logs show the expected `launch_strategy` / `target_kind`
+- each successful open is followed by an `[open]` line with `elapsed_ms` and `status`
 
 If browser-launch logic changed, also verify:
 
