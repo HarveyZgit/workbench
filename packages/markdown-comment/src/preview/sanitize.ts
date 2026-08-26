@@ -79,7 +79,7 @@ const TAG_ATTRIBUTES: Readonly<Record<string, ReadonlySet<string>>> = {
   colgroup: new Set(['span']),
   del: new Set(['datetime']),
   details: new Set(['open']),
-  img: new Set(['alt', 'decoding', 'height', 'loading', 'src', 'width']),
+  img: new Set(['alt', 'data-src', 'decoding', 'height', 'loading', 'src', 'width']),
   ins: new Set(['datetime']),
   li: new Set(['value']),
   ol: new Set(['reversed', 'start']),
