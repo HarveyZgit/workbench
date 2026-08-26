@@ -16,3 +16,5 @@ pnpm-lock.yaml
 **/*.ts
 **/*.vsix
 dist/skill-hub/**
+.rush/**
+rush-logs/**
