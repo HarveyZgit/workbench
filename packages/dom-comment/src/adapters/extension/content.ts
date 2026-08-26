@@ -33,6 +33,7 @@ let dragStart: { x: number; y: number } | null = null;
 let rubber: { x: number; y: number; w: number; h: number } | null = null;
 let wasDragging = false;
 let pendingText = false;
+let allowTextSelect = false;
 let tabCache: StoredTabFile | undefined;
 let pins: { x: number; y: number; w: number; h: number; area: boolean; id: string; number: number }[] = [];
 let activeRect: DOMRect | null = null;
@@ -45,6 +46,46 @@ function hypot(dx: number, dy: number): number {
 
 function intercepting(): boolean {
   return modeOn && !peeking && !composerOpen();
+}
+
+const NON_TEXT_INPUT = new Set([
+  'button',
+  'submit',
+  'reset',
+  'checkbox',
+  'radio',
+  'file',
+  'hidden',
+  'image',
+  'color',
+  'range',
+  'password',
+]);
+
+/** True when the pointer is on a caret-capable text run (so a drag should select, not rubber-band). */
+function startedOnSelectableText(ev: MouseEvent): boolean {
+  const t = ev.target;
+  if (t instanceof HTMLInputElement) {
+    return !NON_TEXT_INPUT.has(t.type.toLowerCase());
+  }
+  if (t instanceof HTMLTextAreaElement) {
+    return true;
+  }
+  if (t instanceof HTMLElement && t.isContentEditable) {
+    return true;
+  }
+  const range = document.caretRangeFromPoint?.(ev.clientX, ev.clientY);
+  if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) {
+    return false;
+  }
+  if (!range.startContainer.textContent?.trim()) {
+    return false;
+  }
+  const parent = range.startContainer.parentElement;
+  if (!parent || skipTarget(parent)) {
+    return false;
+  }
+  return getComputedStyle(parent).userSelect !== 'none';
 }
 
 function editableTarget(target: EventTarget | null): boolean {
@@ -98,6 +139,7 @@ function setMode(on: boolean): void {
     rubber = null;
     dragStart = null;
     peeking = false;
+    allowTextSelect = false;
     openThreadId = null;
     closeComposer();
     activeRect = null;
@@ -280,6 +322,11 @@ document.addEventListener(
       const dx = ev.clientX - dragStart.x;
       const dy = ev.clientY - dragStart.y;
       if (hypot(dx, dy) >= DRAG) {
+        if (allowTextSelect) {
+          dragging = false;
+          rubber = null;
+          return;
+        }
         if (!dragging) {
           window.getSelection()?.removeAllRanges();
         }
@@ -310,6 +357,7 @@ document.addEventListener(
       return;
     }
     pendingText = false;
+    allowTextSelect = startedOnSelectableText(ev);
     dragStart = { x: ev.clientX, y: ev.clientY };
     dragging = false;
     wasDragging = false;
@@ -324,6 +372,25 @@ document.addEventListener(
     if (!modeOn || !dragStart) {
       return;
     }
+    const text = captureText();
+    if (text) {
+      pendingText = true;
+      allowTextSelect = false;
+      const crop = new DOMRect(
+        text.rect.x - window.scrollX,
+        text.rect.y - window.scrollY,
+        text.rect.width,
+        text.rect.height,
+      );
+      submit(text, crop);
+      dragStart = null;
+      dragging = false;
+      rubber = null;
+      paint();
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      return;
+    }
     if (dragging && rubber && rubber.w >= MIN_AREA_PX && rubber.h >= MIN_AREA_PX) {
       const box = new DOMRect(rubber.x, rubber.y, rubber.w, rubber.h);
       submit(captureArea(rubber), box);
@@ -334,23 +401,10 @@ document.addEventListener(
       ev.stopImmediatePropagation();
       return;
     }
-    const text = !dragging ? captureText() : null;
     dragStart = null;
     dragging = false;
     rubber = null;
     paint();
-    if (text) {
-      pendingText = true;
-      const crop = new DOMRect(
-        text.rect.x - window.scrollX,
-        text.rect.y - window.scrollY,
-        text.rect.width,
-        text.rect.height,
-      );
-      submit(text, crop);
-      ev.preventDefault();
-      ev.stopImmediatePropagation();
-    }
     if (wasDragging) {
       ev.preventDefault();
       ev.stopImmediatePropagation();
@@ -362,22 +416,23 @@ document.addEventListener(
 document.addEventListener(
   'click',
   (ev) => {
-    if (!intercepting() || isOurHost(ev.target)) {
+    if (!modeOn || peeking || isOurHost(ev.target)) {
       return;
     }
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
     if (pendingText || wasDragging) {
-      ev.preventDefault();
-      ev.stopImmediatePropagation();
       pendingText = false;
       wasDragging = false;
+      return;
+    }
+    if (composerOpen()) {
       return;
     }
     const el = deepestElement(ev.clientX, ev.clientY);
     if (!el || skipTarget(el)) {
       return;
     }
-    ev.preventDefault();
-    ev.stopImmediatePropagation();
     const target = hoverEl && hoverEl.isConnected && !skipTarget(hoverEl) ? hoverEl : el;
     submit(captureElement(target), target.getBoundingClientRect());
   },
