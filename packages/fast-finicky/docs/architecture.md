@@ -50,7 +50,7 @@
 
 ### 4. Keep-warm
 
-`directBinary` 会 spawn 完整 Chrome 二进制。框架页被换出后冷启动可到数秒。`ChromeWarmer` 对 `Google Chrome Framework` 做 `mmap`，用 `mincore` 检查驻留，必要时再 `madvise(WILLNEED)` + 逐页 touch。`Current` 符号链接换 inode 时重新 map。退出时在 isolation queue 上 `stop()` / unmap，避免 timer 与 `deinit` 并发。
+`directBinary` 会 spawn 完整 Chrome 二进制。框架页被换出后冷启动可到数秒。`ChromeWarmer` 对 `Google Chrome Framework` 做 `mmap`。`mincore` 是系统级的：Chrome 自己已把框架留在 cache 时 mincore 也会很高，但 Fast Finicky 的页表里可能还没有 PTE，进程 RSS 仍然很小。因此首次 map（以及 inode 变化后的 remap）必须逐页 touch，把框架 fault 进本进程，让本进程 RSS ≈ 框架大小（~458MB / 0.5GB）。Activity Monitor 的 Memory 看的是 phys_footprint，干净的 file-backed 页经常不算进去，会显得很小；用 `ps -o rss=` 或 warm 日志的 `rss_mb`。timer tick 在已经 fault 过且 mincore ≥ 0.9 时可以跳过 touch。不做 `mlock`，页仍可回收。`Current` 符号链接换 inode 时重新 map。退出时在 isolation queue 上 `stop()` / unmap，避免 timer 与 `deinit` 并发。
 
 ### 5. 日志与热重载
 

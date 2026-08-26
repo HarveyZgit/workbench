@@ -91,11 +91,14 @@ The `directBinary` path spawns the full Chrome binary so it can honor `--profile
 [ChromeWarmer.swift](Sources/FastFinickyCore/ChromeWarmer.swift) keeps that single shared framework resident, which covers every profile at once:
 
 - `mmap`s the framework binary (shares Chrome's own physical pages — ~no extra private memory).
-- On a 30s timer, checks residency with `mincore` first; only `madvise(WILLNEED)` + touches pages when a fraction has been evicted, so a warm tick is a near-free no-op.
+- `mincore` is system-wide. If Chrome already has the framework resident, mincore is high even when Fast Finicky has no PTEs.
+- First map (and remap) MUST touch every page so this process RSS ≈ framework size (~458MB / 0.5GB). That is how the tool holds 0.5GB RSS.
+- Activity Monitor "Memory" is phys_footprint and often excludes clean file-backed pages — it will look small. Measure with `ps -o rss=` or the warm log `rss_mb`.
+- On a 30s timer, skip the touch when this process already faulted the pages and `mincore` is still ≥ 0.9; otherwise `madvise(WILLNEED)` + touch. A warm tick that is already resident is a near-free no-op.
 - `warmNow()` is called after each launch to stay hot during active use.
 - Backs the interval off (up to 300s) when eviction recurs, to avoid thrashing under real memory pressure; resets to 30s once warm again.
-- Does not `mlock`/wire memory — pages stay reclaimable, so the OS can take them back under genuine pressure (the one case where a cold launch can still happen).
-- Emits `warm` / `warm_error` log lines; warm ticks that change nothing stay silent.
+- Still no `mlock` / wired memory — pages stay reclaimable, so the OS can take them back under genuine pressure (the one case where a cold launch can still happen).
+- Emits `warm` / `warm_error` log lines (`rss_mb`, `faulted`); warm ticks that change nothing stay silent.
 
 Constraints if you touch this:
 

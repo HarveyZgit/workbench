@@ -1036,6 +1036,64 @@ final class FastFinickyCoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: staging.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: current.appendingPathComponent("Fast Finicky.app.new").path))
     }
+
+    func testChromeWarmerFaultsPagesOnFirstMap() throws {
+        let appURL = try makeFakeChromeApp(frameworkBytes: 2 * 1024 * 1024)
+        let warmer = ChromeWarmer(
+            chromeAppLocator: { appURL },
+            logger: nil,
+            baseInterval: 999,
+            maxInterval: 999,
+            residencyThreshold: 0.9
+        )
+
+        let fraction = warmer.warmSynchronouslyForTesting()
+        XCTAssertGreaterThan(fraction ?? 0, 0.9)
+        XCTAssertTrue(warmer.didFaultPagesForTesting())
+        let identity = try XCTUnwrap(warmer.mappedIdentityForTesting())
+        XCTAssertEqual(identity.size, 2 * 1024 * 1024)
+    }
+
+    func testChromeWarmerRemapResetsFaultFlag() throws {
+        let appURL = try makeFakeChromeApp(frameworkBytes: 2 * 1024 * 1024)
+        let frameworkURL = appURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Frameworks", isDirectory: true)
+            .appendingPathComponent("Google Chrome Framework.framework", isDirectory: true)
+            .appendingPathComponent("Versions", isDirectory: true)
+            .appendingPathComponent("Current", isDirectory: true)
+            .appendingPathComponent("Google Chrome Framework", isDirectory: false)
+
+        let warmer = ChromeWarmer(
+            chromeAppLocator: { appURL },
+            logger: nil,
+            baseInterval: 999,
+            maxInterval: 999,
+            residencyThreshold: 0.9
+        )
+
+        _ = warmer.warmSynchronouslyForTesting()
+        XCTAssertTrue(warmer.didFaultPagesForTesting())
+        let firstIdentity = try XCTUnwrap(warmer.mappedIdentityForTesting())
+
+        try FileManager.default.removeItem(at: frameworkURL)
+        let replacementBytes = 3 * 1024 * 1024
+        var replacement = Data(count: replacementBytes)
+        replacement.withUnsafeMutableBytes { buffer in
+            let bytes = buffer.bindMemory(to: UInt8.self)
+            for index in 0..<replacementBytes {
+                bytes[index] = UInt8(truncatingIfNeeded: index &* 67 + 89)
+            }
+        }
+        try replacement.write(to: frameworkURL)
+
+        _ = warmer.warmSynchronouslyForTesting()
+        let secondIdentity = try XCTUnwrap(warmer.mappedIdentityForTesting())
+        XCTAssertNotEqual(secondIdentity.inode, firstIdentity.inode)
+        XCTAssertEqual(secondIdentity.size, replacementBytes)
+        XCTAssertTrue(warmer.didFaultPagesForTesting())
+    }
+
 }
 
 private func makeChromeProfileDirectory(at root: URL, name: String) throws {
@@ -1064,7 +1122,7 @@ private func makeUpdateAppBundle(at url: URL, identifier: String, version: Strin
     return url
 }
 
-private func makeFakeChromeApp() throws -> URL {
+private func makeFakeChromeApp(frameworkBytes: Int = 0) throws -> URL {
     let rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
     let executableURL = rootURL
         .appendingPathComponent("Contents", isDirectory: true)
@@ -1074,6 +1132,28 @@ private func makeFakeChromeApp() throws -> URL {
     try FileManager.default.createDirectory(at: executableURL.deletingLastPathComponent(), withIntermediateDirectories: true)
     FileManager.default.createFile(atPath: executableURL.path, contents: Data())
     try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executableURL.path)
+
+    if frameworkBytes > 0 {
+        let frameworkURL = rootURL
+            .appendingPathComponent("Contents", isDirectory: true)
+            .appendingPathComponent("Frameworks", isDirectory: true)
+            .appendingPathComponent("Google Chrome Framework.framework", isDirectory: true)
+            .appendingPathComponent("Versions", isDirectory: true)
+            .appendingPathComponent("Current", isDirectory: true)
+            .appendingPathComponent("Google Chrome Framework", isDirectory: false)
+        try FileManager.default.createDirectory(
+            at: frameworkURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        var patterned = Data(count: frameworkBytes)
+        patterned.withUnsafeMutableBytes { buffer in
+            let bytes = buffer.bindMemory(to: UInt8.self)
+            for index in 0..<frameworkBytes {
+                bytes[index] = UInt8(truncatingIfNeeded: index &* 131 + 17)
+            }
+        }
+        try patterned.write(to: frameworkURL)
+    }
 
     return rootURL
 }
