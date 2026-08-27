@@ -9,16 +9,16 @@ metadata:
 
 网页 DOM 元素 / 文字 / 区域评论。只通过 CLI 读写，不要手改存储 JSON。用户一写完评论就已落盘，不必再点发布。
 
-CLI 入口是本 Skill 目录下的 `scripts/dom-comment`（用 node 调用），它会定位已安装包里的 `dist/cli.js`，或环境变量 `DOM_COMMENT_CLI`。
+全局安装之后，直接调用 PATH 上的 `dom-comment …`。本目录 `scripts/dom-comment` 是回退包装：先 `DOM_COMMENT_CLI`（须是文件），再 PATH 上的 `dom-comment`（跳过自身以免递归），最后向上找包内 `dist/cli.js`。
 
 ```bash
-node scripts/dom-comment list --tab <id> [--url <canonical>] [--open] [--json]
-node scripts/dom-comment list --open [--json] [--name-only]
-node scripts/dom-comment reply <threadId> <text>
-node scripts/dom-comment resolve <threadId>
+dom-comment list --tab <id> [--url <canonical>] [--open] [--json]
+dom-comment list --open [--json] [--name-only]
+dom-comment reply <threadId> <text>
+dom-comment resolve <threadId>
 ```
 
-（在 Skill 根目录执行；或把 `scripts/dom-comment` 换成绝对路径。）
+（PATH 上没有 CLI 时，在 Skill 根目录用 `node scripts/dom-comment …`，或换成该包装的绝对路径。）
 
 ## 查找顺序
 

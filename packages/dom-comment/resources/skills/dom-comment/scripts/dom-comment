@@ -28,12 +28,52 @@ function findBundledCli(start) {
   return '';
 }
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const envCli = process.env.DOM_COMMENT_CLI;
-const cli = (envCli && isFile(envCli) && envCli) || findBundledCli(here);
-if (!cli) {
-  process.stderr.write('找不到 dom-comment CLI。请先 npm i -g / 构建，或设置 DOM_COMMENT_CLI。\n');
-  process.exit(1);
+function sameFile(a, b) {
+  try {
+    return fs.realpathSync(a) === fs.realpathSync(b);
+  } catch {
+    return path.resolve(a) === path.resolve(b);
+  }
 }
-const r = spawnSync(process.execPath, [cli, ...process.argv.slice(2)], { stdio: 'inherit' });
-process.exit(r.status ?? 1);
+
+function findPathCli(self) {
+  const isWin = process.platform === 'win32';
+  const tool = isWin ? 'where' : 'which';
+  const attempts = isWin ? [['dom-comment']] : [['-a', 'dom-comment'], ['dom-comment']];
+  for (const args of attempts) {
+    const result = spawnSync(tool, args, { encoding: 'utf8' });
+    if (result.status !== 0) {
+      continue;
+    }
+    const lines = (result.stdout || '').split(/\r?\n/);
+    for (const line of lines) {
+      const hit = line.trim();
+      if (hit && isFile(hit) && !sameFile(hit, self)) {
+        return hit;
+      }
+    }
+  }
+  return '';
+}
+
+function runAndExit(command, args) {
+  const result = spawnSync(command, args, { stdio: 'inherit' });
+  process.exit(result.status ?? 1);
+}
+
+const self = fileURLToPath(import.meta.url);
+const here = path.dirname(self);
+const envCli = process.env.DOM_COMMENT_CLI;
+if (envCli && isFile(envCli)) {
+  runAndExit(process.execPath, [envCli, ...process.argv.slice(2)]);
+}
+const pathCli = findPathCli(self);
+if (pathCli) {
+  runAndExit(pathCli, process.argv.slice(2));
+}
+const bundled = findBundledCli(here);
+if (bundled) {
+  runAndExit(process.execPath, [bundled, ...process.argv.slice(2)]);
+}
+process.stderr.write('找不到 dom-comment CLI。请先 npm i -g / 构建，或设置 DOM_COMMENT_CLI。\n');
+process.exit(1);

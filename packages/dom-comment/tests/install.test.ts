@@ -46,23 +46,55 @@ test('cmdInstallSkill creates a managed symlink', () => {
   assert.equal(fs.readlinkSync(link), skillSourceDir());
 });
 
-test('install.sh --from-dir --skip-setup links the CLI', () => {
+test('npm pack then npm install --global --prefix exposes the CLI', () => {
+  const executable = 0o755;
   const prefix = tmpDir();
-  const binDir = path.join(prefix, 'bin');
-  const src = tmpDir();
-  fs.mkdirSync(path.join(src, 'dist'), { recursive: true });
-  fs.writeFileSync(path.join(src, 'dist', 'cli.js'), '#!/usr/bin/env node\nconsole.log("ok")\n');
-  fs.chmodSync(path.join(src, 'dist', 'cli.js'), 0o755);
-  fs.writeFileSync(path.join(src, 'chrome-extension.json'), '{"id":"x"}\n');
-  const script = path.join(packageRoot(), 'scripts', 'install.sh');
-  const result = spawnSync('bash', [script, '--from-dir', src, '--skip-setup'], {
+  const pkg = tmpDir();
+  const pkgJson = {
+    name: 'dom-comment',
+    version: '0.0.0-test',
+    bin: { 'dom-comment': './dist/cli.js' },
+    files: ['dist/cli.js'],
+  };
+  fs.writeFileSync(path.join(pkg, 'package.json'), `${JSON.stringify(pkgJson)}\n`);
+  fs.mkdirSync(path.join(pkg, 'dist'), { recursive: true });
+  fs.writeFileSync(path.join(pkg, 'dist', 'cli.js'), '#!/usr/bin/env node\nconsole.log("ok")\n');
+  fs.chmodSync(path.join(pkg, 'dist', 'cli.js'), executable);
+  const packed = spawnSync('npm', ['pack'], { cwd: pkg, encoding: 'utf8' });
+  assert.equal(packed.status, 0, packed.stderr);
+  const tgzName = packed.stdout.trim().split('\n').pop() ?? '';
+  const tgz = path.join(pkg, tgzName);
+  assert.ok(fs.existsSync(tgz), packed.stdout);
+  const installed = spawnSync('npm', ['install', '-g', '--prefix', prefix, tgz], {
     encoding: 'utf8',
-    env: { ...process.env, DOM_COMMENT_PREFIX: prefix, DOM_COMMENT_BIN_DIR: binDir },
   });
-  assert.equal(result.status, 0, result.stderr);
-  const linked = path.join(binDir, 'dom-comment');
-  assert.ok(fs.lstatSync(linked).isSymbolicLink());
-  assert.ok(fs.existsSync(path.join(prefix, 'pkg', 'dist', 'cli.js')));
+  assert.equal(installed.status, 0, installed.stderr);
+  const bin = path.join(prefix, 'bin', 'dom-comment');
+  assert.ok(fs.existsSync(bin));
+  const ran = spawnSync(bin, [], { encoding: 'utf8' });
+  assert.equal(ran.status, 0, ran.stderr);
+  assert.match(ran.stdout, /ok/);
+});
+
+test('pack-release.sh emits dist/dom-comment-*.tgz', () => {
+  const root = packageRoot();
+  const dist = path.join(root, 'dist');
+  const cliJs = path.join(dist, 'cli.js');
+  const manifest = path.join(dist, 'chrome-mv3', 'manifest.json');
+  if (!fs.existsSync(cliJs) || !fs.existsSync(manifest)) {
+    const built = spawnSync(process.execPath, [path.join(root, 'scripts', 'build-node.mjs')], {
+      cwd: root,
+      encoding: 'utf8',
+    });
+    assert.equal(built.status, 0, built.stderr);
+  }
+  const script = path.join(root, 'scripts', 'pack-release.sh');
+  const packed = spawnSync('bash', [script], { cwd: root, encoding: 'utf8' });
+  assert.equal(packed.status, 0, packed.stderr + packed.stdout);
+  const printed = packed.stdout.trim().split('\n').pop() ?? '';
+  assert.match(printed, /dom-comment-.*\.tgz$/);
+  assert.ok(fs.existsSync(printed));
+  assert.ok(fs.statSync(printed).size > 0);
 });
 
 test('chromeNativeMessagingProfileRoots includes macOS and Linux user dirs', () => {

@@ -4,7 +4,7 @@
 
 ## What Changes
 
-- GitHub Release 分发 `dom-comment.zip`；`install.sh` 下载 zip 并安装 CLI / 扩展产物 / Skill 源文件。命令名是 `dom-comment`。
+- GitHub Release 分发 `dom-comment-*.tgz`；用户全局安装该 tarball，再跑 `dom-comment install`。命令名是 `dom-comment`。
 - `dom-comment install`：登记 Native Messaging；交互选择 Agent skill 目录（也可 `--target`）。不猜默认宿主。
 - `dom-comment extension`：打印本机扩展目录，供 Chrome「加载已解压」。
 - 运行时命令仍在同一 CLI：`list` / `reply` / `resolve` / `open` / `ping-host`。

@@ -17,5 +17,5 @@
 
 ## 4. GitHub Release
 
-- [x] 4.1 `scripts/pack-release.sh` builds `dist/dom-comment.zip`
-- [x] 4.2 `scripts/install.sh` downloads that zip (or `--from-dir` / `--zip`) and links the CLI
+- [x] 4.1 `scripts/pack-release.sh` builds `dist/dom-comment-*.tgz`
+- [x] 4.2 Users install the tarball globally, then run `dom-comment install`

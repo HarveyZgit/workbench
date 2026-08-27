@@ -6,20 +6,16 @@
 
 ## 安装
 
-仓库是私有的，匿名 `curl` 下载 Release 会 404。用已登录的 GitHub CLI：
+仓库是私有的，匿名 `curl` 下载 Release 会 404。用已登录的 GitHub CLI 下载 tarball，再全局安装：
 
 ```sh
-gh release download dom-comment-v0.1.0 --repo HarveyZgit/workbench -p install.sh -p dom-comment.zip
-bash install.sh --zip ./dom-comment.zip
-```
-
-脚本会下载 zip、链出 `~/.local/bin/dom-comment`，并运行 `dom-comment install`（登记 Native Messaging，交互选择 Skill 目录）。然后：
-
-```sh
+gh release download dom-comment-v0.1.0 --repo HarveyZgit/workbench -p 'dom-comment-*.tgz'
+npm install -g ./dom-comment-0.1.0.tgz
+dom-comment install
 dom-comment extension
 ```
 
-把打印出的目录拿到 `chrome://extensions` → 开发者模式 →「加载已解压的扩展程序」。Chrome 不允许脚本代装扩展。
+然后把打印出的目录拿到 `chrome://extensions` → 开发者模式 →「加载已解压的扩展程序」。Chrome 不允许脚本代装扩展。
 
 源码树开发：
 
@@ -29,12 +25,11 @@ rushx build
 node dist/cli.js install
 ```
 
-打 Release zip：
+打 Release tarball（资源是 `dist/dom-comment-*.tgz`，不再发 zip 或 install.sh）：
 
 ```sh
 cd packages/dom-comment
 rushx pack-release
-gh release create "dom-comment-v0.1.0" dist/dom-comment.zip scripts/install.sh --title "dom-comment 0.1.0"
 ```
 
 ## 使用
@@ -59,7 +54,7 @@ dom-comment open --tab 1847
 dom-comment ping-host
 ```
 
-源码树里评论写在包内 `data/`（已 gitignore）。zip 安装后写到用户目录（macOS 为 `~/Library/Application Support/dom-comment`）。测试可用 `DOM_COMMENT_STORAGE_DIR`。
+源码树里评论写在包内 `data/`（已 gitignore）。全局安装后写到用户目录（macOS 为 `~/Library/Application Support/dom-comment`）。测试可用 `DOM_COMMENT_STORAGE_DIR`。
 
 Native Messaging 清单仍必须写在 Chrome 的 `NativeMessagingHosts/`（浏览器 API 要求）。
 
