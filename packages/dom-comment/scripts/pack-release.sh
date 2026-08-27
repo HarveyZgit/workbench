@@ -1,27 +1,28 @@
 #!/usr/bin/env bash
-# Build a GitHub Release zip: dist/, resources/skills/dom-comment, chrome-extension.json
+# Build a GitHub Release npm pack tarball from the package root.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="$ROOT/dist"
-STAGE="$DIST/release-stage"
-ZIP="$DIST/dom-comment.zip"
 
 if [[ ! -f "$DIST/cli.js" || ! -f "$DIST/chrome-mv3/manifest.json" ]]; then
   printf 'missing build; run: node scripts/build-node.mjs\n' >&2
   exit 1
 fi
 
-rm -rf "$STAGE" "$ZIP"
-mkdir -p "$STAGE/dist/chrome-mv3" "$STAGE/resources/skills"
+rm -rf "$DIST/release-stage"
+rm -f "$DIST/dom-comment.zip" "$DIST"/dom-comment-*.tgz
 
-cp "$DIST/cli.js" "$DIST/native-host.js" "$STAGE/dist/"
-chmod 755 "$STAGE/dist/cli.js" "$STAGE/dist/native-host.js"
-cp "$DIST/chrome-mv3/"*.js "$DIST/chrome-mv3/"*.html "$DIST/chrome-mv3/"*.png "$DIST/chrome-mv3/manifest.json" "$STAGE/dist/chrome-mv3/"
-cp "$ROOT/chrome-extension.json" "$STAGE/"
-cp -R "$ROOT/resources/skills/dom-comment" "$STAGE/resources/skills/"
-chmod 755 "$STAGE/resources/skills/dom-comment/scripts/dom-comment"
+tgz_name=""
+while IFS= read -r line; do
+  [[ -n "$line" ]] && tgz_name="$line"
+done < <(cd "$ROOT" && npm pack --pack-destination "$DIST")
 
-(cd "$STAGE" && zip -qr "$ZIP" .)
-rm -rf "$STAGE"
-printf '%s\n' "$ZIP"
+if [[ -z "$tgz_name" ]]; then
+  printf 'produced no tarball\n' >&2
+  exit 1
+fi
+if [[ "$tgz_name" != /* ]]; then
+  tgz_name="$DIST/$tgz_name"
+fi
+printf '%s\n' "$tgz_name"

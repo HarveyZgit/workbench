@@ -65,7 +65,7 @@ rev 4 按「文档 = URL」存、工具栏直接开关模式、不存图。用�
 
 | # | 决策 | 理由 |
 | --- | --- | --- |
-| K1 | Chrome MV3 扩展，Load unpacked；CLI 经 npm 分发 | 扩展仍须手装；host / Skill / 运行时走 `dom-comment` CLI。 |
+| K1 | Chrome MV3 扩展，Load unpacked；CLI 经 GitHub Release tarball 全局安装，再跑 `dom-comment install` | 扩展仍须手装；host / Skill / 运行时走 `dom-comment` CLI。 |
 | K2 | 概念同构、包与存储分离；不抽 markdown-comment core | core 仍绑 VS Code。 |
 | K3 | Native Messaging 写盘；另用 **持久 NM 连接 + Unix socket** 给 CLI→扩展（聚焦 tab） | 扩展不能写 `~`；CLI 又要叫 Chrome 聚焦已登录 tab。一次性 `sendNativeMessage` 无法从 CLI 发起。 |
 | K4 | 存储主键 = **当前 Chrome 会话 + tabId**；文件内 key = canonical URL | 用户指定。一次浏览里同一 tab 会换 URL，评论应留在这个 tab 下。 |
@@ -431,7 +431,7 @@ Skill `resources/skills/dom-comment/SKILL.md`：
 - **先解析 `tabid` / `url` 参数，再看其余自然语言。**
 - `list --tab …` → 读 `[截图]` 对应 PNG → 按 quote 理解 → `reply` / `resolve`。
 - 默认读 `[截图]` PNG。还要看活页：`open --tab` 只聚焦原 tab。tab 没了就停在截图。**禁止** Playwright、CDP、fetch URL 当页面真相。
-- `{{CLI}}` 仍是 `node ~/.dom-comment/skill/dom-comment/scripts/dom-comment`。
+- 全局安装后 Agent 直接调 PATH 上的 `dom-comment`。包装脚本仍可作回退。
 
 ### 9. MV3 要点
 
