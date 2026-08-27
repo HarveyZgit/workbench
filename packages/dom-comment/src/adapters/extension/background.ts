@@ -168,7 +168,7 @@ async function persistMode(on: boolean): Promise<void> {
 
 async function setMode(on: boolean): Promise<void> {
   await persistMode(on);
-  const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+  const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*', 'file:///*'] });
   for (const tab of tabs) {
     if (tab.id !== undefined) {
       postToTab(tab.id, { type: 'SET_MODE', on });

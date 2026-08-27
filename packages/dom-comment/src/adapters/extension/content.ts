@@ -1,5 +1,5 @@
 import { DRAG_THRESHOLD_PX, MIN_AREA_PX } from '../../core/types.js';
-import { canonicalizeUrl, isHttpUrl } from '../../core/identity.js';
+import { canonicalizeUrl, isAnnotatableUrl } from '../../core/identity.js';
 import { captureArea, captureElement, captureText } from './capture.js';
 import {
   closeComposer,
@@ -176,7 +176,7 @@ function threadRect(id: string): DOMRect {
 
 function refreshPins(overlayOnly = false): void {
   const { href } = location;
-  if (!isHttpUrl(href) || !tabCache) {
+  if (!isAnnotatableUrl(href) || !tabCache) {
     pins = [];
   } else {
     try {

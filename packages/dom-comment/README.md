@@ -15,7 +15,7 @@ dom-comment install
 dom-comment extension
 ```
 
-然后把打印出的目录拿到 `chrome://extensions` → 开发者模式 →「加载已解压的扩展程序」。Chrome 不允许脚本代装扩展。
+然后把打印出的目录拿到 `chrome://extensions` → 开发者模式 →「加载已解压的扩展程序」。Chrome 不允许脚本代装扩展。要标注 `file://` 页面，在该扩展详情勾选「允许访问文件网址」（Chrome 无法从代码打开这项）。`chrome://` 仍不支持。
 
 源码树开发：
 

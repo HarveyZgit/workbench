@@ -1,4 +1,4 @@
-import { canonicalizeUrl, isHttpUrl } from '../../core/identity.js';
+import { canonicalizeUrl, isAnnotatableUrl } from '../../core/identity.js';
 import type { StoredTabFile, StoredThread } from '../../core/types.js';
 import { postToBackground, type ExtMessage } from './messages.js';
 
@@ -51,7 +51,7 @@ async function load(): Promise<void> {
   if (!tab?.id) {
     return;
   }
-  currentUrl = tab.url && isHttpUrl(tab.url) ? canonicalizeUrl(tab.url) : '';
+  currentUrl = tab.url && isAnnotatableUrl(tab.url) ? canonicalizeUrl(tab.url) : '';
   postToBackground({ type: 'LOAD_TAB', tabId: tab.id }, (res) => {
     if (res && res.type === 'LOAD_TAB_RESULT' && res.ok) {
       tabFile = res.tab;

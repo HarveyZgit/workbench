@@ -63,7 +63,7 @@ const manifest = {
   background: { service_worker: 'background.js', type: 'module' },
   content_scripts: [
     {
-      matches: ['http://*/*', 'https://*/*'],
+      matches: ['http://*/*', 'https://*/*', 'file:///*'],
       js: ['content.js'],
       run_at: 'document_idle',
     },
