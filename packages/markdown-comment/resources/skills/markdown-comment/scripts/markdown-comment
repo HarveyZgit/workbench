@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const EXT_PREFIX = 'corehr-fe.vscode-markdown-comment-';
+const EXT_PREFIX = 'harveyz.vscode-markdown-comment-';
 const HOME = os.homedir();
 const EXT_ROOTS = [
   '.vscode/extensions',
