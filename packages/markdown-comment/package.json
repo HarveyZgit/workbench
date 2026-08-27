@@ -3,7 +3,7 @@
   "displayName": "Markdown Comment",
   "description": "为 Markdown 文档建立可重定位评论线程，并提供 VS Code、CLI 与 Agent Skill 接入。",
   "version": "1.2.0",
-  "publisher": "corehr-fe",
+  "publisher": "harveyz",
   "license": "MIT",
   "repository": {
     "type": "git",
