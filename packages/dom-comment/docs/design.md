@@ -51,7 +51,7 @@ rev 4 按「文档 = URL」存、工具栏直接开关模式、不存图。用�
 - 画笔 / 高亮涂抹 / 全页未裁切截图当唯一载体（要的是 **目标区域裁切**）。
 - 协同服务器、多用户、商店上架、Firefox/Safari。
 - Windows native host；Edge 登记。自定义 `--user-data-dir` 仍需手写清单。Linux 用户级 Chrome/Chromium（`~/.config/google-chrome` / `~/.config/chromium`）由 `install` 登记。
-- `file://` / `chrome://` / 跨域 iframe 内部。
+- `chrome://` / 跨域 iframe 内部。`file://` 已纳入范围：用户须在 `chrome://extensions` 该扩展详情勾选「允许访问文件网址」（Chrome 无法从代码打开这项）。
 - 扩展内把评论推进某个 Agent 聊天（没有「发给 ChatGPT」按钮）。
 - 改名 PageMark、换 `~/.pagemark`、重写 Native Messaging 协议。
 - Playwright（含 `launchPersistentContext`、cookie/`storageState` 导出、无头分身）。
@@ -81,7 +81,7 @@ rev 4 按「文档 = URL」存、工具栏直接开关模式、不存图。用�
 | K14 | 编号钉只在标注模式显示；复制 `/dom-comment tabid:` | 退出后页面恢复干净。 |
 | K15 | Skill 名 `dom-comment`；默认 `list --open`；`tabid:` / `url:` 降级 | 查找先参数，否则最近未解决批次。 |
 | K16 | 先 OpenSpec，再产品 PR | 包指南。 |
-| K17 | 标注模式仍是扩展全局布尔 | 进入后所有 http(s) tab 可标；Esc 全局退出。 |
+| K17 | 标注模式仍是扩展全局布尔 | 进入后所有 http(s)/file tab 可标（file 需 Chrome 勾选允许访问文件网址）；Esc 全局退出。 |
 | K18 | URL（文件内页面 key）：保留 query、去追踪参数；默认丢 hash，HashRouter `#/` / `#!/` 保留 | 用户已确认。 |
 | K19 | tab 文件带 `sessionId`；新 Chrome 会话若 tabId 冲突则把旧文件旋到 `archive/` | tabId 重启后会复用，不能把两次浏览写进同一文件。 |
 | K20 | Agent 复现 = **截图 + 聚焦原 tab（A）**。v1 不做 Playwright / CDP / cookie 导出 | 用户拍板。headless 无法占用正在用的 Chrome profile；CDP 是另一套产品。截图是「那一瞬间」；活页只唤回已登录的那个 tab。 |
@@ -143,7 +143,7 @@ sequenceDiagram
   User->>Popup: 点图标「开始标记」
   Popup->>SW: SET_MODE_REQUEST on
   SW->>SW: session.annotationMode = true；setIcon X
-  SW->>CS: SET_MODE on（所有 http(s) tab）
+  SW->>CS: SET_MODE on（所有 http(s)/file tab）
   CS->>CS: 提示条「标注中，Esc 退出」
   User->>CS: 单击元素或拖过 8px
   CS->>CS: 编写框
@@ -348,7 +348,7 @@ PR 1 必测：缺文件 create；reply 不丢 screenshot / relocateStatus / 其�
 
 #### 5.4 canonicalizeUrl
 
-仍是 **页面 key**，不是文件名。算法同 rev 4 / K18（去 `utm_*` `gclid` `fbclid` `msclkid` `mc_eid`；非根路径去尾 `/`；HashRouter 保留）。SPA `pushState` 换路径 = 同一 tab 文件里的 **另一个** `pages[]` 条目。
+仍是 **页面 key**，不是文件名。算法同 rev 4 / K18（http(s)/file；去 `utm_*` `gclid` `fbclid` `msclkid` `mc_eid`；http(s) 非根路径去尾 `/`，file 路径原样保留；HashRouter 保留）。SPA `pushState` 换路径 = 同一 tab 文件里的 **另一个** `pages[]` 条目。
 
 ### 6. Native host 协议
 

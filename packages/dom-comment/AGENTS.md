@@ -24,7 +24,7 @@ Design **rev 7**. OpenSpec change `npm-cli-package` is active. Build with `rushx
 
 ## Follow-ups
 
-- Chrome still cannot auto-load an unpacked extension; `install` / `extension` only print the path.
+- Chrome still cannot auto-load an unpacked extension; `install` / `extension` only print the path. To annotate `file://` pages, tick **Allow access to file URLs** on `chrome://extensions` for this extension after Load unpacked. `chrome://` stays unsupported.
 - Agent reads comments and cropped PNGs only. Do not run `open --tab` unless the user asks to focus the original tab. No Playwright, no CDP, no headless browse.
 
 ## OpenSpec

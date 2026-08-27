@@ -13,18 +13,18 @@ python3 -m http.server 8765 --directory fixtures
 
 ## 15 分钟冒烟
 
-日常复跑只走这些：TC-01 加载、TC-03 弹窗、TC-04 开始标记、划选文字、拖区域、标注中点链接、保存、Esc 两下、复制 prompt、CLI `list`。完整用例不要每次全跑。
+日常复跑只走这些：TC-01 加载、TC-03 弹窗、TC-04 开始标记、划选文字、拖区域、标注中点链接、保存、Esc 两下、复制 prompt、CLI `list`、file:// 冒烟（先勾 Allow access to file URLs）。完整用例不要每次全跑。
 
 ---
 
 Package: `packages/dom-comment` (HarveyZgit/workbench)  
 Unpacked Load path: `dist/chrome-mv3`  
 Official build output (same files): `dist/chrome-mv3`  
-Fixture page (must be served over http/https): `fixtures/annotate.html`  
+Fixture page (http/https or file:// after the Chrome toggle): `fixtures/annotate.html`  
 CLI: `node dist/cli.js`
 
 Chrome: open `chrome://extensions` → enable **Developer mode** → **Load unpacked** → choose `dist/chrome-mv3`.  
-No extra Chrome launch flags are required. Content scripts only run on `http://*/*` and `https://*/*` (not `file://`, `chrome://`, or `chrome-extension://`).
+No extra Chrome launch flags are required. Content scripts run on `http://*/*`, `https://*/*`, and `file:///*`. `chrome://` and `chrome-extension://` stay unsupported. Chrome cannot enable file-URL access from code: after Load unpacked, open this extension on `chrome://extensions` and tick **Allow access to file URLs**.
 
 Serve the fixture before UI cases:
 
@@ -281,19 +281,36 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 
 ---
 
-## TC-17 — chrome:// and file:// are not annotatable
+## TC-17 — chrome:// is not annotatable
 
 - **id:** TC-17
-- **title:** Restricted schemes get no content script
+- **title:** chrome:// pages get no content script
 - **status:** READY
 - **precondition:** Extension loaded.
 - **steps:**
   1. Open `chrome://extensions`, enter annotate mode via shortcut.
-  2. Open `file://fixtures/annotate.html` (or any file URL) and try to annotate.
 - **expected:**
-  - No banner / overlay on `chrome://` or `file://`.
+  - No banner / overlay on `chrome://`.
   - Popup still opens; copy-prompt has tabid only (no url).
-  - This is why the fixture must be served over HTTP.
+  - `chrome://` stays unsupported.
+
+---
+
+## TC-17b — file:// is annotatable after Allow access to file URLs
+
+- **id:** TC-17b
+- **title:** file:// pages can be annotated when the Chrome toggle is on
+- **status:** READY
+- **precondition:** Extension loaded. On `chrome://extensions` for this extension, tick **Allow access to file URLs**.
+- **steps:**
+  1. Open `fixtures/annotate.html` as a `file://` URL (or any local HTML file).
+  2. Enter annotate mode via shortcut or popup.
+  3. Click an element or drag a region (smoke; no need to persist).
+- **expected:**
+  - Banner / overlay appears on the file page.
+  - Click / select / drag works like on http.
+  - Popup copy-prompt includes `url:file://…`.
+  - Without the toggle, no overlay (same as chrome://). Chrome cannot turn the toggle on from code.
 
 ---
 

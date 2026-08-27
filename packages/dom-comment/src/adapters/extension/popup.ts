@@ -1,4 +1,4 @@
-import { canonicalizeUrl, isHttpUrl } from '../../core/identity.js';
+import { canonicalizeUrl, isAnnotatableUrl } from '../../core/identity.js';
 import { formatAgentPrompt } from '../../core/markdown.js';
 import { postToBackground } from './messages.js';
 
@@ -8,7 +8,7 @@ async function activeTab(): Promise<{ id?: number; url?: string } | undefined> {
 }
 
 function promptFor(tabId: number, href: string): string {
-  if (isHttpUrl(href)) {
+  if (isAnnotatableUrl(href)) {
     return formatAgentPrompt(tabId, canonicalizeUrl(href));
   }
   return formatAgentPrompt(tabId);
