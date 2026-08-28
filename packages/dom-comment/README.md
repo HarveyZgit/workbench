@@ -11,7 +11,7 @@
 ```sh
 gh release download dom-comment-v0.1.0 --repo HarveyZgit/workbench -p 'dom-comment-*.tgz'
 npm install -g ./dom-comment-0.1.0.tgz
-dom-comment install
+dom-comment install-skill
 dom-comment extension
 ```
 
@@ -22,7 +22,7 @@ dom-comment extension
 ```sh
 cd packages/dom-comment
 rushx build
-node dist/cli.js install
+node dist/cli.js install-skill
 ```
 
 打 Release tarball（资源是 `dist/dom-comment-*.tgz`，不再发 zip 或 install.sh）：
@@ -44,7 +44,7 @@ Agent 只根据评论和截图判断，不要把浏览器唤到前台。`open --
 ## CLI
 
 ```sh
-dom-comment install [--target <skill-root>]
+dom-comment install-skill [--target <skill-root>]
 dom-comment extension
 dom-comment list --open
 dom-comment list --tab 1847 --url 'https://example.com/app' --json

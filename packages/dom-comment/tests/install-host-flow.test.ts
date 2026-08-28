@@ -37,6 +37,9 @@ test('cmdInstallHost writes a Linux-or-mac profile when the folder exists', () =
   cmdInstall(new Map(), []);
   const skill = fs.mkdtempSync(path.join(os.tmpdir(), 'dom-comment-skill-'));
   cmdInstall(new Map(), [skill]);
+  const prefsRaw: unknown = JSON.parse(fs.readFileSync(path.join(store, 'skill-prefs.json'), 'utf8'));
+  assert.ok(prefsRaw && typeof prefsRaw === 'object' && 'targets' in prefsRaw);
+  assert.deepEqual(prefsRaw.targets, [path.resolve(skill)]);
   cmdUninstallHost();
   assert.equal(fs.existsSync(nmFile), false);
 });

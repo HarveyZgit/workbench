@@ -7,6 +7,13 @@ import * as readline from 'node:readline/promises';
 import { encodeFrame, tryDecodeFrames, type HostResponse } from '../native-host/protocol.js';
 import { extensionDir, packageRoot, skillSourceDir } from '../paths.js';
 import { hostSockPath, resolveStorageDir } from '../storage/index.js';
+import {
+  isOtherChecked,
+  loadSkillPrefs,
+  runPicker,
+  saveSkillPrefs,
+  selectedSkillRoots,
+} from './skill-picker.js';
 
 const HOST_NAME = 'com.workbench.dom_comment';
 
@@ -169,7 +176,7 @@ function pointerNodePath(): string {
     if (raw.nodePath && fs.existsSync(raw.nodePath)) {
       if (raw.nodePath !== process.execPath) {
         process.stderr.write(
-          'wrapper 仍指向旧 Node，与当前 shell 不一致。若扩展连不上 host，请重跑 install\n',
+          'wrapper 仍指向旧 Node，与当前 shell 不一致。若扩展连不上 host，请重跑 install-skill\n',
         );
       }
       return raw.nodePath;
@@ -249,7 +256,7 @@ export function cmdOpenTab(tabId: number): void {
 
 export function cmdInstallSkill(targets: string[]): void {
   if (targets.length === 0) {
-    fail('用法：dom-comment install --target <skill-root>');
+    fail('用法：dom-comment install-skill --target <skill-root>');
   }
   const canonical = skillSourceDir();
   const locator = path.join(canonical, 'scripts/dom-comment');
@@ -283,57 +290,95 @@ export function cmdExtension(): void {
   process.stdout.write(`${dir}\n`);
 }
 
-async function promptSkillTargets(): Promise<string[]> {
-  const found = detectAgentSkillRoots();
+function readStdinChunk(stdin: NodeJS.ReadStream): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const onData = (chunk: string | Buffer) => {
+      cleanup();
+      resolve(String(chunk));
+    };
+    const onError = (err: Error) => {
+      cleanup();
+      reject(err);
+    };
+    const cleanup = () => {
+      stdin.off('data', onData);
+      stdin.off('error', onError);
+    };
+    stdin.once('data', onData);
+    stdin.once('error', onError);
+  });
+}
+
+async function askOtherPath(): Promise<string | null> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
-    if (found.length === 0) {
-      const extra = (
-        await rl.question('未发现 ~/.<name>/skills。输入要安装 Skill 的目录（空则跳过）：')
-      ).trim();
-      return extra ? [expandHome(extra)] : [];
-    }
-    process.stdout.write('把 Skill 装到哪些目录？\n');
-    found.forEach((dir, i) => {
-      process.stdout.write(`  [${i + 1}] ${dir}\n`);
-    });
-    process.stdout.write('  [c] 其他路径\n');
-    process.stdout.write('  [n] 不安装 Skill\n');
-    const answer = (await rl.question('输入序号（逗号分隔）：')).trim();
-    if (!answer || answer === 'n') {
-      return [];
-    }
-    const out: string[] = [];
-    let needCustom = false;
-    for (const part of answer.split(/[,，\s]+/).filter(Boolean)) {
-      if (part === 'c') {
-        needCustom = true;
-        continue;
-      }
-      const n = Number(part);
-      if (Number.isInteger(n) && n >= 1 && n <= found.length) {
-        out.push(found[n - 1]);
-      }
-    }
-    if (needCustom) {
-      const extra = (await rl.question('其他路径：')).trim();
-      if (extra) {
-        out.push(expandHome(extra));
-      }
-    }
-    return [...new Set(out)];
+    return (await rl.question('其他路径：')).trim();
+  } catch {
+    return null;
   } finally {
     rl.close();
   }
+}
+
+export async function promptSkillTargets(): Promise<string[] | null> {
+  const found = detectAgentSkillRoots();
+  const { targets: last } = loadSkillPrefs(resolveStorageDir());
+  const { stdin } = process;
+  if (typeof stdin.setRawMode !== 'function') {
+    return [];
+  }
+  const wasRaw = stdin.isRaw;
+  stdin.resume();
+  stdin.setEncoding('utf8');
+  try {
+    const state = await runPicker(found, last, {
+      write: (text) => {
+        process.stdout.write(text);
+      },
+      readChunk: () => readStdinChunk(stdin),
+      setRawMode: (enabled) => {
+        stdin.setRawMode(enabled);
+      },
+    });
+    if (state.status === 'aborted') {
+      return null;
+    }
+    let extra = '';
+    if (isOtherChecked(state.checked, found.length)) {
+      const typed = await askOtherPath();
+      if (typed === null) {
+        return null;
+      }
+      extra = typed ? expandHome(typed) : '';
+    }
+    return selectedSkillRoots(found, state.checked, extra);
+  } finally {
+    stdin.setRawMode(Boolean(wasRaw));
+  }
+}
+
+export function finishSkillSelection(targets: string[] | null): void {
+  if (targets === null) {
+    fail('已取消。');
+  }
+  if (targets.length > 0) {
+    cmdInstallSkill(targets);
+  } else {
+    process.stdout.write('已跳过 Skill。\n');
+  }
+  saveSkillPrefs(resolveStorageDir(), targets);
+  printExtensionHint();
 }
 
 export function cmdInstall(flags: Map<string, string | true>, targets: string[]): void {
   cmdInstallHost(flags, { quiet: true });
   process.stdout.write('已登记 Chrome Native Messaging。\n');
   if (targets.length > 0) {
-    cmdInstallSkill(targets);
+    const abs = targets.map((dir) => expandHome(dir));
+    cmdInstallSkill(abs);
+    saveSkillPrefs(resolveStorageDir(), abs);
   } else {
-    process.stdout.write('未安装 Skill。需要时：dom-comment install --target <dir>\n');
+    process.stdout.write('未安装 Skill。需要时：dom-comment install-skill --target <dir>\n');
   }
   printExtensionHint();
 }
@@ -341,11 +386,5 @@ export function cmdInstall(flags: Map<string, string | true>, targets: string[])
 export async function cmdInstallInteractive(flags: Map<string, string | true>): Promise<void> {
   cmdInstallHost(flags, { quiet: true });
   process.stdout.write('已登记 Chrome Native Messaging。\n');
-  const targets = await promptSkillTargets();
-  if (targets.length > 0) {
-    cmdInstallSkill(targets);
-  } else {
-    process.stdout.write('已跳过 Skill。\n');
-  }
-  printExtensionHint();
+  finishSkillSelection(await promptSkillTargets());
 }

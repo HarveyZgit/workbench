@@ -23,9 +23,21 @@ test('help and unknown command', () => {
   const help = run(['help']);
   assert.equal(help.status, 0);
   assert.match(help.stdout, /dom-comment list/);
+  assert.match(help.stdout, /dom-comment install-skill/);
+  assert.doesNotMatch(help.stdout, /dom-comment install \[--target/);
   const unknown = run(['wat']);
   assert.notEqual(unknown.status, 0);
   assert.match(unknown.stderr, /未知命令/);
+});
+
+test('install is gone and hints at install-skill', () => {
+  const renamed = run(['install']);
+  assert.notEqual(renamed.status, 0);
+  assert.match(renamed.stderr, /install-skill/);
+  assert.match(renamed.stderr, /已换成/);
+  const withTarget = run(['install', '--target', '/tmp/skills']);
+  assert.notEqual(withTarget.status, 0);
+  assert.match(withTarget.stderr, /已换成/);
 });
 
 test('list reply resolve against a temp store', () => {

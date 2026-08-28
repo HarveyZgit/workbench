@@ -8,8 +8,10 @@ import {
   cmdInstallSkill,
   detectAgentSkillRoots,
   expandHome,
+  finishSkillSelection,
   readExtensionId,
 } from '../src/cli/install.js';
+import { loadSkillPrefs } from '../src/cli/skill-picker.js';
 import { defaultStorageDir, extensionDir, isSourceTree, packageRoot } from '../src/paths.js';
 
 function tmpDir(): string {
@@ -63,4 +65,31 @@ test('isSourceTree and defaultStorageDir in this checkout', () => {
   assert.equal(isSourceTree(), true);
   assert.equal(defaultStorageDir(), path.join(packageRoot(), 'data'));
   assert.equal(isSourceTree(tmpDir()), false);
+});
+
+test('finishSkillSelection skips skills and remembers empty targets', () => {
+  const store = tmpDir();
+  process.env.DOM_COMMENT_STORAGE_DIR = store;
+  const logs: string[] = [];
+  const write = process.stdout.write.bind(process.stdout);
+  process.stdout.write = ((chunk: string) => {
+    logs.push(String(chunk));
+    return true;
+  }) as typeof process.stdout.write;
+  try {
+    finishSkillSelection([]);
+  } finally {
+    process.stdout.write = write;
+  }
+  assert.match(logs.join(''), /已跳过 Skill/);
+  assert.deepEqual(loadSkillPrefs(store), { targets: [] });
+});
+
+test('finishSkillSelection installs and remembers chosen roots', () => {
+  const store = tmpDir();
+  const dest = tmpDir();
+  process.env.DOM_COMMENT_STORAGE_DIR = store;
+  finishSkillSelection([dest]);
+  assert.ok(fs.lstatSync(path.join(dest, 'dom-comment')).isSymbolicLink());
+  assert.deepEqual(loadSkillPrefs(store), { targets: [path.resolve(dest)] });
 });
