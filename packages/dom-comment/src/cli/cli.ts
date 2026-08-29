@@ -5,7 +5,6 @@ import {
   cmdInstall,
   cmdInstallHost,
   cmdInstallInteractive,
-  cmdInstallSkill,
   cmdOpenTab,
   cmdPingHost,
   cmdUninstallHost,
@@ -294,7 +293,7 @@ function collectTargets(argv: string[]): string[] {
 }
 
 function usage(): void {
-  process.stdout.write(`dom-comment install [--target <skill-root>]
+  process.stdout.write(`dom-comment install-skill [--target <skill-root>]
 dom-comment extension
 dom-comment list [--open] [--all] [--json] [--name-only]
 dom-comment list --tab <id> [--url <canonical>] [--open] [--hidden] [--json] [--name-only]
@@ -304,7 +303,6 @@ dom-comment open --tab <id>
 dom-comment ping-host
 dom-comment install-host [--extension-id <id>]
 dom-comment uninstall-host
-dom-comment install-skill --target <skill-root>
 `);
 }
 
@@ -325,8 +323,11 @@ export function main(argv = process.argv.slice(ARGV_AFTER_NODE_AND_SCRIPT)): voi
     case 'open':
       cmdOpen(flags, rest);
       break;
+    case 'install':
+      fail('`install` 已换成 `install-skill`');
+      break;
     case 'setup':
-    case 'install': {
+    case 'install-skill': {
       const targets = collectTargets(argv);
       if (targets.length > 0 || !process.stdin.isTTY) {
         cmdInstall(flags, targets);
@@ -350,9 +351,6 @@ export function main(argv = process.argv.slice(ARGV_AFTER_NODE_AND_SCRIPT)): voi
       break;
     case 'ping-host':
       cmdPingHost();
-      break;
-    case 'install-skill':
-      cmdInstallSkill(collectTargets(argv));
       break;
     case '':
     case '-h':

@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "build": "node scripts/build-node.mjs",
-    "setup": "node scripts/build-node.mjs && node dist/cli.js install",
+    "setup": "node scripts/build-node.mjs && node dist/cli.js install-skill",
     "pack-release": "node scripts/build-node.mjs && bash scripts/pack-release.sh",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test tests/*.test.ts",

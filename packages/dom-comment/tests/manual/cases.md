@@ -7,7 +7,7 @@
 ```sh
 cd packages/dom-comment
 rushx build
-node dist/cli.js install
+node dist/cli.js install-skill
 python3 -m http.server 8765 --directory fixtures
 ```
 
@@ -35,7 +35,7 @@ python3 -m http.server 8765 --directory fixtures
 Then open `http://127.0.0.1:8765/annotate.html`.
 
 Native Messaging host name: `com.workbench.dom_comment`.  
-Official `dom-comment install` / `install-host` only writes macOS Chrome/Canary/Chromium NativeMessagingHosts under `~/Library/Application Support/…`. On Linux it exits 1 (`未找到 Chrome/Chromium 配置目录`). Persist/CLI-after-save cases need a macOS Chrome profile + `rushx setup` (or `node dist/cli.js install`). No account/password is required.
+Official `dom-comment install-skill` / `install-host` only writes macOS Chrome/Canary/Chromium NativeMessagingHosts under `~/Library/Application Support/…`. On Linux it exits 1 (`未找到 Chrome/Chromium 配置目录`). Persist/CLI-after-save cases need a macOS Chrome profile + `rushx setup` (or `node dist/cli.js install-skill`). No account/password is required.
 
 Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST** = needs Native Messaging registered (macOS Chrome). **No credential BLOCKED cases.**
 
@@ -334,7 +334,7 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 
 - **id:** TC-19
 - **title:** Submitting a comment writes JSON + PNG immediately
-- **status:** HOST (macOS Chrome + `node dist/cli.js install` / `rushx setup`, then reload the extension)
+- **status:** HOST (macOS Chrome + `node dist/cli.js install-skill` / `rushx setup`, then reload the extension)
 - **precondition:** Native host registered; `node dist/cli.js ping-host` prints `pong`; Chrome was restarted or the extension reloaded after install. Fixture tab active. `DOM_COMMENT_STORAGE_DIR` unset so source-tree data goes to `packages/dom-comment/data/`.
 - **steps:**
   1. 开始标记 → click **保存更改** → type `文案太长，折行了` → 保存.

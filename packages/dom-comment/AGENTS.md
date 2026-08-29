@@ -14,7 +14,7 @@ Design **rev 7**. OpenSpec change `npm-cli-package` is active. Build with `rushx
 
 ## Decided product shape (rev 7)
 
-- CLI `dom-comment`: GitHub Release `dom-comment-*.tgz`, install globally from the tarball; then `install` (host + Skill to user-chosen dirs), `extension` (print packed dir), and runtime `list` / `reply` / `resolve` / `open`.
+- CLI `dom-comment`: GitHub Release `dom-comment-*.tgz`, install globally from the tarball; then `install-skill` (host + Skill to user-chosen dirs), `extension` (print packed dir), and runtime `list` / `reply` / `resolve` / `open`.
 - Chrome MV3 extension. Toolbar popup starts/stops annotation and copies the skill prompt. The page only shows pins and the composer while annotating.
 - Comments save as soon as the user submits. No publish step.
 - Pins show only while annotating. Esc hides them; data stays.
@@ -24,7 +24,7 @@ Design **rev 7**. OpenSpec change `npm-cli-package` is active. Build with `rushx
 
 ## Follow-ups
 
-- Chrome still cannot auto-load an unpacked extension; `install` / `extension` only print the path. To annotate `file://` pages, tick **Allow access to file URLs** on `chrome://extensions` for this extension after Load unpacked. `chrome://` stays unsupported.
+- Chrome still cannot auto-load an unpacked extension; `install-skill` / `extension` only print the path. To annotate `file://` pages, tick **Allow access to file URLs** on `chrome://extensions` for this extension after Load unpacked. `chrome://` stays unsupported.
 - Agent reads comments and cropped PNGs only. Do not run `open --tab` unless the user asks to focus the original tab. No Playwright, no CDP, no headless browse.
 
 ## OpenSpec

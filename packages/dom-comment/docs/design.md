@@ -50,7 +50,7 @@ rev 4 按「文档 = URL」存、工具栏直接开关模式、不存图。用�
 - 抽取 `comment-core`；与 markdown-comment 合并存储。
 - 画笔 / 高亮涂抹 / 全页未裁切截图当唯一载体（要的是 **目标区域裁切**）。
 - 协同服务器、多用户、商店上架、Firefox/Safari。
-- Windows native host；Edge 登记。自定义 `--user-data-dir` 仍需手写清单。Linux 用户级 Chrome/Chromium（`~/.config/google-chrome` / `~/.config/chromium`）由 `install` 登记。
+- Windows native host；Edge 登记。自定义 `--user-data-dir` 仍需手写清单。Linux 用户级 Chrome/Chromium（`~/.config/google-chrome` / `~/.config/chromium`）由 `install-skill` 登记。
 - `chrome://` / 跨域 iframe 内部。`file://` 已纳入范围：用户须在 `chrome://extensions` 该扩展详情勾选「允许访问文件网址」（Chrome 无法从代码打开这项）。
 - 扩展内把评论推进某个 Agent 聊天（没有「发给 ChatGPT」按钮）。
 - 改名 PageMark、换 `~/.pagemark`、重写 Native Messaging 协议。
@@ -65,7 +65,7 @@ rev 4 按「文档 = URL」存、工具栏直接开关模式、不存图。用�
 
 | # | 决策 | 理由 |
 | --- | --- | --- |
-| K1 | Chrome MV3 扩展，Load unpacked；CLI 经 GitHub Release tarball 全局安装，再跑 `dom-comment install` | 扩展仍须手装；host / Skill / 运行时走 `dom-comment` CLI。 |
+| K1 | Chrome MV3 扩展，Load unpacked；CLI 经 GitHub Release tarball 全局安装，再跑 `dom-comment install-skill` | 扩展仍须手装；host / Skill / 运行时走 `dom-comment` CLI。 |
 | K2 | 概念同构、包与存储分离；不抽 markdown-comment core | core 仍绑 VS Code。 |
 | K3 | Native Messaging 写盘；另用 **持久 NM 连接 + Unix socket** 给 CLI→扩展（聚焦 tab） | 扩展不能写 `~`；CLI 又要叫 Chrome 聚焦已登录 tab。一次性 `sendNativeMessage` 无法从 CLI 发起。 |
 | K4 | 存储主键 = **当前 Chrome 会话 + tabId**；文件内 key = canonical URL | 用户指定。一次浏览里同一 tab 会换 URL，评论应留在这个 tab 下。 |
@@ -400,7 +400,7 @@ dom-comment reply <threadId> <text>
 dom-comment resolve <threadId>
 dom-comment open --tab <id>              # 只聚焦原 tab；失败则看截图
 dom-comment install-host / uninstall-host / ping-host
-dom-comment install-skill --target <dir>
+dom-comment install-skill [--target <dir>]   # 空格多选；记住上次目录；无 --target 的 TTY 会先登记 host
 ```
 
 **查找优先级（Skill 与 CLI 一致）：**
