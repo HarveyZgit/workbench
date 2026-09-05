@@ -274,7 +274,7 @@ function flagValue(name: string): string | undefined {
 async function cmdPreview(): Promise<void> {
   const fileArg = args[0];
   if (!fileArg) {
-    fail('用法: markdown-comment preview <file.md> [--port 8765] [--no-open]');
+    fail('用法: markdown-comment preview <file.md> [--port 8765] [--no-open] [--detach]');
   }
   const filePath = path.resolve(fileArg);
   if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
@@ -289,13 +289,51 @@ async function cmdPreview(): Promise<void> {
     fail(`无效端口: ${portRaw}`);
   }
   const noOpen = flags.has('--no-open');
+  const detach = flags.has('--detach');
+
+  // Parent process for --detach: spawn a background child, wait for url, then exit.
+  if (detach && process.env.MDC_PREVIEW_DETACHED !== '1') {
+    const logPath = path.join(os.homedir(), '.markdown-comment', 'preview-detach.log');
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    const logFd = fs.openSync(logPath, 'w');
+    const childArgv = process.argv.slice(1).filter((a) => a !== '--detach');
+    const child = spawn(process.execPath, childArgv, {
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
+      env: { ...process.env, MDC_PREVIEW_DETACHED: '1' },
+    });
+    fs.closeSync(logFd);
+    child.unref();
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 150));
+      let text = '';
+      try {
+        text = fs.readFileSync(logPath, 'utf8');
+      } catch {
+        continue;
+      }
+      const m = text.match(/url:\s+(\S+)/);
+      if (m) {
+        process.stdout.write(text);
+        process.stdout.write(`(detached pid ${child.pid}; stop: kill ${child.pid})\n`);
+        process.exit(0);
+      }
+      if (/文件不存在|不是 Markdown|无效端口|Failed to bind/.test(text)) {
+        process.stderr.write(text);
+        process.exit(1);
+      }
+    }
+    fail(`preview 启动超时，见 ${logPath}`);
+  }
+
   const storageDir = ensureStorageDir();
   const server = await startPreviewServer({ filePath, storageDir, port });
   process.stdout.write(`Markdown Comment preview\n`);
   process.stdout.write(`  file:    ${filePath}\n`);
   process.stdout.write(`  storage: ${storageDir}\n`);
   process.stdout.write(`  url:     ${server.url}\n`);
-  process.stdout.write(`按 Ctrl+C 停止\n`);
+  process.stdout.write(process.env.MDC_PREVIEW_DETACHED === '1' ? `后台运行中\n` : `按 Ctrl+C 停止\n`);
   if (!noOpen) {
     openBrowser(server.url);
   }
@@ -339,8 +377,9 @@ switch (cmd) {
         '                                  --name-only 只列文件+条数；--json 输出原始 JSON。本地文件路径显示为相对路径',
         '  reply <threadId> <text>         以 Agent 身份回复（threadId 可用前 8 位短 id）',
         '  resolve <threadId>              把线程标记为已解决',
-        '  preview <file.md> [--port 8765] [--no-open]',
-        '                                  在本地浏览器打开评论预览（HTTP+WebSocket），读写同一评论存储',
+        '  preview <file.md> [--port 8765] [--no-open] [--detach]',
+        '                                  在本地浏览器打开评论预览（HTTP+WebSocket），读写同一评论存储；',
+        '                                  --detach 后台启动并立刻返回（给编辑器扩展用）',
         '',
       ].join('\n'),
     );

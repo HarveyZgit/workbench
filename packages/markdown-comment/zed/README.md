@@ -1,59 +1,47 @@
-# Markdown Comment · Zed 集成
+# Markdown Comment · Zed 扩展
 
-Zed **没有**内置浏览器 / WebView，扩展也不能在编辑器里嵌预览页。  
-这个包用 **Zed Task** 调用同一个 `markdown-comment preview` CLI，在**系统浏览器**里打开评论预览（和 VS Code 插件共用评论存储）。
+在 Zed 里安装本扩展后，用 slash command 调本地 `markdown-comment preview` CLI，在**系统浏览器**打开评论预览（与 VS Code 扩展共用存储）。
 
-## 会不会和 VS Code 冲突？
-
-| 东西 | 会冲突吗 |
-|------|----------|
-| VS Code 命令面板（打开评论预览等） | 否，只存在于 VS Code |
-| CLI 名 `markdown-comment` | **共用同一个命令**，不是抢夺；两边调的是同一套 CLI |
-| 评论数据 | **刻意共用**（`MARKDOWN_COMMENT_STORAGE_DIR` / `~/.markdown-comment`） |
-| 扩展 id | VS Code：`harveyz.vscode-markdown-comment`；Zed 侧是 Task，不是同名扩展 |
-
-结论：可以同时装。在 VS Code 里评论，在 Zed 里打开预览，数据是一份。
-
-## 前置
-
-1. 已安装 Markdown Comment **1.2.1+**（publisher `harveyz`），或本仓库已 `node esbuild.mjs --production` 出 `dist/cli.js`
-2. 本机有 Node.js（跑 `preview.mjs` 与 CLI）
+Zed 没有 WebView，预览不能嵌在编辑器里。
 
 ## 安装
 
-### 从安装包（推荐）
+1. 前置：本机有 Node.js，且已安装 **harveyz.vscode-markdown-comment**（或仓库已 build 出 `dist/cli.js`）
+2. Zed 命令面板 → **`zed: install dev extension`**
+3. 选中本目录：`packages/markdown-comment/zed`（需含 `extension.toml`）
+4. 等 Zed 编译 WASM（首次可能要装 `wasm32-wasip2`）
 
-解压后执行：
-
-```bash
-tar -xzf zed-markdown-comment-0.1.0.tar.gz
-bash zed/scripts/install-user.sh
-```
-
-### 从 workbench 仓库
-
-```bash
-bash packages/markdown-comment/zed/scripts/install-user.sh
-```
-
-会把脚本拷到 `~/.markdown-comment/zed/`，并把 Task 合并进 `~/.config/zed/tasks.json`。
+装好后扩展页会显示 *Overridden by dev extension*（若曾装过同 id 市场版）。
 
 ## 使用
 
-1. 在 Zed 打开一个 `.md` 文件  
-2. 命令面板：`task: spawn` → **Markdown Comment: Preview current file**  
-3. 系统浏览器打开预览；改 md 文件会刷新；划词评论写入同一存储
+在 **Assistant** 面板输入：
 
-### 可选快捷键
+```text
+/mdc-preview path/to/file.md
+```
 
-`zed: open keymap`，合并 `~/.markdown-comment/zed/keybindings.example.json` 里的绑定（默认 `cmd-alt-m`，可按喜好改）。
+路径相对当前项目根，或绝对路径。成功后会返回 preview 的 `url:`，并自动打开浏览器。
 
-### 只在 workbench 仓库里开发时
+停止预览：扩展返回的 `kill <pid>`，或结束占用端口的进程。
 
-也可以把本目录的 `tasks.json` 合并进项目或用户 tasks（路径指向 monorepo 内 `zed/scripts/preview.mjs`），无需 install-user。
+## 和 VS Code 的关系
 
-## 排查
+| | |
+|--|--|
+| VS Code 命令面板 | 互不影响 |
+| CLI / 评论存储 | **故意共用** |
+| 扩展 id | Zed：`markdown-comment`；VS Code：`harveyz.vscode-markdown-comment` |
 
-- 提示找不到 CLI：安装 VS Code 扩展，或 `export MARKDOWN_COMMENT_CLI=/path/to/dist/cli.js`
-- 浏览器没开：看 Task 终端里打印的 `url:`，手动打开
-- 评论对不上：确认 VS Code / Zed 没用不同的 `MARKDOWN_COMMENT_STORAGE_DIR`
+## 可选：Task / 快捷键
+
+同目录仍保留 `tasks.json` / `keybindings.example.json` / `scripts/`，适合用 `$ZED_FILE` 预览当前文件（slash command 目前拿不到“当前 buffer”路径）。
+
+```bash
+# 可选：把 Task 合并进 ~/.config/zed/tasks.json
+bash scripts/install-user.sh
+```
+
+## 能力声明
+
+扩展通过 `process:exec` 调用 `node` / `markdown-comment` / `sh`。若你收紧了 `granted_extension_capabilities`，需放行这些命令。
