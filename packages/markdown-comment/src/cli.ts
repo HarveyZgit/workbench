@@ -2,7 +2,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readStorageDir, listAll, loadDoc, saveDoc, findThread } from './storage';
+import * as os from 'node:os';
+import { spawn } from 'node:child_process';
+import { readStorageDir, listAll, loadDoc, saveDoc, findThread, writePointer } from './storage';
+import { hasMarkdownExtension } from './markdown-lang';
+import { startPreviewServer } from './preview/web-server';
 import type { StoredComment, StoredThread } from './types';
 
 function fail(msg: string): never {
@@ -231,6 +235,83 @@ function cmdResolve(): void {
   process.stdout.write(`OK: 已标记已解决 #${shortId(found.thread.id)}\n`);
 }
 
+/** Ensure a storage directory exists (CLI preview can bootstrap without VS Code). */
+function ensureStorageDir(): string {
+  const existing = readStorageDir();
+  if (existing) {
+    fs.mkdirSync(existing, { recursive: true });
+    return existing;
+  }
+  const dir = path.join(os.homedir(), '.markdown-comment', 'store');
+  fs.mkdirSync(dir, { recursive: true });
+  writePointer(dir);
+  return dir;
+}
+
+function openBrowser(url: string): void {
+  const platform = process.platform;
+  try {
+    if (platform === 'darwin') {
+      spawn('open', [url], { detached: true, stdio: 'ignore' }).unref();
+    } else if (platform === 'win32') {
+      spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
+    }
+  } catch (err) {
+    process.stderr.write(`无法自动打开浏览器: ${err}\n`);
+  }
+}
+
+function flagValue(name: string): string | undefined {
+  const idx = rest.findIndex((a) => a === name || a.startsWith(name + '='));
+  if (idx < 0) return undefined;
+  const token = rest[idx];
+  if (token.startsWith(name + '=')) return token.slice(name.length + 1);
+  return rest[idx + 1];
+}
+
+async function cmdPreview(): Promise<void> {
+  const fileArg = args[0];
+  if (!fileArg) {
+    fail('用法: markdown-comment preview <file.md> [--port 8765] [--no-open]');
+  }
+  const filePath = path.resolve(fileArg);
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    fail(`文件不存在: ${filePath}`);
+  }
+  if (!hasMarkdownExtension(filePath)) {
+    fail(`不是 Markdown 文件: ${filePath}`);
+  }
+  const portRaw = flagValue('--port');
+  const port = portRaw ? Number(portRaw) : 8765;
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    fail(`无效端口: ${portRaw}`);
+  }
+  const noOpen = flags.has('--no-open');
+  const storageDir = ensureStorageDir();
+  const server = await startPreviewServer({ filePath, storageDir, port });
+  process.stdout.write(`Markdown Comment preview\n`);
+  process.stdout.write(`  file:    ${filePath}\n`);
+  process.stdout.write(`  storage: ${storageDir}\n`);
+  process.stdout.write(`  url:     ${server.url}\n`);
+  process.stdout.write(`按 Ctrl+C 停止\n`);
+  if (!noOpen) {
+    openBrowser(server.url);
+  }
+  const shutdown = async () => {
+    try {
+      await server.close();
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.on('SIGINT', () => void shutdown());
+  process.on('SIGTERM', () => void shutdown());
+  // Keep alive
+  await new Promise(() => {});
+}
+
 switch (cmd) {
   case 'list':
     cmdList();
@@ -240,6 +321,11 @@ switch (cmd) {
     break;
   case 'resolve':
     cmdResolve();
+    break;
+  case 'preview':
+    void cmdPreview().catch((err) => {
+      fail(err instanceof Error ? err.message : String(err));
+    });
     break;
   default:
     process.stdout.write(
@@ -253,6 +339,8 @@ switch (cmd) {
         '                                  --name-only 只列文件+条数；--json 输出原始 JSON。本地文件路径显示为相对路径',
         '  reply <threadId> <text>         以 Agent 身份回复（threadId 可用前 8 位短 id）',
         '  resolve <threadId>              把线程标记为已解决',
+        '  preview <file.md> [--port 8765] [--no-open]',
+        '                                  在本地浏览器打开评论预览（HTTP+WebSocket），读写同一评论存储',
         '',
       ].join('\n'),
     );

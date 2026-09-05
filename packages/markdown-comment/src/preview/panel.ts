@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { loadDoc, saveDoc, fileHash } from '../storage';
 import { isMarkdownDocument } from '../markdown-lang';
 import { buildAnchorFromRange, mapRenderedSelectionToRange, relocate } from '../anchor';
+import { PlainTextDocument } from '../text-model';
 import type { StoredDocument, StoredThread } from '../types';
 import { computePreviewLineChanges } from './diff';
 import { findHeadingLine } from './heading';
@@ -367,8 +368,9 @@ function toWire(t: StoredThread, doc?: vscode.TextDocument): WireThread {
   let { startLine } = t.anchor;
   let { endLine } = t.anchor;
   let orphaned = false;
-  if (doc && t.anchor.kind === 'selection') {
-    const r = relocate(doc, t.anchor);
+  const model = doc ? PlainTextDocument.fromString(doc.getText()) : undefined;
+  if (model && t.anchor.kind === 'selection') {
+    const r = relocate(model, t.anchor);
     if (!r) {
       if (t.anchor.target?.kind === 'mermaid-node') {
         const block = mermaidBlockNear(doc, t.anchor.startLine);
@@ -384,7 +386,7 @@ function toWire(t: StoredThread, doc?: vscode.TextDocument): WireThread {
     } else {
       startLine = r.start.line;
       endLine =
-        t.anchor.target?.kind === 'mermaid-diagram' ? mermaidBlockEndLine(doc, startLine) - 1 : r.end.line;
+        t.anchor.target?.kind === 'mermaid-diagram' ? mermaidBlockEndLine(doc!, startLine) - 1 : r.end.line;
     }
   }
   return {
@@ -857,12 +859,13 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       vscode.window.showWarningMessage('源 Markdown 文件无法读取（可能已删除或移动），无法创建评论');
       return;
     }
-    const range = mapRenderedSelectionToRange(doc, selection);
+    const model = PlainTextDocument.fromString(doc.getText());
+    const range = mapRenderedSelectionToRange(model, selection);
     if (!range) {
       vscode.window.showWarningMessage('无法把这段选区定位回源码');
       return;
     }
-    const anchor = buildAnchorFromRange(doc, range, 'selection');
+    const anchor = buildAnchorFromRange(model, range, 'selection');
     // 存渲染态选区：即便源码锚点退回整块，webview 仍能精确高亮用户当时所选。
     anchor.rendered = { quote: selection.quote, before: selection.before, after: selection.after };
     const thread: StoredThread = {
@@ -886,12 +889,13 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     }
     const doc = await getDoc(uri);
     const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
-    const range = doc ? doc.lineAt(safeStartLine).range : null;
-    if (!doc || !range) {
+    if (!doc) {
       vscode.window.showWarningMessage('源 Markdown 文件无法读取，无法创建图表评论');
       return;
     }
-    const anchor = buildAnchorFromRange(doc, range, 'selection');
+    const model = PlainTextDocument.fromString(doc.getText());
+    const range = model.lineAt(safeStartLine).range;
+    const anchor = buildAnchorFromRange(model, range, 'selection');
     anchor.rendered = { quote: label, before: '', after: '' };
     anchor.target = { kind: target };
     mutate((stored) =>
@@ -910,12 +914,13 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     }
     const doc = await getDoc(uri);
     const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
-    const range = doc ? doc.lineAt(safeStartLine).range : null;
-    if (!doc || !range) {
+    if (!doc) {
       vscode.window.showWarningMessage('源 Markdown 文件无法读取，无法创建节点评论');
       return;
     }
-    const anchor = buildAnchorFromRange(doc, range, 'selection');
+    const model = PlainTextDocument.fromString(doc.getText());
+    const range = model.lineAt(safeStartLine).range;
+    const anchor = buildAnchorFromRange(model, range, 'selection');
     anchor.rendered = { quote: label, before: '', after: '' };
     anchor.target = { kind: 'mermaid-node', nodeId };
     mutate((stored) =>
@@ -1027,14 +1032,16 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
       return;
     }
-    const range =
-      relocate(doc, t.anchor) ??
-      (t.anchor.target?.kind === 'mermaid-node'
+    const model = PlainTextDocument.fromString(doc.getText());
+    const located = relocate(model, t.anchor);
+    const range = located
+      ? new vscode.Range(located.start.line, located.start.character, located.end.line, located.end.character)
+      : t.anchor.target?.kind === 'mermaid-node'
         ? (() => {
             const block = mermaidBlockNear(doc, t.anchor.startLine);
             return block ? doc.lineAt(block.startLine).range : new vscode.Range(0, 0, 0, 0);
           })()
-        : new vscode.Range(0, 0, 0, 0));
+        : new vscode.Range(0, 0, 0, 0);
     const shown = await vscode.window.showTextDocument(doc, {
       viewColumn: vscode.ViewColumn.One,
       preserveFocus: false,
