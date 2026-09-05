@@ -19,9 +19,18 @@ Zed **没有**内置浏览器 / WebView，扩展也不能在编辑器里嵌预�
 1. 已安装 Markdown Comment **1.2.1+**（publisher `harveyz`），或本仓库已 `node esbuild.mjs --production` 出 `dist/cli.js`
 2. 本机有 Node.js（跑 `preview.mjs` 与 CLI）
 
-## 安装（推荐）
+## 安装
 
-在仓库里执行：
+### 从安装包（推荐）
+
+解压后执行：
+
+```bash
+tar -xzf zed-markdown-comment-0.1.0.tar.gz
+bash zed/scripts/install-user.sh
+```
+
+### 从 workbench 仓库
 
 ```bash
 bash packages/markdown-comment/zed/scripts/install-user.sh
@@ -32,7 +41,7 @@ bash packages/markdown-comment/zed/scripts/install-user.sh
 ## 使用
 
 1. 在 Zed 打开一个 `.md` 文件  
-2. 命令面板：`task: spawn` → **Markdown Comment: Preview current file (global install)**  
+2. 命令面板：`task: spawn` → **Markdown Comment: Preview current file**  
 3. 系统浏览器打开预览；改 md 文件会刷新；划词评论写入同一存储
 
 ### 可选快捷键
@@ -41,7 +50,7 @@ bash packages/markdown-comment/zed/scripts/install-user.sh
 
 ### 只在 workbench 仓库里开发时
 
-也可以用 Task **Markdown Comment: Preview current file**（路径指向 monorepo 内 `zed/scripts/preview.mjs`），无需 install-user。
+也可以把本目录的 `tasks.json` 合并进项目或用户 tasks（路径指向 monorepo 内 `zed/scripts/preview.mjs`），无需 install-user。
 
 ## 排查
 

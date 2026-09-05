@@ -25,7 +25,7 @@ task = {
     "label": label,
     "command": "node",
     "args": [preview, "\$ZED_FILE"],
-    "use_new_terminal": true,
+    "use_new_terminal": True,
     "allow_concurrent_runs": False,
     "reveal": "always",
     "hide": "never",
