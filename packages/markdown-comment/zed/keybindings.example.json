@@ -2,7 +2,7 @@
   {
     "context": "Editor && (markdown || Markdown)",
     "bindings": {
-      "cmd-alt-m": ["task::Spawn", { "task_name": "Markdown Comment: Preview current file (global install)" }]
+      "cmd-alt-m": ["task::Spawn", { "task_name": "Markdown Comment: Preview current file" }]
     }
   }
 ]
