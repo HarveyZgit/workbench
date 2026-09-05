@@ -189,11 +189,15 @@ test('no-command prints help', () => {
   assert.match(result.stdout, /reply <threadId>/);
 });
 
-test('list without storage pointer fails when env is unset', () => {
+test('list without storage pointer bootstraps default store', () => {
   const home = tmp('mdc-cli-empty-home-');
   const result = run(['list'], { cwd: tmp('mdc-cli-empty-cwd-'), home, unsetStorage: true });
-  assert.equal(result.status, 1);
-  assert.match(result.stderr, /未找到评论存储/);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /没有评论|当前目录下没有评论/);
+  const pointer = path.join(home, '.markdown-comment', 'pointer.json');
+  assert.equal(fs.existsSync(pointer), true);
+  const store = JSON.parse(fs.readFileSync(pointer, 'utf8')).storageDir as string;
+  assert.equal(store, path.join(home, '.markdown-comment', 'store'));
 });
 
 test('list prints 划词 全文 Mermaid 图 Mermaid 节点 and 整行 kinds', () => {

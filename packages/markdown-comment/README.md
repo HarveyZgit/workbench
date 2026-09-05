@@ -32,16 +32,46 @@ Preview settings:
 
 ## Install
 
-Install the VSIX first (it ships the CLI). Then register the Skill in either way:
+Repository releases are private; anonymous download 404s. Use a logged-in GitHub CLI to fetch the tarball, then install globally and register the Skill:
 
-1. Install the extension: `code --install-extension <path-to-vscode-markdown-comment.vsix> --force`
-2. **Plugin install:** command palette (⇧⌘P) → **Markdown Comment：安装 / 更新 Agent Skill**. Pick one or more Agent directories (multi-select). The list combines already-installed targets, skill roots auto-detected under your home directory, and a few common host seeds; you can also add a custom directory. Each selected root gets a `markdown-comment` symlink pointing at the extension's resolved Skill copy in its stable global storage, so the link keeps working across extension upgrades. Already-installed targets are refreshed/migrated to the latest version.
-3. **Self-install / Skill Hub:** copy `dist/skill-hub/markdown-comment/` into an Agent skills directory (for example `~/.agents/skills/markdown-comment`). Upload that same folder to Skill Hub for others. The portable Skill locates the CLI from PATH, `MARKDOWN_COMMENT_CLI`, or the installed editor extension.
-4. (Optional) **Markdown Comment：移除 Agent Skill** — select recorded plugin-installs to remove. It only deletes the symlinks this extension created and never touches other files or a Skill Hub copy.
+```sh
+gh release download markdown-comment-v1.2.1 --repo HarveyZgit/workbench -p 'vscode-markdown-comment-*.tgz'
+npm install -g ./vscode-markdown-comment-1.2.1.tgz
+markdown-comment install-skill
+markdown-comment extension
+```
 
-Symlinks target a canonical Skill copy in the extension's global storage rather than the versioned extension directory, which VS Code renames on every upgrade. The extension reconciles these links on activation, repairing them after an upgrade and dropping records whose target was replaced by hand.
+Run markdown-comment extension to print the absolute VSIX path and a short code --install-extension hint. Install the VSIX manually.
 
-> VS Code has no uninstall hook, so the extension cannot self-clean when it is removed. Run **移除 Agent Skill** before uninstalling. If a dangling link is left behind, that command (or a manual delete) clears it.
+Source-tree development:
+
+```sh
+cd packages/markdown-comment
+rushx build
+node dist/cli.js install-skill
+```
+
+Pack the Release tarball and VSIX (artifacts under dist/):
+
+```sh
+cd packages/markdown-comment
+rushx pack-release
+```
+
+## CLI
+
+```sh
+markdown-comment install-skill [--target <skill-root>]
+markdown-comment extension
+markdown-comment list [file] [-g] [--open] [--name-only] [--hidden] [--json]
+markdown-comment reply <threadId> <text>
+markdown-comment resolve <threadId>
+markdown-comment preview <file.md> [--port 8765] [--no-open] [--detach]
+```
+
+preview opens a generic local browser preview (HTTP + WebSocket) against the same comment store, not editor-specific. --detach starts the server in the background and returns once the URL is ready.
+
+Comment data defaults to ~/.markdown-comment/store (pointer at ~/.markdown-comment/pointer.json). Override with MARKDOWN_COMMENT_STORAGE_DIR. The CLI bootstraps storage on first use; VS Code is not required.
 
 ## Development
 
