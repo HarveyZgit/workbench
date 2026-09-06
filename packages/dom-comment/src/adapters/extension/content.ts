@@ -15,6 +15,8 @@ import {
   mountDrawer,
   openDrawer,
   setDrawerStatus,
+  setSelectEnabled,
+  setSelectedThreadId,
   showToast,
   updateDrawer,
 } from './drawer.js';
@@ -49,6 +51,9 @@ let pins: { x: number; y: number; w: number; h: number; area: boolean; id: strin
 let activeRect: DOMRect | null = null;
 let showDraftPin = false;
 let openThreadId: string | null = null;
+/** Browse-mode selected thread (sidebar / pin); drives persistent region highlight. */
+let selectedThreadId: string | null = null;
+let selectedHighlight: DOMRect | null = null;
 
 function hypot(dx: number, dy: number): number {
   return Math.sqrt(dx * dx + dy * dy);
@@ -109,11 +114,12 @@ function editableTarget(target: EventTarget | null): boolean {
 }
 
 function paintOverlay(): void {
-  if (!modeOn) {
+  const composing = composerOpen();
+  const showBrowse = !modeOn && (pins.length > 0 || selectedHighlight !== null);
+  if (!modeOn && !showBrowse) {
     removeOverlay();
     return;
   }
-  const composing = composerOpen();
   renderOverlay({
     banner: modeOn && !peeking,
     hover: rubber
@@ -125,6 +131,8 @@ function paintOverlay(): void {
           : null,
     rubber: modeOn && !peeking ? rubber : null,
     pins: peeking ? [] : pins,
+    pinsInteractive: !modeOn,
+    selected: !modeOn && !peeking ? selectedHighlight : null,
     draft:
       showDraftPin && activeRect && !peeking
         ? { x: activeRect.left, y: activeRect.top, w: activeRect.width, h: activeRect.height }
@@ -133,11 +141,13 @@ function paintOverlay(): void {
 }
 
 function paint(): void {
-  if (!modeOn) {
-    removeOverlay();
-    return;
-  }
   paintOverlay();
+}
+
+function clearBrowseSelection(): void {
+  selectedThreadId = null;
+  selectedHighlight = null;
+  setSelectedThreadId(null);
 }
 
 function setMode(on: boolean): void {
@@ -154,9 +164,14 @@ function setMode(on: boolean): void {
     closeComposer();
     activeRect = null;
     showDraftPin = false;
-    removeOverlay();
+    setSelectEnabled(true);
+    openDrawer();
+    paint();
     return;
   }
+  clearBrowseSelection();
+  setSelectEnabled(false);
+  openDrawer();
   paint();
 }
 
@@ -195,6 +210,10 @@ function refreshPins(overlayOnly = false): void {
       pins = [];
     }
   }
+  if (selectedThreadId) {
+    const pin = pins.find((item) => item.id === selectedThreadId);
+    selectedHighlight = pin ? new DOMRect(pin.x, pin.y, pin.w, pin.h) : selectedHighlight;
+  }
   if (overlayOnly) {
     paintOverlay();
     return;
@@ -215,24 +234,28 @@ function promptText(tabId: number, href: string): string {
   return skillPromptForTab(tabId, href);
 }
 
-function scrollToThread(thread: StoredThread): void {
+function resolveThreadRect(thread: StoredThread): DOMRect | null {
   const pin = pins.find((item) => item.id === thread.id);
-  let rect: DOMRect | null = pin ? new DOMRect(pin.x, pin.y, pin.w, pin.h) : null;
-  if (!rect) {
-    const hit = locateAnchor(thread.anchor);
-    rect = hit?.rect ?? null;
+  if (pin) {
+    return new DOMRect(pin.x, pin.y, pin.w, pin.h);
   }
+  const hit = locateAnchor(thread.anchor);
+  return hit?.rect ?? null;
+}
+
+function selectThread(thread: StoredThread): void {
+  const rect = resolveThreadRect(thread);
   if (!rect) {
     setDrawerStatus('找不到该评论的锚点（可能已失效）');
     return;
   }
+  selectedThreadId = thread.id;
+  selectedHighlight = rect;
+  setSelectedThreadId(thread.id);
   const absTop = rect.top + window.scrollY;
   window.scrollTo({ top: Math.max(0, absTop - window.innerHeight / 3), behavior: 'smooth' });
-  const flash = document.createElement('div');
-  flash.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${Math.max(rect.width, 24)}px;height:${Math.max(rect.height, 24)}px;border:2px solid #1A6B54;background:rgba(26,107,84,.12);pointer-events:none;z-index:2147483646;box-sizing:border-box;border-radius:4px;`;
-  document.documentElement.append(flash);
-  window.setTimeout(() => flash.remove(), 1200);
   setDrawerStatus('');
+  paint();
 }
 
 function bindDrawer(): void {
@@ -242,7 +265,11 @@ function bindDrawer(): void {
         postToBackground({ type: 'RESOLVE_THREAD', threadId });
       },
       onSelect: (thread) => {
-        scrollToThread(thread);
+        selectThread(thread);
+      },
+      onClose: () => {
+        clearBrowseSelection();
+        paint();
       },
     },
     tabCache,
@@ -359,6 +386,23 @@ function rebuildChain(el: Element | null): void {
 }
 
 function openPin(id: string): void {
+  const thread = findThread(id);
+  if (!thread) {
+    return;
+  }
+  // Annotate mode: ignore selecting existing comments via pins (create-only).
+  if (modeOn) {
+    return;
+  }
+  // Browse mode: select + persistent highlight + scroll (same as drawer card).
+  if (!drawerOpen()) {
+    openDrawer();
+  }
+  selectThread(thread);
+}
+
+/** Agent / SET_FOCUS_THREAD: enter annotate and open the thread composer. */
+function focusThread(id: string): void {
   const thread = findThread(id);
   if (!thread) {
     return;
@@ -561,7 +605,7 @@ chrome.runtime.onMessage.addListener((msg: ExtMessage, _sender, sendResponse) =>
     if (!modeOn) {
       setMode(true);
     }
-    openPin(msg.threadId);
+    focusThread(msg.threadId);
   }
   if (msg.type === 'CREATE_THREAD_RESULT') {
     setCaptureChromeHidden(false);

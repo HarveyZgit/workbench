@@ -13,7 +13,7 @@ python3 -m http.server 8765 --directory fixtures
 
 ## 15 分钟冒烟
 
-日常复跑只走这些：TC-01 加载、TC-03 工具栏左键进模式、刷新退出、划选文字、拖区域、标注中点链接、保存、Esc（先关抽屉再退出）、右键复制 prompt、悬浮球抽屉、CLI `list`、file:// 冒烟（先勾 Allow access to file URLs）。完整用例不要每次全跑。
+日常复跑只走这些：TC-01 加载、TC-03 工具栏左键进模式（自动开抽屉）、刷新退出、划选文字、拖区域、标注中点链接、保存、Esc（先关抽屉再退出）、右键复制 prompt、悬浮球抽屉 / 退出后序号+选中高亮、CLI `list`、file:// 冒烟（先勾 Allow access to file URLs）。完整用例不要每次全跑。
 
 ---
 
@@ -87,6 +87,8 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
   - No popup appears.
   - Page shows a top-center pill: **标注中 · Esc 退出 · 长按空格看原页面**.
   - Toolbar icon switches to the X icon; tooltip becomes **退出标注模式**.
+  - Right-side comment drawer opens automatically.
+  - Drawer cards cannot select/highlight existing comments while annotating (resolve may still work); pin clicks do not open/select existing threads.
   - Bottom-right float ball **评** is visible (also when mode is off).
 
 ---
@@ -96,11 +98,14 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 - **id:** TC-04
 - **title:** Second toolbar click or Esc exits annotate mode
 - **status:** READY
-- **precondition:** TC-03. Annotate mode is on. Drawer closed.
+- **precondition:** TC-03. Annotate mode is on. Prefer drawer already open from enter; if closed, float-ball open is fine before exit.
 - **steps:**
-  1. Left-click the toolbar icon again (or press Esc).
+  1. Left-click the toolbar icon again (or press Esc with the drawer already closed).
 - **expected:**
-  - Banner, hover outlines, pins, and composer are gone.
+  - Annotate banner / hover / rubber / composer are gone.
+  - Comment drawer opens automatically on exit.
+  - Numbered pins (序号) remain visible on the page for review.
+  - Drawer card select is enabled again; selecting a card scrolls and persistently highlights the anchored region (not only a brief flash). Pin click does the same.
   - Float ball remains.
   - Toolbar icon is plus again; tooltip **进入标注模式**.
 
@@ -116,9 +121,9 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
   1. Reload the tab (F5 / toolbar reload).
   2. Wait until the page is idle.
 - **expected:**
-  - After reload there is no annotate banner / hover / pins.
+  - After reload there is no annotate banner / hover / rubber (mode starts off).
+  - If the tab already has saved threads, numbered pins may reappear in browse overlay after load; float ball is present; drawer can open.
   - Toolbar icon is plus (for this tab).
-  - Float ball is still present; drawer can open.
   - Mode does not come back until the user left-clicks the toolbar (or uses the shortcut) again.
 
 ---
@@ -293,9 +298,10 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
   3. If a thread card exists, click it.
   4. Press Esc.
 - **expected:**
-  - Drawer slides in from the right listing current-page threads (optional “本标签页全部页面”).
-  - Card click scrolls toward the pin/anchor and briefly highlights; orphaned shows a drawer hint.
-  - Esc closes the drawer without exiting annotate mode. A second Esc (with drawer closed) exits mode.
+  - Drawer slides in from the right listing current-page threads (optional “本标签页全部页面”); cards show 序号 badges when numbered.
+  - While annotate mode is on, card click does not select/highlight existing comments.
+  - While browse (mode off), card click scrolls toward the pin/anchor and keeps a persistent region highlight; orphaned shows a drawer hint. Closing the drawer clears the highlight.
+  - Esc closes the drawer without exiting annotate mode. A second Esc (with drawer closed) exits mode (and re-opens the drawer for browse).
 
 ---
 
@@ -381,34 +387,32 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 
 ---
 
-## TC-21 — Pin click opens thread; reply / edit / delete / resolve
+## TC-21 — Thread panel mutations via create / focus; pin select is browse-only
 
 - **id:** TC-21
 - **title:** In-page thread panel mutations
 - **status:** HOST
-- **precondition:** At least one saved open thread; annotate mode on.
+- **precondition:** At least one saved open thread.
 - **steps:**
-  1. Click the numbered pin.
-  2. Type a reply `补充：再看截图` → 保存.
-  3. Hover a comment → 编辑 → change text → 保存.
-  4. Hover a comment → 删除.
-  5. Click the resolve (checkmark) icon.
-- **expected:** Panel refreshes after each host write. Reply shows as **我**. Resolve marks the thread resolved (icon `on`). CLI `list --open` hides it; `list --tab <id>` still shows `[已解决]`. Esc / close hides the panel; pins remain while mode is on.
+  1. While annotate mode is on, click a numbered pin — it must not open/select that existing thread.
+  2. Exit annotate mode (browse). Click the numbered pin (or drawer card) to select + highlight.
+  3. Re-enter annotate and create a new annotation (or use SET_FOCUS_THREAD / agent focus) to open a thread panel, then: reply `补充：再看截图` → 保存; edit a comment; delete a comment; resolve.
+- **expected:** Annotate pin-click does not select existing comments. Browse pin/card select scrolls + persistent highlight. Panel mutations refresh; reply shows as **我**; resolve marks resolved; CLI `list --open` hides it; `list --tab <id>` still shows `[已解决]`. Numbered pins remain after exiting annotate.
 
 ---
 
-## TC-22 — Esc after save hides pins; data remains
+## TC-22 — Esc after save keeps numbered pins for browse; data remains
 
 - **id:** TC-22
-- **title:** Leaving annotate mode hides UI but keeps disk data
+- **title:** Leaving annotate mode keeps review pins; disk data remains
 - **status:** HOST
 - **precondition:** TC-19/20 saved threads exist.
 - **steps:**
-  1. Press Esc until mode is off.
-  2. Confirm the page has no pins/banner.
+  1. Press Esc until annotate mode is off (drawer may close first, then mode).
+  2. Confirm annotate banner/hover are gone, but numbered pins remain and the drawer opens on exit.
   3. `list --tab <id>` again.
-  4. 开始标记 again on the same URL.
-- **expected:** Disk data unchanged. Re-entering mode relocates pins on the same elements/rects.
+  4. Enter annotate again on the same URL.
+- **expected:** Disk data unchanged. Browse shows 序号 pins; re-entering annotate relocates pins and disables selecting existing comments.
 
 ---
 

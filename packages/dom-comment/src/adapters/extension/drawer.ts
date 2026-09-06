@@ -112,8 +112,16 @@ const CSS = `
     text-align: left;
   }
   .card:hover { border-color: #1a6b54; }
+  .card.selected { border-color: #1a6b54; box-shadow: inset 0 0 0 1px #1a6b54; background: #eef6f3; }
   .card.resolved { opacity: .72; }
+  .list.select-off .card { cursor: default; }
+  .list.select-off .card:hover { border-color: #d8dad4; }
+  .list.select-off .card.selected { border-color: #1a6b54; }
   .card-head { display: flex; align-items: flex-start; gap: 6px; margin-bottom: 6px; }
+  .num {
+    flex-shrink: 0; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px;
+    background: #1a6b54; color: #fff; font: 700 11px/20px system-ui, sans-serif; text-align: center;
+  }
   .quote { flex: 1; font: 650 12px/1.35 inherit; color: #1c1c1a; word-break: break-word; }
   .meta { font-size: 11px; color: #5f615c; margin-bottom: 6px; }
   .comments { display: flex; flex-direction: column; gap: 4px; }
@@ -149,6 +157,8 @@ const CSS = `
 export interface DrawerHandlers {
   onResolve: (threadId: string) => void;
   onSelect: (thread: StoredThread) => void;
+  /** Fired when the drawer closes (scrim / X / Esc / float toggle). */
+  onClose?: () => void;
 }
 
 let open = false;
@@ -158,6 +168,8 @@ let pageUrl = '';
 let handlers: DrawerHandlers | undefined;
 let statusMsg = '';
 let toastTimer = 0;
+let selectEnabled = true;
+let selectedId: string | null = null;
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -188,8 +200,11 @@ function openCount(): number {
 
 function cardHtml(thread: StoredThread): string {
   const resolved = thread.status === 'resolved';
+  const selected = selectedId === thread.id;
   const kind = kindLabel(thread.anchor);
   const quote = clip(quoteOf(thread.anchor), LIST_QUOTE_CLIP);
+  const num = Number.isInteger(thread.number) && thread.number > 0 ? thread.number : 0;
+  const numBadge = num > 0 ? `<span class="num" title="序号">${num}</span>` : '';
   const comments = thread.comments
     .map(
       (c) =>
@@ -200,8 +215,10 @@ function cardHtml(thread: StoredThread): string {
     thread.status === 'open'
       ? `<button class="resolve" type="button" data-act="resolve" data-id="${escapeHtml(thread.id)}" title="标记已解决">${ICON_RESOLVE}</button>`
       : `<button class="resolve on" type="button" data-act="resolve" data-id="${escapeHtml(thread.id)}" title="已解决" disabled>${ICON_RESOLVE}</button>`;
-  return `<div class="card ${resolved ? 'resolved' : ''}" data-act="select" data-id="${escapeHtml(thread.id)}" role="button" tabindex="0">
+  const classes = ['card', resolved ? 'resolved' : '', selected ? 'selected' : ''].filter(Boolean).join(' ');
+  return `<div class="${classes}" data-act="select" data-id="${escapeHtml(thread.id)}" role="button" tabindex="0">
     <div class="card-head">
+      ${numBadge}
       <div class="quote">[${escapeHtml(kind)}] ${escapeHtml(quote)}</div>
       ${resolve}
     </div>
@@ -220,6 +237,7 @@ function paint(): void {
     items.length === 0
       ? `<div class="empty">${allPages ? '这个标签页还没有评论' : '当前页还没有评论'}</div>`
       : items.map((item) => cardHtml(item.thread)).join('');
+  const selectClass = selectEnabled ? '' : ' select-off';
   root.innerHTML = `<style>${CSS}</style>
     <button class="ball" type="button" data-act="toggle" title="评论列表" aria-label="打开评论列表">评${badge}</button>
     <div class="scrim ${open ? 'open' : ''}" data-act="close" style="${open ? '' : 'display:none'}"></div>
@@ -232,7 +250,7 @@ function paint(): void {
         <label class="scope"><input type="checkbox" data-act="scope" ${allPages ? 'checked' : ''}/> 本标签页全部页面</label>
       </div>
       <div class="hint">${escapeHtml(statusMsg)}</div>
-      <div class="list">${list}</div>
+      <div class="list${selectClass}">${list}</div>
     </aside>
     <div class="toast" id="toast"></div>`;
   host.style.pointerEvents = 'none';
@@ -304,9 +322,13 @@ function onRootClick(ev: Event): void {
   }
   if (act === 'select' && id) {
     ev.preventDefault();
+    if (!selectEnabled) {
+      return;
+    }
     const thread = findThread(id);
     if (thread) {
       statusMsg = '';
+      selectedId = thread.id;
       handlers?.onSelect(thread);
       paint();
     }
@@ -324,8 +346,22 @@ export function openDrawer(): void {
 }
 
 export function closeDrawer(): void {
+  const wasOpen = open;
   open = false;
   statusMsg = '';
+  paint();
+  if (wasOpen) {
+    handlers?.onClose?.();
+  }
+}
+
+export function setSelectEnabled(enabled: boolean): void {
+  selectEnabled = enabled;
+  paint();
+}
+
+export function setSelectedThreadId(id: string | null): void {
+  selectedId = id;
   paint();
 }
 
