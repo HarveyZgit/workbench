@@ -115,7 +115,8 @@ function editableTarget(target: EventTarget | null): boolean {
 
 function paintOverlay(): void {
   const composing = composerOpen();
-  const showBrowse = !modeOn && (pins.length > 0 || selectedHighlight !== null);
+  // Browse pins/highlight only while the sidebar is open (not merely because mode is off).
+  const showBrowse = !modeOn && drawerOpen() && (pins.length > 0 || selectedHighlight !== null);
   if (!modeOn && !showBrowse) {
     removeOverlay();
     return;
@@ -150,6 +151,17 @@ function clearBrowseSelection(): void {
   setSelectedThreadId(null);
 }
 
+function applySidebarModePolicy(): void {
+  // Policy applies when the drawer is open; never auto-opens the drawer on mode toggle.
+  if (modeOn) {
+    clearBrowseSelection();
+    setSelectEnabled(false);
+  } else {
+    setSelectEnabled(true);
+  }
+  paint();
+}
+
 function setMode(on: boolean): void {
   modeOn = on;
   if (!on) {
@@ -164,15 +176,10 @@ function setMode(on: boolean): void {
     closeComposer();
     activeRect = null;
     showDraftPin = false;
-    setSelectEnabled(true);
-    openDrawer();
-    paint();
+    applySidebarModePolicy();
     return;
   }
-  clearBrowseSelection();
-  setSelectEnabled(false);
-  openDrawer();
-  paint();
+  applySidebarModePolicy();
 }
 
 function findThread(id: string): StoredThread | undefined {
@@ -266,6 +273,9 @@ function bindDrawer(): void {
       },
       onSelect: (thread) => {
         selectThread(thread);
+      },
+      onOpen: () => {
+        applySidebarModePolicy();
       },
       onClose: () => {
         clearBrowseSelection();
@@ -394,9 +404,9 @@ function openPin(id: string): void {
   if (modeOn) {
     return;
   }
-  // Browse mode: select + persistent highlight + scroll (same as drawer card).
+  // Browse mode: pins only interact when the sidebar is already open.
   if (!drawerOpen()) {
-    openDrawer();
+    return;
   }
   selectThread(thread);
 }

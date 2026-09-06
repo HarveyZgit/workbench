@@ -157,6 +157,8 @@ const CSS = `
 export interface DrawerHandlers {
   onResolve: (threadId: string) => void;
   onSelect: (thread: StoredThread) => void;
+  /** Fired when the drawer opens (float ball / command). */
+  onOpen?: () => void;
   /** Fired when the drawer closes (scrim / X / Esc / float toggle). */
   onClose?: () => void;
 }
@@ -340,9 +342,13 @@ export function drawerOpen(): boolean {
 }
 
 export function openDrawer(): void {
+  const wasOpen = open;
   open = true;
   statusMsg = '';
   paint();
+  if (!wasOpen) {
+    handlers?.onOpen?.();
+  }
 }
 
 export function closeDrawer(): void {

@@ -13,7 +13,7 @@ python3 -m http.server 8765 --directory fixtures
 
 ## 15 分钟冒烟
 
-日常复跑只走这些：TC-01 加载、TC-03 工具栏左键进模式（自动开抽屉）、刷新退出、划选文字、拖区域、标注中点链接、保存、Esc（先关抽屉再退出）、右键复制 prompt、悬浮球抽屉 / 退出后序号+选中高亮、CLI `list`、file:// 冒烟（先勾 Allow access to file URLs）。完整用例不要每次全跑。
+日常复跑只走这些：TC-01 加载、TC-03 工具栏左键进模式（不不自动开抽屉）、刷新退出、划选文字、拖区域、标注中点链接、保存、Esc（先关抽屉再退出）、右键复制 prompt、悬浮球抽屉（标注中禁选 / 非标注显示序号+高亮）、CLI `list`、file:// 冒烟（先勾 Allow access to file URLs）。完整用例不要每次全跑。
 
 ---
 
@@ -300,8 +300,8 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 - **expected:**
   - Drawer slides in from the right listing current-page threads (optional “本标签页全部页面”); cards show 序号 badges when numbered.
   - While annotate mode is on, card click does not select/highlight existing comments.
-  - While browse (mode off), card click scrolls toward the pin/anchor and keeps a persistent region highlight; orphaned shows a drawer hint. Closing the drawer clears the highlight.
-  - Esc closes the drawer without exiting annotate mode. A second Esc (with drawer closed) exits mode (and re-opens the drawer for browse).
+  - With mode off and drawer open, card click scrolls toward the pin/anchor and keeps a persistent region highlight; orphaned shows a drawer hint. Closing the drawer clears the highlight.
+  - Esc closes the drawer without exiting annotate mode. A second Esc (with drawer closed) exits mode (drawer stays closed until you open it again).
 
 ---
 
@@ -395,13 +395,13 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 - **precondition:** At least one saved open thread.
 - **steps:**
   1. While annotate mode is on, click a numbered pin — it must not open/select that existing thread.
-  2. Exit annotate mode (browse). Click the numbered pin (or drawer card) to select + highlight.
+  2. Exit annotate mode, open the float-ball drawer, then click the numbered pin (or drawer card) to select + highlight.
   3. Re-enter annotate and create a new annotation (or use SET_FOCUS_THREAD / agent focus) to open a thread panel, then: reply `补充：再看截图` → 保存; edit a comment; delete a comment; resolve.
 - **expected:** Annotate pin-click does not select existing comments. Browse pin/card select scrolls + persistent highlight. Panel mutations refresh; reply shows as **我**; resolve marks resolved; CLI `list --open` hides it; `list --tab <id>` still shows `[已解决]`. Numbered pins remain after exiting annotate.
 
 ---
 
-## TC-22 — Esc after save keeps numbered pins for browse; data remains
+## TC-22 — Esc after save; open drawer to see numbered pins in browse; data remains
 
 - **id:** TC-22
 - **title:** Leaving annotate mode keeps review pins; disk data remains
