@@ -70,13 +70,13 @@ rev 4 按「文档 = URL」存、工具栏直接开关模式、不存图。用�
 | K3 | Native Messaging 写盘；另用 **持久 NM 连接 + Unix socket** 给 CLI→扩展（聚焦 tab） | 扩展不能写 `~`；CLI 又要叫 Chrome 聚焦已登录 tab。一次性 `sendNativeMessage` 无法从 CLI 发起。 |
 | K4 | 存储主键 = **当前 Chrome 会话 + tabId**；文件内 key = canonical URL | 用户指定。一次浏览里同一 tab 会换 URL，评论应留在这个 tab 下。 |
 | K5 | 单击元素、划选文字、直接拖区域；**保存瞬间裁切 PNG** | 拖满 8px 就是框选，不按 Shift。截图给 Agent 看当时画面。 |
-| K6 | 工具栏 **popup** 只负责启动；页内悬浮清单负责队列和发布 | action popup 失焦即关，不能当编辑器。 |
+| K6 | ~~工具栏 popup~~ → **工具栏左键进标注**；页内悬浮球 + 右侧抽屉列评论 | popup 已去掉；复制 prompt 改到 action/page 右键菜单。 |
 | K7 | WXT + React + Tailwind + shadcn | popup / 编写框 / 侧栏。hover 仍是 vanilla overlay。 |
 | K8 | hover / 橡皮筋 / 标注中提示条：vanilla overlay | 热路径不打 React、不打 host。 |
 | K9 | 编写框进 Shadow `dom-comment-ui`；overlay 用 `dom-comment-overlay` | 防页面 CSS。 |
 | K10 | 重定位只在扩展里 best-effort；CLI 不 fetch、不自己判失联 | CLI 没有 DOM。 |
 | K11 | 每条线程一张 **裁切 PNG**（元素盒或框选盒）+ 文本 snapshot | Codex 同款「那一瞬间」。不把 PNG 塞进 JSON。 |
-| K12 | 侧栏仍做列表；工具栏 **必须有 popup**，故单击工具栏不再切换模式 | 与 K6 一致。 |
+| K12 | Chrome `side_panel` 可保留；**主列表是页内抽屉**；工具栏左键进模式 | 与 K6 一致（2026-09 UX）。 |
 | K13 | 生产权限：`nativeMessaging` + `storage` + `offscreen`（若 SW 保活失败）+ http(s) host。PR 4 加 `sidePanel`。不加 `tabs` / 生产 `scripting`。`captureVisibleTab` 靠 host_permissions | 截可见 tab 再裁切，不要 `tabCapture` 流。 |
 | K14 | 编号钉只在标注模式显示；复制 `/dom-comment tabid:` | 退出后页面恢复干净。 |
 | K15 | Skill 名 `dom-comment`；默认 `list --open`；`tabid:` / `url:` 降级 | 查找先参数，否则最近未解决批次。 |
@@ -165,7 +165,11 @@ sequenceDiagram
 
 ### 3. 弹窗与标注交互
 
-#### 3.1 工具栏 → popup（不是直接进模式）
+#### 3.1 工具栏 → 左键进模式（2026-09；原 popup 已移除）
+
+**现行：** 无 `default_popup`；`action.onClicked` 进入（或切换）标注模式。刷新/导航清除该 tab 的模式，内容脚本每次注入从 off 开始。「复制 skill prompt」在 `contextMenus`（`action` + `page`/`selection`/`editable`）。页内右下角悬浮球打开右侧 Shadow 抽屉（列表 / 解决 / 点击滚到钉）。`open-side-panel` 命令改为给当前 tab 发 `OPEN_DRAWER`。
+
+#### 3.1b 历史：工具栏 → popup（不是直接进模式）
 
 `action.default_popup = popup.html`（WXT `entrypoints/popup/index.html`）。**不要**注册 `action.onClicked`。
 
@@ -486,7 +490,7 @@ type ExtMessage =
 | Playwright 挂日常 profile / cookie 导出无头分身 | **推迟**。profile 锁 + Chrome 默认目录不能被自动化；v1 用截图 + 聚焦原 tab。 |
 | CDP attach（inspect / `chrome.debugger`） | **推迟**。会遥控整只浏览器或弹出调试黄条；v1 不做。 |
 | 本地 HTTP daemon | 写盘仍 NM；CLI→扩展用 Unix socket 更窄。不另开 HTTP。 |
-| 无 popup、工具栏直接 toggle | 否。用户要复制 prompt。 |
+| 无 popup、工具栏直接进模式 | **已采用（2026-09）**。复制 prompt 改到 contextMenus。 |
 | 页内悬浮清单 | **rev 7 采用**。popup 只启动；持续编辑必须在页面上。 |
 
 ---
@@ -537,7 +541,7 @@ Load unpacked。验证：弹窗复制的 tabid 能 `list` 到刚标的那条，�
 | # | 决定 |
 | --- | --- |
 | 框选 | v1 做 |
-| 入口 | 工具栏 popup；图标开始标记；Esc 停 |
+| 入口 | 工具栏左键进模式；右键复制 prompt；Esc / 刷新退出 |
 | URL query | 保留，去追踪参数 |
 | 截图 | 评论瞬间裁切 PNG |
 | 存储 | 按 tabId 文件，内层 URL 分页面和截图 |

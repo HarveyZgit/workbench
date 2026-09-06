@@ -35,6 +35,9 @@ declare const chrome: {
   action: {
     setIcon: (d: { path: Record<number, string> }) => Promise<void>;
     setTitle: (d: { title: string }) => Promise<void>;
+    onClicked: {
+      addListener: (fn: (tab: { id?: number; url?: string; windowId?: number }) => void) => void;
+    };
   };
   tabs: {
     query: (q: Record<string, unknown>) => Promise<{ id?: number; url?: string; windowId?: number }[]>;
@@ -46,8 +49,10 @@ declare const chrome: {
       (windowId: number, opts?: { format?: string }): Promise<string>;
     };
     onUpdated: {
-      addListener: (fn: (id: number, info: { status?: string }) => void) => void;
+      addListener: (fn: (id: number, info: { status?: string; url?: string }) => void) => void;
     };
+    onRemoved: { addListener: (fn: (id: number) => void) => void };
+    onActivated: { addListener: (fn: (info: { tabId: number; windowId: number }) => void) => void };
     getCurrent: () => Promise<unknown>;
   };
   windows: {
@@ -59,5 +64,27 @@ declare const chrome: {
   };
   sidePanel: {
     open: (o: { windowId: number }) => Promise<void>;
+  };
+  contextMenus: {
+    removeAll: (cb?: () => void) => void;
+    create: (createProperties: {
+      id: string;
+      title: string;
+      contexts: string[];
+      documentUrlPatterns?: string[];
+    }) => void;
+    onClicked: {
+      addListener: (
+        fn: (info: { menuItemId: string | number }, tab?: { id?: number; url?: string }) => void,
+      ) => void;
+    };
+  };
+  scripting: {
+    executeScript: (injection: {
+      target: { tabId: number };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      func: (...args: any[]) => unknown;
+      args?: unknown[];
+    }) => Promise<unknown>;
   };
 };

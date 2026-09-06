@@ -15,9 +15,9 @@ Design **rev 7**. OpenSpec change `npm-cli-package` is active. Build with `rushx
 ## Decided product shape (rev 7)
 
 - CLI `dom-comment`: GitHub Release `dom-comment-*.tgz`, install globally from the tarball; then `install-skill` (host + Skill to user-chosen dirs), `extension` (print packed dir), and runtime `list` / `reply` / `resolve` / `open`.
-- Chrome MV3 extension. Toolbar popup starts/stops annotation and copies the skill prompt. The page only shows pins and the composer while annotating.
+- Chrome MV3 extension. Toolbar left-click enters annotate mode (Esc / refresh exits; mode is not restored after reload). Copy skill prompt via action + page context menus. In-page float ball opens a right drawer listing threads (resolve / scroll-to-pin). Pins and composer still only while annotating.
 - Comments save as soon as the user submits. No publish step.
-- Pins show only while annotating. Esc hides them; data stays.
+- Pins show only while annotating. Esc closes the drawer first, then exits mode; data stays.
 - Gestures: click element, select text, drag region (no Shift). Hold Space to peek at the page.
 - Storage: source tree uses `packages/dom-comment/data/`; tarball installs use the user data directory. Override with `DOM_COMMENT_STORAGE_DIR`.
 - Agent lookup: parse `tabid:` / `url:` first; otherwise `list --open`. Never dump every tab by default.

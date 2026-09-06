@@ -10,6 +10,15 @@ import {
   setComposerHidden,
 } from './composer.js';
 import {
+  closeDrawer,
+  drawerOpen,
+  mountDrawer,
+  openDrawer,
+  setDrawerStatus,
+  showToast,
+  updateDrawer,
+} from './drawer.js';
+import {
   deepestElement,
   isOurHost,
   renderOverlay,
@@ -19,7 +28,8 @@ import {
   skipTarget,
 } from './highlight.js';
 import { postToBackground, type ExtMessage } from './messages.js';
-import { pinModels } from './relocate-dom.js';
+import { locateAnchor, pinModels } from './relocate-dom.js';
+import { skillPromptForTab } from '../../core/markdown.js';
 import type { StoredTabFile, StoredThread } from '../../core/types.js';
 
 const DRAG = DRAG_THRESHOLD_PX;
@@ -194,6 +204,50 @@ function refreshPins(overlayOnly = false): void {
 
 function askLoad(): void {
   postToBackground({ type: 'LOAD_TAB', tabId: -1 });
+}
+
+function currentPageUrl(): string {
+  const { href } = location;
+  return isAnnotatableUrl(href) ? canonicalizeUrl(href) : '';
+}
+
+function promptText(tabId: number, href: string): string {
+  return skillPromptForTab(tabId, href);
+}
+
+function scrollToThread(thread: StoredThread): void {
+  const pin = pins.find((item) => item.id === thread.id);
+  let rect: DOMRect | null = pin ? new DOMRect(pin.x, pin.y, pin.w, pin.h) : null;
+  if (!rect) {
+    const hit = locateAnchor(thread.anchor);
+    rect = hit?.rect ?? null;
+  }
+  if (!rect) {
+    setDrawerStatus('找不到该评论的锚点（可能已失效）');
+    return;
+  }
+  const absTop = rect.top + window.scrollY;
+  window.scrollTo({ top: Math.max(0, absTop - window.innerHeight / 3), behavior: 'smooth' });
+  const flash = document.createElement('div');
+  flash.style.cssText = `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${Math.max(rect.width, 24)}px;height:${Math.max(rect.height, 24)}px;border:2px solid #1A6B54;background:rgba(26,107,84,.12);pointer-events:none;z-index:2147483646;box-sizing:border-box;border-radius:4px;`;
+  document.documentElement.append(flash);
+  window.setTimeout(() => flash.remove(), 1200);
+  setDrawerStatus('');
+}
+
+function bindDrawer(): void {
+  mountDrawer(
+    {
+      onResolve: (threadId) => {
+        postToBackground({ type: 'RESOLVE_THREAD', threadId });
+      },
+      onSelect: (thread) => {
+        scrollToThread(thread);
+      },
+    },
+    tabCache,
+    currentPageUrl(),
+  );
 }
 
 function dismissComposer(): void {
@@ -443,6 +497,11 @@ document.addEventListener(
   'keydown',
   (ev) => {
     if (ev.key === 'Escape') {
+      if (drawerOpen()) {
+        ev.preventDefault();
+        closeDrawer();
+        return;
+      }
       if (composerOpen()) {
         ev.preventDefault();
         dismissComposer();
@@ -518,9 +577,24 @@ chrome.runtime.onMessage.addListener((msg: ExtMessage, _sender, sendResponse) =>
     tabCache = msg.tab;
     refreshPins();
     refreshOpenThread();
+    updateDrawer(tabCache, currentPageUrl());
   }
   if (msg.type === 'THREADS_CHANGED') {
     askLoad();
+  }
+  if (msg.type === 'OPEN_DRAWER') {
+    openDrawer();
+  }
+  if (msg.type === 'COPY_SKILL_PROMPT') {
+    if (msg.copied) {
+      showToast('已复制 skill prompt');
+      return undefined;
+    }
+    const text = promptText(msg.tabId, msg.url || location.href);
+    void navigator.clipboard.writeText(text).then(
+      () => showToast('已复制 skill prompt'),
+      () => showToast('复制失败'),
+    );
   }
   if (msg.type === 'HOST_ERROR') {
     setCaptureChromeHidden(false);
@@ -530,16 +604,8 @@ chrome.runtime.onMessage.addListener((msg: ExtMessage, _sender, sendResponse) =>
   return undefined;
 });
 
-chrome.storage.session.get('annotationMode').then((v) => {
-  setMode(Boolean(v.annotationMode));
-});
-chrome.storage.session.onChanged.addListener((c) => {
-  if (c.annotationMode) {
-    setMode(Boolean(c.annotationMode.newValue));
-  }
-});
-
 setPinClickHandler(openPin);
+bindDrawer();
 askLoad();
 window.addEventListener('scroll', () => refreshPins(true), { passive: true });
 window.addEventListener('resize', () => refreshPins(true));

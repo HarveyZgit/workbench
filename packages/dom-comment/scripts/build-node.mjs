@@ -30,7 +30,6 @@ await esbuild.build({
   entryPoints: {
     background: path.join(packageRoot, 'src/adapters/extension/background.ts'),
     content: path.join(packageRoot, 'src/adapters/extension/content.ts'),
-    popup: path.join(packageRoot, 'src/adapters/extension/popup.ts'),
     sidepanel: path.join(packageRoot, 'src/adapters/extension/sidepanel.ts'),
   },
   bundle: true,
@@ -42,7 +41,6 @@ await esbuild.build({
   logLevel: 'info',
 });
 
-await copyFile(path.join(packageRoot, 'src/adapters/extension/popup.html'), path.join(outExt, 'popup.html'));
 await copyFile(
   path.join(packageRoot, 'src/adapters/extension/sidepanel.html'),
   path.join(outExt, 'sidepanel.html'),
@@ -57,7 +55,6 @@ const manifest = {
   key: ext.key,
   action: {
     default_title: '进入标注模式',
-    default_popup: 'popup.html',
     default_icon: { 16: 'icon-plus-16.png', 32: 'icon-plus-32.png' },
   },
   background: { service_worker: 'background.js', type: 'module' },
@@ -69,7 +66,7 @@ const manifest = {
     },
   ],
   side_panel: { default_path: 'sidepanel.html' },
-  permissions: ['nativeMessaging', 'storage', 'sidePanel'],
+  permissions: ['nativeMessaging', 'storage', 'sidePanel', 'contextMenus', 'scripting', 'clipboardWrite'],
   host_permissions: ['<all_urls>'],
   commands: {
     'toggle-annotate': {
@@ -77,7 +74,7 @@ const manifest = {
       description: '切换标注模式',
     },
     'open-side-panel': {
-      description: '打开评论列表',
+      description: '打开页内评论列表',
     },
   },
   icons: {

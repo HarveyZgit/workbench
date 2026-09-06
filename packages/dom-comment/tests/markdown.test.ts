@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   formatAgentMarkdown,
   formatAgentPrompt,
+  skillPromptForTab,
   kindLabel,
   quoteOf,
   targetLine,
@@ -30,7 +31,7 @@ function elementAnchor(over: Partial<StoredElementAnchor> = {}): StoredElementAn
     quote: '保存更改',
     before: '',
     after: '',
-    snapshot: { outerHTML: '<button>保存更改</button>', textContent: '保存更改' },
+    snapshot: { pageTitle: '', outerHTML: '<button>保存更改</button>', textContent: '保存更改' },
     hints: { ariaLabel: '保存' },
   };
   return { ...base, ...over };
@@ -47,7 +48,7 @@ function textAnchor(over: Partial<StoredTextAnchor> = {}): StoredTextAnchor {
     after: '',
     startOffset: 0,
     endOffset: UNIT,
-    snapshot: { outerHTML: '', textContent: '' },
+    snapshot: { pageTitle: '', outerHTML: '', textContent: '' },
     rect: { x: 0, y: 0, width: UNIT, height: UNIT },
   };
   return { ...base, ...over };
@@ -59,7 +60,7 @@ function areaAnchor(over: Partial<StoredAreaAnchor> = {}): StoredAreaAnchor {
     quote: '',
     before: '',
     after: '',
-    snapshot: { outerHTML: '', textContent: '' },
+    snapshot: { pageTitle: '', outerHTML: '', textContent: '' },
     rect: { x: 0, y: 0, width: AREA_W, height: AREA_H },
   };
   return { ...base, ...over };
@@ -81,6 +82,15 @@ function thread(over: Partial<StoredThread> = {}): StoredThread {
 test('formatAgentPrompt includes optional url', () => {
   assert.equal(formatAgentPrompt(TAB_ID), '/dom-comment tabid:12');
   assert.equal(formatAgentPrompt(TAB_ID, 'https://ex.test/a'), '/dom-comment tabid:12 url:https://ex.test/a');
+});
+
+test('skillPromptForTab canonicalizes annotatable urls', () => {
+  assert.equal(skillPromptForTab(TAB_ID), '/dom-comment tabid:12');
+  assert.equal(
+    skillPromptForTab(TAB_ID, 'https://ex.test/a?utm_source=x'),
+    '/dom-comment tabid:12 url:https://ex.test/a',
+  );
+  assert.equal(skillPromptForTab(TAB_ID, 'chrome://extensions'), '/dom-comment tabid:12');
 });
 
 test('kindLabel covers three kinds', () => {
@@ -115,7 +125,7 @@ test('formatAgentMarkdown includes safety title and nearby text', () => {
       thread({
         comments: [],
         screenshot: undefined,
-        anchor: elementAnchor({ snapshot: { outerHTML: '', textContent: '' }, quote: '' }),
+        anchor: elementAnchor({ snapshot: { pageTitle: '', outerHTML: '', textContent: '' }, quote: '' }),
       }),
     ],
   });

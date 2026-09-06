@@ -11,7 +11,7 @@ export interface CropRect {
 
 export type ExtMessage =
   | { type: 'SET_MODE'; on: boolean }
-  | { type: 'SET_MODE_REQUEST'; on: boolean }
+  | { type: 'SET_MODE_REQUEST'; on: boolean; tabId?: number }
   | { type: 'SHOW_QUEUE' }
   | { type: 'FOCUS_THREAD'; threadId: string; tabId?: number }
   | {
@@ -40,7 +40,9 @@ export type ExtMessage =
   | { type: 'DISCARD_PENDING' }
   | { type: 'PREPARE_CAPTURE' }
   | { type: 'LOAD_SCREENSHOT'; tabId: number; threadId: string; rel: string }
-  | { type: 'LOAD_SCREENSHOT_RESULT'; ok: boolean; threadId: string; dataUrl?: string };
+  | { type: 'LOAD_SCREENSHOT_RESULT'; ok: boolean; threadId: string; dataUrl?: string }
+  | { type: 'OPEN_DRAWER'; tabId?: number }
+  | { type: 'COPY_SKILL_PROMPT'; tabId: number; url: string; copied?: boolean };
 
 function settle(result: unknown): void {
   if (result !== undefined && result !== null && typeof (result as Promise<unknown>).then === 'function') {

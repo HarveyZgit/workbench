@@ -13,7 +13,7 @@ python3 -m http.server 8765 --directory fixtures
 
 ## 15 分钟冒烟
 
-日常复跑只走这些：TC-01 加载、TC-03 弹窗、TC-04 开始标记、划选文字、拖区域、标注中点链接、保存、Esc 两下、复制 prompt、CLI `list`、file:// 冒烟（先勾 Allow access to file URLs）。完整用例不要每次全跑。
+日常复跑只走这些：TC-01 加载、TC-03 工具栏左键进模式、刷新退出、划选文字、拖区域、标注中点链接、保存、Esc（先关抽屉再退出）、右键复制 prompt、悬浮球抽屉、CLI `list`、file:// 冒烟（先勾 Allow access to file URLs）。完整用例不要每次全跑。
 
 ---
 
@@ -70,69 +70,69 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 - **steps:**
   1. On `chrome://extensions`, click the reload arrow on DOM Comment.
   2. Confirm the service worker is still running.
-- **expected:** Extension stays enabled, popup still opens, no new error badge.
+- **expected:** Extension stays enabled, toolbar left-click still enters mode, no new error badge.
 
 ---
 
-## TC-03 — Toolbar popup chrome
+## TC-03 — Toolbar left-click enters annotate mode
 
 - **id:** TC-03
-- **title:** Popup shows start/stop and copy-prompt buttons
-- **status:** READY
-- **precondition:** Extension loaded. Any tab.
-- **steps:**
-  1. Click the toolbar icon.
-  2. Observe the 240px popup.
-- **expected:**
-  - Primary button labeled **开始标记**.
-  - Ghost button labeled **复制 skill prompt**.
-  - Chinese UI, no settings page.
-  - Clicking outside / losing focus closes the popup (normal action popup).
-
----
-
-## TC-04 — Start annotation from popup
-
-- **id:** TC-04
-- **title:** 开始标记 turns on global annotate mode
+- **title:** Left-click toolbar icon enters annotate mode (no popup)
 - **status:** READY
 - **precondition:** Extension loaded. Fixture `http://127.0.0.1:8765/annotate.html` is the active tab.
 - **steps:**
-  1. Click toolbar → **开始标记**.
+  1. Left-click the toolbar icon once.
   2. Look at the fixture page and the toolbar icon.
 - **expected:**
-  - Popup closes immediately.
+  - No popup appears.
   - Page shows a top-center pill: **标注中 · Esc 退出 · 长按空格看原页面**.
   - Toolbar icon switches to the X icon; tooltip becomes **退出标注模式**.
-  - Re-open popup: button now says **停止标记**.
+  - Bottom-right float ball **评** is visible (also when mode is off).
 
 ---
 
-## TC-05 — Stop annotation from popup
+## TC-04 — Toolbar click toggles off / Esc exits
 
-- **id:** TC-05
-- **title:** 停止标记 exits mode and removes page UI
+- **id:** TC-04
+- **title:** Second toolbar click or Esc exits annotate mode
 - **status:** READY
-- **precondition:** TC-04. Annotate mode is on.
+- **precondition:** TC-03. Annotate mode is on. Drawer closed.
 - **steps:**
-  1. Click toolbar → **停止标记**.
+  1. Left-click the toolbar icon again (or press Esc).
 - **expected:**
   - Banner, hover outlines, pins, and composer are gone.
-  - Page looks like a normal site.
-  - Toolbar icon is plus again; popup shows **开始标记**.
+  - Float ball remains.
+  - Toolbar icon is plus again; tooltip **进入标注模式**.
+
+---
+
+## TC-05 — Refresh exits annotate mode
+
+- **id:** TC-05
+- **title:** Full page refresh exits mode and does not restore it
+- **status:** READY
+- **precondition:** Annotate mode on, fixture page.
+- **steps:**
+  1. Reload the tab (F5 / toolbar reload).
+  2. Wait until the page is idle.
+- **expected:**
+  - After reload there is no annotate banner / hover / pins.
+  - Toolbar icon is plus (for this tab).
+  - Float ball is still present; drawer can open.
+  - Mode does not come back until the user left-clicks the toolbar (or uses the shortcut) again.
 
 ---
 
 ## TC-06 — Keyboard toggle (Ctrl/Cmd+Period)
 
 - **id:** TC-06
-- **title:** Command/Ctrl+. toggles annotate mode without opening popup
+- **title:** Command/Ctrl+. toggles annotate mode without a popup
 - **status:** READY
 - **precondition:** Extension loaded. Fixture tab focused. Check `chrome://extensions/shortcuts` if the suggested key was remapped.
 - **steps:**
   1. Press `Ctrl+.` (Linux/Windows) or `Cmd+.` (macOS).
   2. Press the same shortcut again.
-- **expected:** First press enters annotate mode (banner + X icon). Second press exits. Popup is not required.
+- **expected:** First press enters annotate mode (banner + X icon). Second press exits. No popup.
 
 ---
 
@@ -264,20 +264,38 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 
 ---
 
-## TC-16 — Copy skill prompt from popup
+## TC-16 — Copy skill prompt from context menus
 
 - **id:** TC-16
-- **title:** 复制 skill prompt writes /dom-comment tabid:… url:…
+- **title:** 复制 skill prompt via action + page context menus
 - **status:** READY
-- **precondition:** Active tab is `http://127.0.0.1:8765/annotate.html`. Clipboard permission granted to the extension popup if Chrome prompts.
+- **precondition:** Active tab is `http://127.0.0.1:8765/annotate.html`.
 - **steps:**
-  1. Open the toolbar popup.
-  2. Click **复制 skill prompt**.
-  3. Paste into a text field.
+  1. Right-click the toolbar extension icon → **复制 skill prompt**.
+  2. Paste into a text field.
+  3. Right-click the page (or a selection) → **复制 skill prompt** again.
 - **expected:**
-  - Button briefly shows **已复制**, then reverts.
-  - Clipboard is one line: `/dom-comment tabid:<positive Chrome tab id> url:http://127.0.0.1:8765/annotate.html` (canonical URL, tracking params stripped if present).
-  - On `chrome://extensions` the same button still copies `tabid:` but **without** `url:` (`formatAgentPrompt(tabId)` only).
+  - Brief in-page toast **已复制 skill prompt** (when content script runs).
+  - Clipboard is one line: `/dom-comment tabid:<positive Chrome tab id> url:http://127.0.0.1:8765/annotate.html`.
+  - On `chrome://` pages the page menu is absent / no-op; action menu may still offer the item but cannot inject (tabid-only when a page later copies).
+
+---
+
+## TC-16b — Float ball opens comment drawer
+
+- **id:** TC-16b
+- **title:** Float ball opens right drawer; card scrolls to pin; Esc closes drawer first
+- **status:** READY
+- **precondition:** Fixture page with at least one saved open thread (HOST) or empty list is fine for open/close smoke.
+- **steps:**
+  1. Click the bottom-right **评** float ball.
+  2. Observe the right-side drawer.
+  3. If a thread card exists, click it.
+  4. Press Esc.
+- **expected:**
+  - Drawer slides in from the right listing current-page threads (optional “本标签页全部页面”).
+  - Card click scrolls toward the pin/anchor and briefly highlights; orphaned shows a drawer hint.
+  - Esc closes the drawer without exiting annotate mode. A second Esc (with drawer closed) exits mode.
 
 ---
 
@@ -291,7 +309,7 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
   1. Open `chrome://extensions`, enter annotate mode via shortcut.
 - **expected:**
   - No banner / overlay on `chrome://`.
-  - Popup still opens; copy-prompt has tabid only (no url).
+  - Toolbar left-click may flip the icon, but no overlay on chrome://.
   - `chrome://` stays unsupported.
 
 ---
@@ -304,7 +322,7 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 - **precondition:** Extension loaded. On `chrome://extensions` for this extension, tick **Allow access to file URLs**.
 - **steps:**
   1. Open `fixtures/annotate.html` as a `file://` URL (or any local HTML file).
-  2. Enter annotate mode via shortcut or popup.
+  2. Enter annotate mode via shortcut or toolbar left-click.
   3. Click an element or drag a region (smoke; no need to persist).
 - **expected:**
   - Banner / overlay appears on the file page.
@@ -401,7 +419,7 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 - **status:** HOST (panel UI itself is READY; rows need host data)
 - **precondition:** Extension loaded. Chrome side panel available.
 - **steps:**
-  1. Open the side panel (right-click the toolbar icon → Open side panel, or bind `open-side-panel` in `chrome://extensions/shortcuts`).
+  1. Prefer the in-page float ball / drawer. Optional: bind `open-side-panel` in `chrome://extensions/shortcuts` (opens the in-page drawer on the active tab).
   2. With the fixture tab active, look at the list.
   3. Toggle **此标签页全部页面**.
   4. If a thread is open, click **标记已解决**.
@@ -480,7 +498,7 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 - **status:** READY for copy; HOST for `list` to return rows
 - **precondition:** None for copy. Host + a saved thread for the list half.
 - **steps:**
-  1. Copy the popup prompt.
+  1. Copy the skill prompt via context menu.
   2. Run the equivalent CLI (`list --tab <id> [--url …] --open`).
 - **expected:** No ChatGPT/Claude/Feishu login. No “send to agent” button in the extension. The human pastes the line into an Agent. This case does **not** require a vendor credential.
 
