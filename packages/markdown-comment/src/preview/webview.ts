@@ -29,8 +29,10 @@ const sidebar = document.getElementById('sidebar-inner');
 const draftEl = document.getElementById('sidebar-draft');
 const app = document.getElementById('app');
 const toggleSidebarBtn = document.getElementById('mdc-toggle-sidebar');
+const peekSidebarBtn = document.getElementById('mdc-peek-sidebar');
 const outlineTreeEl = document.getElementById('outline-tree');
 const toggleOutlineBtn = document.getElementById('mdc-toggle-outline');
+const peekOutlineBtn = document.getElementById('mdc-peek-outline');
 
 const submitKey = navigator.platform.toLowerCase().includes('mac') ? 'Cmd' : 'Ctrl';
 
@@ -142,8 +144,6 @@ const ICON_EDIT =
   '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2.5l2.5 2.5L6 12.5 3 13l.5-3z"/><path d="M9.5 4l2.5 2.5"/></svg>';
 const ICON_SIDEBAR_COLLAPSE =
   '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>';
-const ICON_SIDEBAR_EXPAND =
-  '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4l-4 4 4 4"/></svg>';
 
 interface WebviewState {
   sidebarCollapsed?: boolean;
@@ -160,11 +160,16 @@ function readWebviewState(): WebviewState {
 function setSidebarCollapsed(collapsed: boolean, persist = true): void {
   app?.classList.toggle('sidebar-collapsed', collapsed);
   if (toggleSidebarBtn) {
-    const label = collapsed ? '展开侧边栏' : '收起侧边栏';
-    toggleSidebarBtn.setAttribute('data-tip', label);
-    toggleSidebarBtn.setAttribute('aria-label', label);
+    // Header toggle only visible while expanded; always shows collapse chevron.
+    toggleSidebarBtn.setAttribute('data-tip', '收起评论');
+    toggleSidebarBtn.setAttribute('aria-label', '收起评论');
     toggleSidebarBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    toggleSidebarBtn.innerHTML = collapsed ? ICON_SIDEBAR_EXPAND : ICON_SIDEBAR_COLLAPSE;
+    toggleSidebarBtn.innerHTML = ICON_SIDEBAR_COLLAPSE;
+  }
+  if (peekSidebarBtn) {
+    peekSidebarBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    peekSidebarBtn.setAttribute('data-tip', '展开评论');
+    peekSidebarBtn.setAttribute('aria-label', '展开评论');
   }
   if (persist) {
     vscode.setState({ ...readWebviewState(), sidebarCollapsed: collapsed });
@@ -179,7 +184,10 @@ function expandSidebar(): void {
 
 setSidebarCollapsed(readWebviewState().sidebarCollapsed === true, false);
 toggleSidebarBtn?.addEventListener('click', () => {
-  setSidebarCollapsed(!app?.classList.contains('sidebar-collapsed'));
+  setSidebarCollapsed(true);
+});
+peekSidebarBtn?.addEventListener('click', () => {
+  setSidebarCollapsed(false);
 });
 
 function persistWebviewState(patch: Partial<WebviewState>): void {
@@ -191,6 +199,7 @@ const outlineUi = createOutlineUi({
   content,
   outlineTree: outlineTreeEl,
   toggleBtn: toggleOutlineBtn,
+  peekBtn: peekOutlineBtn,
   getCollapsed: () => readWebviewState().outlineCollapsed === true,
   setCollapsedPersist: (collapsed) => persistWebviewState({ outlineCollapsed: collapsed }),
   getCollapsedIds: () => {

@@ -3,6 +3,9 @@ import { buildHeadingTree, buildHeadingTreeFromDom } from './heading';
 
 const ICON_OUTLINE_TWISTY =
   '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>';
+/** Same chevron button look as comments sidebar collapse, mirrored for left panel. */
+const ICON_OUTLINE_COLLAPSE =
+  '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4l-4 4 4 4"/></svg>';
 
 function esc(s: string): string {
   return s.replace(
@@ -16,6 +19,7 @@ export interface OutlineUiOptions {
   content: HTMLElement | null;
   outlineTree: HTMLElement | null;
   toggleBtn: HTMLElement | null;
+  peekBtn?: HTMLElement | null;
   getCollapsed: () => boolean;
   setCollapsedPersist: (collapsed: boolean) => void;
   getCollapsedIds: () => Set<string>;
@@ -28,7 +32,7 @@ export function createOutlineUi(options: OutlineUiOptions): {
   refresh: () => void;
   updateSpy: () => void;
 } {
-  const { app, content, outlineTree, toggleBtn } = options;
+  const { app, content, outlineTree, toggleBtn, peekBtn } = options;
 
   function setActiveOutlineId(id: string | null): void {
     outlineTree?.querySelectorAll('.outline-row.active').forEach((el) => el.classList.remove('active'));
@@ -44,13 +48,16 @@ export function createOutlineUi(options: OutlineUiOptions): {
   function setCollapsed(collapsed: boolean, persist = true): void {
     app?.classList.toggle('outline-collapsed', collapsed);
     if (toggleBtn) {
-      const label = collapsed ? '展开大纲' : '收起大纲';
-      toggleBtn.setAttribute('data-tip', label);
-      toggleBtn.setAttribute('aria-label', label);
+      // Header toggle only visible while expanded; always shows collapse chevron.
+      toggleBtn.setAttribute('data-tip', '收起目录');
+      toggleBtn.setAttribute('aria-label', '收起目录');
       toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-      toggleBtn.innerHTML = collapsed
-        ? '<span aria-hidden="true">&gt;&gt;</span>'
-        : '<span aria-hidden="true">&lt;&lt;</span>';
+      toggleBtn.innerHTML = ICON_OUTLINE_COLLAPSE;
+    }
+    if (peekBtn) {
+      peekBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      peekBtn.setAttribute('data-tip', '展开目录');
+      peekBtn.setAttribute('aria-label', '展开目录');
     }
     if (persist) {
       options.setCollapsedPersist(collapsed);
@@ -152,7 +159,11 @@ export function createOutlineUi(options: OutlineUiOptions): {
   setCollapsed(options.getCollapsed(), false);
 
   toggleBtn?.addEventListener('click', () => {
-    setCollapsed(!app?.classList.contains('outline-collapsed'));
+    setCollapsed(true);
+  });
+
+  peekBtn?.addEventListener('click', () => {
+    setCollapsed(false);
   });
 
   outlineTree?.addEventListener('click', (event) => {
