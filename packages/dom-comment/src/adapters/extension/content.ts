@@ -29,7 +29,13 @@ import {
   setPinClickHandler,
   skipTarget,
 } from './highlight.js';
-import { areaPinsShouldBeInteractive, canOpenPinForEdit, pinsShouldBeInteractive } from './pin-policy.js';
+import { resolveEscapeAction } from './esc-policy.js';
+import {
+  areaPinsShouldBeInteractive,
+  canOpenPinForEdit,
+  drawerCardsShouldSelect,
+  pinsShouldBeInteractive,
+} from './pin-policy.js';
 import { postToBackground, type ExtMessage } from './messages.js';
 import { locateAnchor, pinModels } from './relocate-dom.js';
 import { skillPromptForTab } from '../../core/markdown.js';
@@ -159,10 +165,9 @@ function applySidebarModePolicy(): void {
   // Policy applies when the drawer is open; never auto-opens the drawer on mode toggle.
   if (modeOn) {
     clearBrowseSelection();
-    setSelectEnabled(false);
-  } else {
-    setSelectEnabled(true);
   }
+  // Cards reopen for edit in annotate and browse (same as numbered pins).
+  setSelectEnabled(drawerCardsShouldSelect(modeOn, drawerOpen()));
   paint();
 }
 
@@ -276,13 +281,17 @@ function bindDrawer(): void {
         postToBackground({ type: 'RESOLVE_THREAD', threadId });
       },
       onSelect: (thread) => {
-        selectThread(thread);
-        // Browse: card select also opens the thread panel so存量 comments can be edited.
+        // Browse: scroll + persistent highlight. Annotate and browse: open thread panel (like pins).
         if (!modeOn) {
-          const rect = resolveThreadRect(thread);
-          if (rect) {
-            showThread(thread, rect);
-          }
+          selectThread(thread);
+        } else {
+          setSelectedThreadId(thread.id);
+        }
+        const rect = resolveThreadRect(thread);
+        if (rect) {
+          showThread(thread, rect);
+        } else if (modeOn) {
+          setDrawerStatus('找不到该评论的锚点（可能已失效）');
         }
       },
       onOpen: () => {
@@ -562,24 +571,30 @@ document.addEventListener(
   'keydown',
   (ev) => {
     if (ev.key === 'Escape') {
-      if (drawerOpen()) {
-        ev.preventDefault();
-        closeDrawer();
-        return;
-      }
-      if (composerOpen()) {
+      const action = resolveEscapeAction({
+        composerOpen: composerOpen(),
+        drawerOpen: drawerOpen(),
+        dragging,
+        modeOn,
+      });
+      if (action === 'composer') {
         ev.preventDefault();
         dismissComposer();
         return;
       }
-      if (dragging) {
+      if (action === 'drawer') {
+        ev.preventDefault();
+        closeDrawer();
+        return;
+      }
+      if (action === 'rubber') {
         dragging = false;
         rubber = null;
         dragStart = null;
         paint();
         return;
       }
-      if (modeOn) {
+      if (action === 'mode') {
         ev.preventDefault();
         postToBackground({ type: 'SET_MODE_REQUEST', on: false });
       }

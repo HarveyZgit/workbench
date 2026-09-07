@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   areaPinsShouldBeInteractive,
   canOpenPinForEdit,
+  drawerCardsShouldSelect,
   pinsShouldBeInteractive,
 } from '../src/adapters/extension/pin-policy.js';
 
@@ -38,5 +39,12 @@ describe('pin-policy', () => {
   it('peeking disables pin interaction', () => {
     assert.equal(pinsShouldBeInteractive({ modeOn: true, peeking: true, drawerOpen: true }), false);
     assert.equal(areaPinsShouldBeInteractive({ modeOn: false, peeking: true, drawerOpen: true }), false);
+  });
+
+  it('drawer cards stay selectable in annotate and browse', () => {
+    assert.equal(drawerCardsShouldSelect(true, true), true);
+    assert.equal(drawerCardsShouldSelect(false, true), true);
+    assert.equal(drawerCardsShouldSelect(true, false), true);
+    assert.equal(drawerCardsShouldSelect(false, false), true);
   });
 });

@@ -13,7 +13,7 @@ python3 -m http.server 8765 --directory fixtures
 
 ## 15 分钟冒烟
 
-日常复跑只走这些：TC-01 加载、TC-03 工具栏左键进模式（不自动开抽屉）、刷新退出、划选文字、拖区域、标注中点链接、保存、Esc（先关抽屉再退出）、关闭后点序号钉重开编辑（TC-29）、刷新后开抽屉或进标注编辑存量（TC-30）、右键复制 prompt、悬浮球抽屉（标注中卡片禁选但钉可重开 / 非标注显示序号+高亮+开面板）、CLI `list`、file:// 冒烟（先勾 Allow access to file URLs）。完整用例不要每次全跑。
+日常复跑只走这些：TC-01 加载、TC-03 工具栏左键进模式（不自动开抽屉）、刷新退出、划选文字、拖区域、标注中点链接、保存、Esc（先关编写框，再关抽屉，再退出）、关闭后点序号钉/抽屉卡片重开编辑（TC-29）、刷新后开抽屉或进标注编辑存量（TC-30）、右键复制 prompt、悬浮球抽屉（标注中钉与卡片均可重开编辑 / 非标注显示序号+高亮+开面板）、CLI `list`、file:// 冒烟（先勾 Allow access to file URLs）。完整用例不要每次全跑。
 
 ---
 
@@ -87,9 +87,8 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
   - No popup appears.
   - Page shows a top-center pill: **标注中 · Esc 退出 · 长按空格看原页面**.
   - Toolbar icon switches to the X icon; tooltip becomes **退出标注模式**.
-  - Right-side comment drawer opens automatically.
-  - Drawer cards cannot select/highlight existing comments while annotating (resolve may still work).
-  - Numbered pins remain clickable: pin click reopens the thread panel for edit (page click still creates a new thread). Area fills do not steal create clicks.
+  - Comment drawer does **not** open automatically (float ball still toggles it).
+  - If the drawer is already open: drawer cards and numbered pins reopen the thread panel for edit; page click still creates. Area fills do not steal create clicks. Resolve on cards may still work.
   - Bottom-right float ball **评** is visible (also when mode is off).
 
 ---
@@ -104,9 +103,8 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
   1. Left-click the toolbar icon again (or press Esc with the drawer already closed).
 - **expected:**
   - Annotate banner / hover / rubber / composer are gone.
-  - Comment drawer opens automatically on exit.
-  - Numbered pins (序号) remain visible on the page for review.
-  - Drawer card select is enabled again; selecting a card scrolls, persistently highlights the anchored region, and opens the thread panel for edit. Pin click does the same (pins only while drawer is open).
+  - Comment drawer does **not** open automatically on exit (open via float ball to review).
+  - With drawer open: numbered pins (序号) are visible; card/pin select scrolls, persistently highlights the anchored region, and opens the thread panel for edit.
   - Float ball remains.
   - Toolbar icon is plus again; tooltip **进入标注模式**.
 
@@ -192,16 +190,18 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 ## TC-10 — Esc dismisses composer, second Esc exits mode
 
 - **id:** TC-10
-- **title:** Esc is two-stage (composer then mode)
+- **title:** Esc prefers composer, then drawer, then mode
 - **status:** READY
-- **precondition:** Annotate mode on, composer open, fixture page.
+- **precondition:** Annotate mode on, composer open, fixture page. Optionally open the float drawer as well.
 - **steps:**
   1. Press Esc.
-  2. Press Esc again.
+  2. If the drawer was open, press Esc again.
+  3. Press Esc once more (or twice from a composer-only start).
 - **expected:**
-  - First Esc closes the composer and draft pin; banner remains.
-  - After close, clicking the numbered pin of a saved thread reopens its thread panel for edit (without exiting annotate mode).
-  - Second Esc exits annotate mode globally (banner gone, plus icon).
+  - First Esc always closes the composer (and draft pin), even when the drawer is also open; banner remains.
+  - Next Esc closes the drawer if it was open (mode stays on).
+  - After composer+drawer are closed, Esc exits annotate mode globally (banner gone, plus icon).
+  - After composer close, clicking a numbered pin or drawer card reopens the thread panel for edit.
 
 ---
 
@@ -291,7 +291,7 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 ## TC-16b — Float ball opens comment drawer
 
 - **id:** TC-16b
-- **title:** Float ball opens right drawer; card scrolls to pin; Esc closes drawer first
+- **title:** Float ball opens right drawer; card opens panel; Esc closes composer then drawer
 - **status:** READY
 - **precondition:** Fixture page with at least one saved open thread (HOST) or empty list is fine for open/close smoke.
 - **steps:**
@@ -301,9 +301,9 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
   4. Press Esc.
 - **expected:**
   - Drawer slides in from the right listing current-page threads (optional “本标签页全部页面”); cards show 序号 badges when numbered.
-  - While annotate mode is on, card click does not select/highlight existing comments (pins still reopen for edit).
-  - With mode off and drawer open, card/pin click scrolls toward the pin/anchor, keeps a persistent region highlight, and opens the thread panel for edit; orphaned shows a drawer hint. Closing the drawer clears the highlight (composer may stay until Esc/close).
-  - Esc closes the drawer without exiting annotate mode. A second Esc (with drawer closed) exits mode (drawer stays closed until you open it again).
+  - While annotate mode is on, card click and numbered-pin click reopen the thread panel for edit (page gestures still create).
+  - With mode off and drawer open, card/pin click scrolls toward the pin/anchor, keeps a persistent region highlight, and opens the thread panel for edit; orphaned shows a drawer hint. Closing the drawer clears the highlight.
+  - If a composer/panel is open, Esc closes it first; next Esc closes the drawer without exiting annotate mode. Further Esc (drawer closed) exits mode.
 
 ---
 
@@ -396,11 +396,11 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 - **status:** HOST
 - **precondition:** At least one saved open thread.
 - **steps:**
-  1. While annotate mode is on, click a numbered pin — it reopens that thread's panel for edit (drawer cards still do not select).
-  2. Close the panel (X or Esc). Click the same pin again — panel reopens. Page-click elsewhere still starts a new thread.
+  1. While annotate mode is on, click a numbered pin — it reopens that thread's panel for edit. Open the float drawer and click a card — it also reopens the panel.
+  2. Close the panel (X or Esc). Click the same pin or card again — panel reopens. Page-click elsewhere still starts a new thread.
   3. Exit annotate mode, open the float-ball drawer, then click the numbered pin (or drawer card) to select + highlight + open the thread panel.
   4. In the panel: reply `补充：再看截图` → 保存; edit a comment; delete a comment; resolve.
-- **expected:** Annotate pin-click reopens for edit; drawer cards stay create-only while annotating. Browse pin/card select scrolls + persistent highlight + opens panel. Panel mutations refresh; reply shows as **我**; resolve marks resolved; CLI `list --open` hides it; `list --tab <id>` still shows `[已解决]`.
+- **expected:** Annotate pin/card click reopens for edit. Browse pin/card select scrolls + persistent highlight + opens panel. Panel mutations refresh; reply shows as **我**; resolve marks resolved; CLI `list --open` hides it; `list --tab <id>` still shows `[已解决]`.
 
 ---
 
@@ -411,11 +411,11 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
 - **status:** HOST
 - **precondition:** TC-19/20 saved threads exist.
 - **steps:**
-  1. Press Esc until annotate mode is off (drawer may close first, then mode).
-  2. Confirm annotate banner/hover are gone, but numbered pins remain and the drawer opens on exit.
+  1. Press Esc until annotate mode is off (composer first if open, then drawer if open, then mode).
+  2. Confirm annotate banner/hover are gone. Open the float drawer to review numbered pins (drawer does not auto-open on exit).
   3. `list --tab <id>` again.
   4. Enter annotate again on the same URL.
-- **expected:** Disk data unchanged. Browse shows 序号 pins; re-entering annotate relocates pins and disables selecting existing comments.
+- **expected:** Disk data unchanged. Browse shows 序号 pins with drawer open; re-entering annotate relocates pins; drawer cards and pins still reopen for edit.
 
 ---
 
@@ -526,7 +526,7 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
   - After close, annotate banner remains; page gestures still create.
   - Pin click reopens the thread panel for that thread (edit/reply/resolve available).
   - Switching pins replaces the open panel with the other thread.
-  - Drawer cards (if drawer open) still do not select while annotate is on.
+  - Drawer cards (if drawer open) also reopen the thread panel while annotate is on.
 
 ---
 
@@ -540,11 +540,12 @@ Status key: **READY** = can run with the unpacked dir + an http(s) page. **HOST*
   1. Confirm no annotate banner (mode off). Float ball **评** visible.
   2. **Browse path:** click float ball to open drawer → numbered pins appear → click a pin or drawer card.
   3. Close the thread panel; optionally Esc to close drawer.
-  4. **Annotate path:** enter annotate mode → click a numbered pin (drawer need not be open).
+  4. **Annotate path:** enter annotate mode → click a numbered pin (drawer need not be open); optionally open drawer and click a card.
 - **expected:**
   - Browse: with drawer open, pin/card opens the thread panel and highlights the region; edit/reply works.
   - After refresh, pins are not shown until the drawer is opened (browse) or annotate mode is entered.
-  - Annotate: pin opens the thread panel for edit without requiring the drawer; page click still creates.
+  - Annotate: pin or drawer card opens the thread panel for edit; page click still creates.
+  - Esc closes an open composer before closing the drawer.
   - No stuck composer/overlay that blocks further opens.
 
 ---

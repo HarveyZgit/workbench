@@ -3,7 +3,8 @@
  *
  * - Annotate mode: numbered pins reopen existing threads for edit; page clicks still create.
  * - Browse (mode off): pins only when the float drawer is open; pin/card opens edit + highlight.
- * - Drawer cards stay create-only (select disabled) while annotate + drawer open.
+ * - Drawer cards also reopen the thread panel while annotating (same as numbered pins).
+ * - Area fills stay click-through in annotate so create gestures still work.
  */
 
 export function pinsShouldBeInteractive(opts: {
@@ -35,4 +36,12 @@ export function areaPinsShouldBeInteractive(opts: {
 /** Whether a pin click should open the thread panel for view/edit. */
 export function canOpenPinForEdit(modeOn: boolean, drawerOpen: boolean): boolean {
   return modeOn || drawerOpen;
+}
+
+/**
+ * Drawer cards reopen for edit in annotate and browse (same as numbered pins).
+ * Visibility is gated by the drawer itself; annotate no longer forces select-off.
+ */
+export function drawerCardsShouldSelect(_modeOn: boolean, _drawerOpen: boolean): boolean {
+  return true;
 }
