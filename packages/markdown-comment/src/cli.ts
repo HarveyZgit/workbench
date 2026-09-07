@@ -2,7 +2,17 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readStorageDir, listAll, loadDoc, saveDoc, findThread } from './storage';
+import * as os from 'node:os';
+import { spawn } from 'node:child_process';
+import { readStorageDir, listAll, loadDoc, saveDoc, findThread, writePointer } from './storage';
+import { hasMarkdownExtension } from './markdown-lang';
+import { startPreviewServer } from './preview/web-server';
+import {
+  detectAgentSkillRoots,
+  installSkill,
+  resolveSkillBody,
+  SKILL_NAME,
+} from './skill-install';
 import type { StoredComment, StoredThread } from './types';
 
 function fail(msg: string): never {
@@ -10,19 +20,117 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
-function getStorageDir(): string {
-  const dir = readStorageDir();
-  if (!dir) {
-    fail(
-      '未找到评论存储。请先在 VS Code 里启动 Markdown Comment 插件（它会写入存储指针 ~/.markdown-comment/pointer.json）。',
-    );
-  }
-  return dir;
-}
-
 const [, , cmd, ...rest] = process.argv;
 const flags = new Set(rest.filter((a) => a.startsWith('--')));
 const args = rest.filter((a) => !a.startsWith('--'));
+
+
+/** Ensure a storage directory exists (CLI works without VS Code). */
+function ensureStorageDir(): string {
+  const existing = readStorageDir();
+  if (existing) {
+    fs.mkdirSync(existing, { recursive: true });
+    return existing;
+  }
+  const dir = path.join(os.homedir(), ".markdown-comment", "store");
+  fs.mkdirSync(dir, { recursive: true });
+  writePointer(dir);
+  return dir;
+}
+
+function getStorageDir(): string {
+  return ensureStorageDir();
+}
+
+function shellQuote(value: string): string {
+  return "'" + value.replaceAll("'", "'\\''") + "'";
+}
+
+function packageRoot(): string {
+  const here = path.resolve(__dirname);
+  return path.basename(here) === 'dist' ? path.dirname(here) : path.resolve(here, '..');
+}
+
+function bundledSkillPath(): string {
+  const root = packageRoot();
+  const candidates = [
+    path.join(root, 'dist', 'resources', 'skills', SKILL_NAME, 'SKILL.md'),
+    path.join(root, 'resources', 'skills', SKILL_NAME, 'SKILL.md'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  fail("missing bundled SKILL.md; build the package first");
+}
+
+function cliCommandForSkill(): string {
+  const cliJs =
+    path.basename(__filename) === 'cli.js' || path.basename(__filename) === 'cli.ts'
+      ? path.resolve(__filename)
+      : path.join(packageRoot(), 'dist', 'cli.js');
+  return shellQuote(process.execPath) + " " + shellQuote(cliJs);
+}
+
+function collectTargets(): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < rest.length; i++) {
+    const token = rest[i];
+    if (token === '--target') {
+      const value = rest[i + 1];
+      if (!value || value.startsWith('--')) {
+        fail('usage: markdown-comment install-skill [--target <skill-root>]');
+      }
+      out.push(value);
+      i += 1;
+      continue;
+    }
+    if (token.startsWith('--target=')) {
+      out.push(token.slice('--target='.length));
+    }
+  }
+  return out;
+}
+
+function cmdInstallSkill(): void {
+  let targets = collectTargets();
+  if (targets.length === 0) {
+    targets = detectAgentSkillRoots();
+  }
+  if (targets.length === 0) {
+    fail('no agent skill roots found; pass --target <skill-root>');
+  }
+  const globalStorageDir = path.join(os.homedir(), '.markdown-comment');
+  const body = resolveSkillBody(bundledSkillPath(), cliCommandForSkill());
+  const outcome = installSkill(globalStorageDir, targets, body);
+  for (const root of outcome.installed) {
+    process.stdout.write('installed -> ' + root + '\n');
+  }
+  for (const root of outcome.migrated) {
+    process.stdout.write('migrated -> ' + root + '\n');
+  }
+  for (const root of outcome.refreshed) {
+    process.stdout.write('refreshed -> ' + root + '\n');
+  }
+  for (const skip of outcome.skipped) {
+    process.stderr.write('skip ' + skip.root + ': ' + skip.reason + '\n');
+  }
+  if (outcome.installed.length === 0 && outcome.migrated.length === 0 && outcome.refreshed.length === 0) {
+    fail('skill install did not land on any root');
+  }
+  process.stdout.write('canonical: ' + path.join(globalStorageDir, 'skill', SKILL_NAME) + '\n');
+}
+
+function cmdExtension(): void {
+  const vsix = path.join(packageRoot(), 'dist', 'vscode-markdown-comment.vsix');
+  if (!fs.existsSync(vsix)) {
+    fail('VSIX missing; run pack-release first');
+  }
+  const abs = path.resolve(vsix);
+  process.stdout.write(abs + '\n');
+  process.stdout.write('hint: code --install-extension ' + shellQuote(abs) + ' --force\n');
+}
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 const clip = (s: string, n = 30) => {
@@ -231,6 +339,109 @@ function cmdResolve(): void {
   process.stdout.write(`OK: 已标记已解决 #${shortId(found.thread.id)}\n`);
 }
 
+
+function openBrowser(url: string): void {
+  const platform = process.platform;
+  try {
+    if (platform === 'darwin') {
+      spawn('open', [url], { detached: true, stdio: 'ignore' }).unref();
+    } else if (platform === 'win32') {
+      spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
+    }
+  } catch (err) {
+    process.stderr.write(`无法自动打开浏览器: ${err}\n`);
+  }
+}
+
+function flagValue(name: string): string | undefined {
+  const idx = rest.findIndex((a) => a === name || a.startsWith(name + '='));
+  if (idx < 0) return undefined;
+  const token = rest[idx];
+  if (token.startsWith(name + '=')) return token.slice(name.length + 1);
+  return rest[idx + 1];
+}
+
+async function cmdPreview(): Promise<void> {
+  const fileArg = args[0];
+  if (!fileArg) {
+    fail('用法: markdown-comment preview <file.md> [--port 8765] [--no-open] [--detach]');
+  }
+  const filePath = path.resolve(fileArg);
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    fail(`文件不存在: ${filePath}`);
+  }
+  if (!hasMarkdownExtension(filePath)) {
+    fail(`不是 Markdown 文件: ${filePath}`);
+  }
+  const portRaw = flagValue('--port');
+  const port = portRaw ? Number(portRaw) : 8765;
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    fail(`无效端口: ${portRaw}`);
+  }
+  const noOpen = flags.has('--no-open');
+  const detach = flags.has('--detach');
+
+  // Parent process for --detach: spawn a background child, wait for url, then exit.
+  if (detach && process.env.MDC_PREVIEW_DETACHED !== '1') {
+    const logPath = path.join(os.homedir(), '.markdown-comment', 'preview-detach.log');
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    const logFd = fs.openSync(logPath, 'w');
+    const childArgv = process.argv.slice(1).filter((a) => a !== '--detach');
+    const child = spawn(process.execPath, childArgv, {
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
+      env: { ...process.env, MDC_PREVIEW_DETACHED: '1' },
+    });
+    fs.closeSync(logFd);
+    child.unref();
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 150));
+      let text = '';
+      try {
+        text = fs.readFileSync(logPath, 'utf8');
+      } catch {
+        continue;
+      }
+      const m = text.match(/url:\s+(\S+)/);
+      if (m) {
+        process.stdout.write(text);
+        process.stdout.write(`(detached pid ${child.pid}; stop: kill ${child.pid})\n`);
+        process.exit(0);
+      }
+      if (/文件不存在|不是 Markdown|无效端口|Failed to bind/.test(text)) {
+        process.stderr.write(text);
+        process.exit(1);
+      }
+    }
+    fail(`preview 启动超时，见 ${logPath}`);
+  }
+
+  const storageDir = ensureStorageDir();
+  const server = await startPreviewServer({ filePath, storageDir, port });
+  process.stdout.write(`Markdown Comment preview\n`);
+  process.stdout.write(`  file:    ${filePath}\n`);
+  process.stdout.write(`  storage: ${storageDir}\n`);
+  process.stdout.write(`  url:     ${server.url}\n`);
+  process.stdout.write(process.env.MDC_PREVIEW_DETACHED === '1' ? `后台运行中\n` : `按 Ctrl+C 停止\n`);
+  if (!noOpen) {
+    openBrowser(server.url);
+  }
+  const shutdown = async () => {
+    try {
+      await server.close();
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.on('SIGINT', () => void shutdown());
+  process.on('SIGTERM', () => void shutdown());
+  // Keep alive
+  await new Promise(() => {});
+}
+
 switch (cmd) {
   case 'list':
     cmdList();
@@ -241,11 +452,25 @@ switch (cmd) {
   case 'resolve':
     cmdResolve();
     break;
+  case 'install-skill':
+    cmdInstallSkill();
+    break;
+  case 'extension':
+    cmdExtension();
+    break;
+  case 'preview':
+    void cmdPreview().catch((err) => {
+      fail(err instanceof Error ? err.message : String(err));
+    });
+    break;
   default:
     process.stdout.write(
       [
         'markdown-comment <command>',
         '',
+        '  install-skill [--target <skill-root>]…',
+        '                                  安装 / 更新 Agent Skill（默认探测 ~/.<agent>/skills）',
+        '  extension                       打印 VSIX 绝对路径，并给出 code --install-extension 提示',
         '  list [file] [-g] [--open] [--name-only] [--hidden] [--json]',
         '                                  列出评论。默认只看当前目录（含子目录）下的文档、且隐藏失联评论；',
         '                                  -g/--global 看全局；指定 file 只看该文件；--open 只看未解决；',
@@ -253,6 +478,9 @@ switch (cmd) {
         '                                  --name-only 只列文件+条数；--json 输出原始 JSON。本地文件路径显示为相对路径',
         '  reply <threadId> <text>         以 Agent 身份回复（threadId 可用前 8 位短 id）',
         '  resolve <threadId>              把线程标记为已解决',
+        '  preview <file.md> [--port 8765] [--no-open] [--detach]',
+        '                                  在本地浏览器打开评论预览（HTTP+WebSocket），读写同一评论存储；',
+        '                                  --detach 后台启动并立刻返回',
         '',
       ].join('\n'),
     );

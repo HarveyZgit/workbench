@@ -7,6 +7,7 @@ import { writePointer, loadDoc, saveDoc, fileHash } from './storage';
 import { isMarkdownDocument } from './markdown-lang';
 import type { StoredAnchor, StoredComment, StoredThread } from './types';
 import { buildAnchorFromRange, relocate } from './anchor';
+import { PlainTextDocument, Range as TextRange } from './text-model';
 import { openPreview } from './preview/panel';
 import {
   SKILL_NAME,
@@ -116,13 +117,20 @@ function authorInfo(storedAuthor: string): vscode.CommentAuthorInformation {
 
 function buildAnchor(doc: vscode.TextDocument, thread: vscode.CommentThread, meta: ThreadMeta): StoredAnchor {
   const { range } = thread;
+  const model = PlainTextDocument.fromString(doc.getText());
   if (meta.kind === 'document' || !range) {
-    return buildAnchorFromRange(doc, new vscode.Range(0, 0, 0, 0), 'document');
+    return buildAnchorFromRange(model, new TextRange(0, 0, 0, 0), 'document');
   }
   if (meta.anchorFailed && meta.originalAnchor) {
     return meta.originalAnchor;
   }
-  const anchor = buildAnchorFromRange(doc, range, 'selection');
+  const textRange = new TextRange(
+    range.start.line,
+    range.start.character,
+    range.end.line,
+    range.end.character,
+  );
+  const anchor = buildAnchorFromRange(model, textRange, 'selection');
   anchor.rendered = meta.rendered;
   anchor.target = meta.target;
   return anchor;
@@ -203,8 +211,10 @@ function loadForDocument(doc: vscode.TextDocument): void {
   loadedDocs.add(k);
 
   for (const st of loadDoc(storageDir, doc.uri.fsPath).threads) {
-    const located = relocate(doc, st.anchor);
-    const range = located ?? new vscode.Range(0, 0, 0, 0);
+    const located = relocate(PlainTextDocument.fromString(doc.getText()), st.anchor);
+    const range = located
+      ? new vscode.Range(located.start.line, located.start.character, located.end.line, located.end.character)
+      : new vscode.Range(0, 0, 0, 0);
     const thread = controller.createCommentThread(doc.uri, range, []);
     const meta: ThreadMeta = {
       id: st.id,
