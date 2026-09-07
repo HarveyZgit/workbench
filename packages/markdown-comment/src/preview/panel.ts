@@ -420,6 +420,7 @@ body {
   border: none;
   background: transparent;
   display: flex; flex-direction: column; min-height: 0;
+  transition: width .23s cubic-bezier(0.4, 0, 0.2, 1), opacity .23s ease, min-width .23s ease;
 }
 #outline-head {
   position: sticky; top: 0; z-index: 5;
@@ -459,18 +460,34 @@ body {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; padding: 0; border: none; border-radius: 3px;
   background: transparent; color: var(--vscode-foreground); opacity: 0.55; cursor: pointer;
+  outline: none;
 }
+.outline-twisty:focus,
+.outline-twisty:focus-visible { outline: none; box-shadow: none; }
 .outline-twisty:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
 .outline-twisty[aria-hidden="true"] { visibility: hidden; pointer-events: none; }
-.outline-twisty svg { display: block; transition: transform .12s; }
+.outline-twisty svg { display: block; transition: transform .22s cubic-bezier(0.4, 0, 0.2, 1); }
 .outline-node.collapsed > .outline-row .outline-twisty svg { transform: rotate(-90deg); }
-.outline-node.collapsed > .outline-list { display: none; }
+.outline-node > .outline-list {
+  overflow: hidden;
+  max-height: 2400px;
+  opacity: 1;
+  transition: max-height .24s cubic-bezier(0.4, 0, 0.2, 1), opacity .22s ease;
+}
+.outline-node.collapsed > .outline-list {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
 .outline-label {
   flex: 1; min-width: 0; padding: 4px 2px;
   color: inherit; text-decoration: none; cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   line-height: 1.35;
+  outline: none;
 }
+.outline-label:focus,
+.outline-label:focus-visible { outline: none; box-shadow: none; }
 .outline-label:hover { color: var(--vscode-textLink-foreground); }
 /* 收起后不留细条：整栏隐藏，改用浮动 peek 图标 */
 #app.outline-collapsed #outline {
@@ -482,6 +499,7 @@ body {
   width: 320px; flex: none; overflow: auto; box-sizing: border-box;
   border-left: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3));
   background: var(--vscode-sideBar-background, transparent);
+  transition: width .23s cubic-bezier(0.4, 0, 0.2, 1), opacity .23s ease, min-width .23s ease, border-width .23s ease;
 }
 
 h1, h2, h3, h4, h5, h6 { line-height: 1.3; margin: 1.6em 0 0.6em; font-weight: 600; }
@@ -553,23 +571,29 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 }
 #sidebar-inner { padding: 12px; }
 
-/* 收起后的浮动 peek 按钮（目录 / 评论） */
+/* 收起后的浮动 peek 按钮（目录 / 评论）——置顶，visibility+opacity 淡入淡出 */
 .mdc-peek {
   position: absolute; z-index: 40;
-  display: none; align-items: center; justify-content: center;
+  display: inline-flex; align-items: center; justify-content: center;
   width: 36px; height: 36px; padding: 0; border-radius: 10px; cursor: pointer;
   border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.35));
   background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #252526));
   color: var(--vscode-foreground);
   box-shadow: 0 2px 12px rgba(0,0,0,0.28);
-  opacity: 0.94;
+  visibility: hidden; opacity: 0; pointer-events: none;
+  transform: scale(0.88);
+  transition: opacity .22s ease, transform .22s cubic-bezier(0.4, 0, 0.2, 1), visibility .22s;
 }
-.mdc-peek:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
+.mdc-peek:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
 .mdc-peek svg { display: block; }
-#mdc-peek-outline { left: 12px; top: 50%; transform: translateY(-50%); }
-#mdc-peek-sidebar { right: 12px; top: 50%; transform: translateY(-50%); }
-#app.outline-collapsed #mdc-peek-outline { display: inline-flex; }
-#app.sidebar-collapsed #mdc-peek-sidebar { display: inline-flex; }
+#mdc-peek-outline { left: 12px; top: 10px; }
+#mdc-peek-sidebar { right: 12px; top: 10px; }
+#app.outline-collapsed #mdc-peek-outline,
+#app.sidebar-collapsed #mdc-peek-sidebar {
+  visibility: visible; opacity: 0.94; pointer-events: auto; transform: scale(1);
+}
+#app.outline-collapsed #mdc-peek-outline:hover,
+#app.sidebar-collapsed #mdc-peek-sidebar:hover { opacity: 1; }
 #mdc-peek-outline.mdc-tip::after,
 #mdc-peek-outline.mdc-tip:hover::after {
   left: calc(100% + 8px); right: auto; top: 50%; margin-top: 0;

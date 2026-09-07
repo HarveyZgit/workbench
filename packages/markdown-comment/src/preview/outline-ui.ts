@@ -198,6 +198,7 @@ export function createOutlineUi(options: OutlineUiOptions): {
       if (id) {
         scrollToHeadingId(id);
       }
+      link.blur();
     }
   });
 
