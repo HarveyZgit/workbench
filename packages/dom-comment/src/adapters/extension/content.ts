@@ -10,6 +10,17 @@ import {
   setComposerHidden,
 } from './composer.js';
 import {
+  closeDrawer,
+  drawerOpen,
+  mountDrawer,
+  openDrawer,
+  setDrawerStatus,
+  setSelectEnabled,
+  setSelectedThreadId,
+  showToast,
+  updateDrawer,
+} from './drawer.js';
+import {
   deepestElement,
   isOurHost,
   renderOverlay,
@@ -19,7 +30,8 @@ import {
   skipTarget,
 } from './highlight.js';
 import { postToBackground, type ExtMessage } from './messages.js';
-import { pinModels } from './relocate-dom.js';
+import { locateAnchor, pinModels } from './relocate-dom.js';
+import { skillPromptForTab } from '../../core/markdown.js';
 import type { StoredTabFile, StoredThread } from '../../core/types.js';
 
 const DRAG = DRAG_THRESHOLD_PX;
@@ -39,6 +51,9 @@ let pins: { x: number; y: number; w: number; h: number; area: boolean; id: strin
 let activeRect: DOMRect | null = null;
 let showDraftPin = false;
 let openThreadId: string | null = null;
+/** Browse-mode selected thread (sidebar / pin); drives persistent region highlight. */
+let selectedThreadId: string | null = null;
+let selectedHighlight: DOMRect | null = null;
 
 function hypot(dx: number, dy: number): number {
   return Math.sqrt(dx * dx + dy * dy);
@@ -99,11 +114,13 @@ function editableTarget(target: EventTarget | null): boolean {
 }
 
 function paintOverlay(): void {
-  if (!modeOn) {
+  const composing = composerOpen();
+  // Browse pins/highlight only while the sidebar is open (not merely because mode is off).
+  const showBrowse = !modeOn && drawerOpen() && (pins.length > 0 || selectedHighlight !== null);
+  if (!modeOn && !showBrowse) {
     removeOverlay();
     return;
   }
-  const composing = composerOpen();
   renderOverlay({
     banner: modeOn && !peeking,
     hover: rubber
@@ -115,6 +132,8 @@ function paintOverlay(): void {
           : null,
     rubber: modeOn && !peeking ? rubber : null,
     pins: peeking ? [] : pins,
+    pinsInteractive: !modeOn,
+    selected: !modeOn && !peeking ? selectedHighlight : null,
     draft:
       showDraftPin && activeRect && !peeking
         ? { x: activeRect.left, y: activeRect.top, w: activeRect.width, h: activeRect.height }
@@ -123,11 +142,24 @@ function paintOverlay(): void {
 }
 
 function paint(): void {
-  if (!modeOn) {
-    removeOverlay();
-    return;
-  }
   paintOverlay();
+}
+
+function clearBrowseSelection(): void {
+  selectedThreadId = null;
+  selectedHighlight = null;
+  setSelectedThreadId(null);
+}
+
+function applySidebarModePolicy(): void {
+  // Policy applies when the drawer is open; never auto-opens the drawer on mode toggle.
+  if (modeOn) {
+    clearBrowseSelection();
+    setSelectEnabled(false);
+  } else {
+    setSelectEnabled(true);
+  }
+  paint();
 }
 
 function setMode(on: boolean): void {
@@ -144,10 +176,10 @@ function setMode(on: boolean): void {
     closeComposer();
     activeRect = null;
     showDraftPin = false;
-    removeOverlay();
+    applySidebarModePolicy();
     return;
   }
-  paint();
+  applySidebarModePolicy();
 }
 
 function findThread(id: string): StoredThread | undefined {
@@ -185,6 +217,10 @@ function refreshPins(overlayOnly = false): void {
       pins = [];
     }
   }
+  if (selectedThreadId) {
+    const pin = pins.find((item) => item.id === selectedThreadId);
+    selectedHighlight = pin ? new DOMRect(pin.x, pin.y, pin.w, pin.h) : selectedHighlight;
+  }
   if (overlayOnly) {
     paintOverlay();
     return;
@@ -194,6 +230,61 @@ function refreshPins(overlayOnly = false): void {
 
 function askLoad(): void {
   postToBackground({ type: 'LOAD_TAB', tabId: -1 });
+}
+
+function currentPageUrl(): string {
+  const { href } = location;
+  return isAnnotatableUrl(href) ? canonicalizeUrl(href) : '';
+}
+
+function promptText(tabId: number, href: string): string {
+  return skillPromptForTab(tabId, href);
+}
+
+function resolveThreadRect(thread: StoredThread): DOMRect | null {
+  const pin = pins.find((item) => item.id === thread.id);
+  if (pin) {
+    return new DOMRect(pin.x, pin.y, pin.w, pin.h);
+  }
+  const hit = locateAnchor(thread.anchor);
+  return hit?.rect ?? null;
+}
+
+function selectThread(thread: StoredThread): void {
+  const rect = resolveThreadRect(thread);
+  if (!rect) {
+    setDrawerStatus('找不到该评论的锚点（可能已失效）');
+    return;
+  }
+  selectedThreadId = thread.id;
+  selectedHighlight = rect;
+  setSelectedThreadId(thread.id);
+  const absTop = rect.top + window.scrollY;
+  window.scrollTo({ top: Math.max(0, absTop - window.innerHeight / 3), behavior: 'smooth' });
+  setDrawerStatus('');
+  paint();
+}
+
+function bindDrawer(): void {
+  mountDrawer(
+    {
+      onResolve: (threadId) => {
+        postToBackground({ type: 'RESOLVE_THREAD', threadId });
+      },
+      onSelect: (thread) => {
+        selectThread(thread);
+      },
+      onOpen: () => {
+        applySidebarModePolicy();
+      },
+      onClose: () => {
+        clearBrowseSelection();
+        paint();
+      },
+    },
+    tabCache,
+    currentPageUrl(),
+  );
 }
 
 function dismissComposer(): void {
@@ -305,6 +396,23 @@ function rebuildChain(el: Element | null): void {
 }
 
 function openPin(id: string): void {
+  const thread = findThread(id);
+  if (!thread) {
+    return;
+  }
+  // Annotate mode: ignore selecting existing comments via pins (create-only).
+  if (modeOn) {
+    return;
+  }
+  // Browse mode: pins only interact when the sidebar is already open.
+  if (!drawerOpen()) {
+    return;
+  }
+  selectThread(thread);
+}
+
+/** Agent / SET_FOCUS_THREAD: enter annotate and open the thread composer. */
+function focusThread(id: string): void {
   const thread = findThread(id);
   if (!thread) {
     return;
@@ -443,6 +551,11 @@ document.addEventListener(
   'keydown',
   (ev) => {
     if (ev.key === 'Escape') {
+      if (drawerOpen()) {
+        ev.preventDefault();
+        closeDrawer();
+        return;
+      }
       if (composerOpen()) {
         ev.preventDefault();
         dismissComposer();
@@ -502,7 +615,7 @@ chrome.runtime.onMessage.addListener((msg: ExtMessage, _sender, sendResponse) =>
     if (!modeOn) {
       setMode(true);
     }
-    openPin(msg.threadId);
+    focusThread(msg.threadId);
   }
   if (msg.type === 'CREATE_THREAD_RESULT') {
     setCaptureChromeHidden(false);
@@ -518,9 +631,24 @@ chrome.runtime.onMessage.addListener((msg: ExtMessage, _sender, sendResponse) =>
     tabCache = msg.tab;
     refreshPins();
     refreshOpenThread();
+    updateDrawer(tabCache, currentPageUrl());
   }
   if (msg.type === 'THREADS_CHANGED') {
     askLoad();
+  }
+  if (msg.type === 'OPEN_DRAWER') {
+    openDrawer();
+  }
+  if (msg.type === 'COPY_SKILL_PROMPT') {
+    if (msg.copied) {
+      showToast('已复制 skill prompt');
+      return undefined;
+    }
+    const text = promptText(msg.tabId, msg.url || location.href);
+    void navigator.clipboard.writeText(text).then(
+      () => showToast('已复制 skill prompt'),
+      () => showToast('复制失败'),
+    );
   }
   if (msg.type === 'HOST_ERROR') {
     setCaptureChromeHidden(false);
@@ -530,16 +658,8 @@ chrome.runtime.onMessage.addListener((msg: ExtMessage, _sender, sendResponse) =>
   return undefined;
 });
 
-chrome.storage.session.get('annotationMode').then((v) => {
-  setMode(Boolean(v.annotationMode));
-});
-chrome.storage.session.onChanged.addListener((c) => {
-  if (c.annotationMode) {
-    setMode(Boolean(c.annotationMode.newValue));
-  }
-});
-
 setPinClickHandler(openPin);
+bindDrawer();
 askLoad();
 window.addEventListener('scroll', () => refreshPins(true), { passive: true });
 window.addEventListener('resize', () => refreshPins(true));

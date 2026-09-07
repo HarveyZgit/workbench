@@ -86,25 +86,36 @@ export function renderOverlay(opts: {
   rubber: { x: number; y: number; w: number; h: number } | null;
   pins: { x: number; y: number; w: number; h: number; area: boolean; id: string; number: number }[];
   draft?: { x: number; y: number; w: number; h: number; number?: number } | null;
+  /** When false, numbered pins are visible but not clickable (annotate mode). Default true. */
+  pinsInteractive?: boolean;
+  /** Persistent selected-region highlight (browse / sidebar select). */
+  selected?: DOMRect | null;
 }): void {
   const host = ensureOverlayHost();
   const root = host.shadowRoot!;
+  const interactive = opts.pinsInteractive !== false;
   const hover = opts.hover
     ? `<div style="position:fixed;left:${opts.hover.left}px;top:${opts.hover.top}px;width:${opts.hover.width}px;height:${opts.hover.height}px;border:2px solid ${BLUE};pointer-events:none;box-sizing:border-box;"></div>`
     : '';
   const rubber = opts.rubber
     ? `<div style="position:fixed;left:${opts.rubber.x}px;top:${opts.rubber.y}px;width:${opts.rubber.w}px;height:${opts.rubber.h}px;border:2px dashed ${BLUE};background:rgba(37,99,235,.08);pointer-events:none;box-sizing:border-box;"></div>`
     : '';
+  const selected = opts.selected
+    ? `<div style="position:fixed;left:${opts.selected.left}px;top:${opts.selected.top}px;width:${Math.max(opts.selected.width, 24)}px;height:${Math.max(opts.selected.height, 24)}px;border:2px solid ${BLUE};background:rgba(26,107,84,.12);pointer-events:none;box-sizing:border-box;border-radius:4px;"></div>`
+    : '';
   const banner = opts.banner
     ? `<div style="position:fixed;left:50%;top:12px;transform:translateX(-50%);background:${BLUE};color:#fff;font:13px/1.4 system-ui,sans-serif;padding:6px 12px;border-radius:999px;pointer-events:none;">标注中 · Esc 退出 · 长按空格看原页面</div>`
     : '';
+  const pe = interactive ? 'auto' : 'none';
+  const cur = interactive ? 'pointer' : 'default';
   const pins = opts.pins
     .map((p) => {
       const bx = Math.min(window.innerWidth - 26, Math.max(4, p.x + p.w - 10));
       const by = Math.max(4, p.y - 8);
-      const mark = numberPin(p.id, p.number, bx, by, true);
+      const mark = numberPin(p.id, p.number, bx, by, interactive);
       if (p.area) {
-        return `<div data-pin="${p.id}" style="position:fixed;left:${p.x}px;top:${p.y}px;width:${p.w}px;height:${p.h}px;border:2px solid ${BLUE};background:rgba(37,99,235,.08);pointer-events:auto;cursor:pointer;box-sizing:border-box;"></div>${mark}`;
+        const pinAttr = interactive ? `data-pin="${p.id}"` : '';
+        return `<div ${pinAttr} style="position:fixed;left:${p.x}px;top:${p.y}px;width:${p.w}px;height:${p.h}px;border:2px solid ${BLUE};background:rgba(37,99,235,.08);pointer-events:${pe};cursor:${cur};box-sizing:border-box;"></div>${mark}`;
       }
       return mark;
     })
@@ -118,7 +129,7 @@ export function renderOverlay(opts: {
         false,
       )
     : '';
-  root.innerHTML = `${banner}${hover}${rubber}${pins}${draft}`;
+  root.innerHTML = `${banner}${hover}${rubber}${selected}${pins}${draft}`;
 }
 
 export function removeOverlay(): void {

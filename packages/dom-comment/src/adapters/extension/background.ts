@@ -1,8 +1,12 @@
+import {
+  ensureContextMenus,
+  registerAnnotateUi,
+  setMode,
+  setModeForTab,
+  syncActionIcon,
+} from './annotate-mode.js';
 import { HOST_NAME, postToBackground, postToTab, type ExtMessage } from './messages.js';
 import { cropVisiblePng, dataUrlPngBase64 } from './screenshot.js';
-
-const PLUS = { 16: 'icon-plus-16.png', 32: 'icon-plus-32.png' };
-const X = { 16: 'icon-x-16.png', 32: 'icon-x-32.png' };
 
 interface NativePort {
   postMessage: (msg: unknown) => void;
@@ -160,22 +164,6 @@ function ensureSession(): Promise<void> {
   return sessionGate;
 }
 
-async function persistMode(on: boolean): Promise<void> {
-  await chrome.storage.session.set({ annotationMode: on });
-  await chrome.action.setIcon({ path: on ? X : PLUS });
-  await chrome.action.setTitle({ title: on ? '退出标注模式' : '进入标注模式' });
-}
-
-async function setMode(on: boolean): Promise<void> {
-  await persistMode(on);
-  const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*', 'file:///*'] });
-  for (const tab of tabs) {
-    if (tab.id !== undefined) {
-      postToTab(tab.id, { type: 'SET_MODE', on });
-    }
-  }
-}
-
 async function focusTab(tabId: number): Promise<boolean> {
   try {
     const tab = await chrome.tabs.get(tabId);
@@ -264,24 +252,37 @@ async function handleCreate(
 
 chrome.runtime.onInstalled.addListener(() => {
   void ensureSession();
-  void persistMode(false);
+  void syncActionIcon();
+  ensureContextMenus();
 });
 chrome.runtime.onStartup.addListener(() => {
   sessionGate = liveTabIds().then((ids) => mintBrowserSession(ids));
   void sessionGate;
+  ensureContextMenus();
 });
 
 chrome.runtime.onMessage.addListener((msg: ExtMessage, sender, sendResponse) => {
   const tabId = sender.tab?.id;
   if (msg.type === 'SET_MODE_REQUEST') {
-    void setMode(msg.on);
+    const id = tabId ?? msg.tabId;
+    if (id !== undefined) {
+      void setModeForTab(id, msg.on);
+    } else {
+      void setMode(msg.on);
+    }
   }
   if (msg.type === 'FOCUS_THREAD') {
     const id = msg.tabId ?? tabId;
     if (id !== undefined) {
-      void setMode(true).then(() => {
+      void setModeForTab(id, true).then(() => {
         postToTab(id, { type: 'SET_FOCUS_THREAD', threadId: msg.threadId });
       });
+    }
+  }
+  if (msg.type === 'OPEN_DRAWER') {
+    const id = tabId ?? msg.tabId;
+    if (id !== undefined) {
+      postToTab(id, { type: 'OPEN_DRAWER' });
     }
   }
   if (msg.type === 'CREATE_THREAD' && tabId !== undefined) {
@@ -407,28 +408,8 @@ chrome.runtime.onMessage.addListener((msg: ExtMessage, sender, sendResponse) => 
   return undefined;
 });
 
-chrome.commands.onCommand.addListener((command) => {
-  if (command === 'toggle-annotate') {
-    void chrome.storage.session.get('annotationMode').then((v) => setMode(!v.annotationMode));
-  }
-  if (command === 'open-side-panel') {
-    void chrome.windows.getCurrent().then((w) => {
-      if (w.id !== undefined) {
-        void chrome.sidePanel.open({ windowId: w.id });
-      }
-    });
-  }
-});
-
-chrome.tabs.onUpdated.addListener((id, info) => {
-  if (info.status === 'complete') {
-    void chrome.storage.session.get('annotationMode').then((v) => {
-      if (v.annotationMode) {
-        postToTab(id, { type: 'SET_MODE', on: true });
-      }
-    });
-  }
-});
-
+registerAnnotateUi();
+ensureContextMenus();
 void connect();
 void ensureSession();
+void syncActionIcon();

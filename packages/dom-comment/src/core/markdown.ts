@@ -1,4 +1,5 @@
 import { clip, foldWhitespace } from './anchor.js';
+import { canonicalizeUrl, isAnnotatableUrl } from './identity.js';
 import { LIST_QUOTE_CLIP, type StoredAnchor, type StoredThread } from './types.js';
 
 const SAFETY =
@@ -9,6 +10,14 @@ export function formatAgentPrompt(tabId: number, url?: string): string {
     return `/dom-comment tabid:${tabId} url:${url}`;
   }
   return `/dom-comment tabid:${tabId}`;
+}
+
+/** Build the skill prompt line for a Chrome tab URL (canonical when annotatable). */
+export function skillPromptForTab(tabId: number, href = ''): string {
+  if (href && isAnnotatableUrl(href)) {
+    return formatAgentPrompt(tabId, canonicalizeUrl(href));
+  }
+  return formatAgentPrompt(tabId);
 }
 
 export function kindLabel(anchor: StoredAnchor): string {
