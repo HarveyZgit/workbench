@@ -20,35 +20,49 @@ const CSS = `
   * { box-sizing: border-box; }
   .ball {
     position: fixed;
-    right: 20px;
-    bottom: 24px;
-    width: 48px;
-    height: 48px;
+    right: 10px;
+    bottom: 20px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     border: 0;
     background: ${BLUE};
     color: #fff;
-    font: 700 15px/1 system-ui, sans-serif;
-    box-shadow: 0 8px 24px rgb(26 107 84 / .35);
+    font: 700 12px/1 system-ui, sans-serif;
+    box-shadow: 0 4px 14px rgb(26 107 84 / .28);
     cursor: pointer;
     z-index: 2147483645;
     pointer-events: auto;
     display: grid;
     place-items: center;
+    transition: transform .22s ease, right .22s ease, opacity .18s ease, box-shadow .18s ease;
+  }
+  .ball.docked {
+    right: 0;
+    transform: translateX(55%);
+    box-shadow: 0 2px 8px rgb(26 107 84 / .22);
+    opacity: .88;
+  }
+  .ball.docked:hover,
+  .ball.docked:focus-visible {
+    transform: translateX(0);
+    right: 10px;
+    opacity: 1;
   }
   .ball:hover { background: #155a47; }
-  .ball:focus-visible { outline: 2px solid #1a6b54; outline-offset: 3px; }
+  .ball:focus-visible { outline: 2px solid #1a6b54; outline-offset: 2px; }
+  .ball.hidden { display: none; }
   .ball .badge {
     position: absolute;
-    top: -2px;
-    right: -2px;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 5px;
+    top: -3px;
+    right: -3px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
     border-radius: 999px;
     background: #9b2c2c;
     color: #fff;
-    font: 700 10px/18px system-ui, sans-serif;
+    font: 700 9px/14px system-ui, sans-serif;
     text-align: center;
   }
   .scrim {
@@ -150,7 +164,7 @@ const CSS = `
   }
   .toast.show { opacity: 1; }
   @media (prefers-reduced-motion: reduce) {
-    .scrim, .panel, .toast { transition: none; }
+    .scrim, .panel, .toast, .ball { transition: none; }
   }
 `;
 
@@ -172,6 +186,9 @@ let statusMsg = '';
 let toastTimer = 0;
 let selectEnabled = true;
 let selectedId: string | null = null;
+let ballDocked = true;
+let ballIdleTimer = 0;
+const BALL_IDLE_MS = 1600;
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -229,6 +246,47 @@ function cardHtml(thread: StoredThread): string {
   </div>`;
 }
 
+function clearBallIdle(): void {
+  window.clearTimeout(ballIdleTimer);
+}
+
+function scheduleBallDock(): void {
+  clearBallIdle();
+  if (open) {
+    return;
+  }
+  ballIdleTimer = window.setTimeout(() => {
+    ballDocked = true;
+    const ball = ensureHost().shadowRoot?.querySelector('.ball');
+    ball?.classList.add('docked');
+  }, BALL_IDLE_MS);
+}
+
+function wakeBall(): void {
+  ballDocked = false;
+  const ball = ensureHost().shadowRoot?.querySelector('.ball');
+  ball?.classList.remove('docked');
+  scheduleBallDock();
+}
+
+function bindBallDock(ball: HTMLElement): void {
+  ball.addEventListener('pointerenter', () => {
+    wakeBall();
+  });
+  ball.addEventListener('pointerleave', () => {
+    scheduleBallDock();
+  });
+  ball.addEventListener('focus', () => {
+    wakeBall();
+  });
+  ball.addEventListener('blur', () => {
+    scheduleBallDock();
+  });
+  if (ballDocked && !open) {
+    ball.classList.add('docked');
+  }
+}
+
 function paint(): void {
   const host = ensureHost();
   const root = host.shadowRoot!;
@@ -240,8 +298,11 @@ function paint(): void {
       ? `<div class="empty">${allPages ? '这个标签页还没有评论' : '当前页还没有评论'}</div>`
       : items.map((item) => cardHtml(item.thread)).join('');
   const selectClass = selectEnabled ? '' : ' select-off';
+  const ballClass = ['ball', open ? 'hidden' : '', !open && ballDocked ? 'docked' : '']
+    .filter(Boolean)
+    .join(' ');
   root.innerHTML = `<style>${CSS}</style>
-    <button class="ball" type="button" data-act="toggle" title="评论列表" aria-label="打开评论列表">评${badge}</button>
+    <button class="${ballClass}" type="button" data-act="toggle" title="评论列表" aria-label="打开评论列表">评${badge}</button>
     <div class="scrim ${open ? 'open' : ''}" data-act="close" style="${open ? '' : 'display:none'}"></div>
     <aside class="panel ${open ? 'open' : ''}" style="${open ? '' : 'display:none'}" aria-label="评论列表">
       <div class="head">
@@ -261,6 +322,10 @@ function paint(): void {
   const scrim = root.querySelector('.scrim') as HTMLElement | null;
   if (ball) {
     ball.style.pointerEvents = 'auto';
+    bindBallDock(ball);
+    if (!open) {
+      scheduleBallDock();
+    }
   }
   if (open) {
     if (panel) {
@@ -298,6 +363,7 @@ function onRootClick(ev: Event): void {
   if (act === 'toggle') {
     ev.preventDefault();
     ev.stopPropagation();
+    wakeBall();
     if (open) {
       closeDrawer();
     } else {
@@ -344,6 +410,8 @@ export function drawerOpen(): boolean {
 export function openDrawer(): void {
   const wasOpen = open;
   open = true;
+  ballDocked = false;
+  clearBallIdle();
   statusMsg = '';
   paint();
   if (!wasOpen) {
@@ -355,7 +423,9 @@ export function closeDrawer(): void {
   const wasOpen = open;
   open = false;
   statusMsg = '';
+  ballDocked = true;
   paint();
+  scheduleBallDock();
   if (wasOpen) {
     handlers?.onClose?.();
   }
