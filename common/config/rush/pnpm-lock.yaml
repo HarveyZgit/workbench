@@ -42,6 +42,15 @@ importers:
       markdown-it:
         specifier: ^14.2.0
         version: 14.3.0
+      markdown-it-deflist:
+        specifier: ^4.0.0
+        version: 4.0.0
+      markdown-it-emoji:
+        specifier: ^3.1.0
+        version: 3.1.0
+      markdown-it-footnote:
+        specifier: ^4.0.0
+        version: 4.0.0
       markdown-it-task-lists:
         specifier: ^2.1.1
         version: 2.1.1
@@ -70,6 +79,9 @@ importers:
       esbuild:
         specifier: ^0.24.0
         version: 0.24.2
+      tsx:
+        specifier: ^4.19.0
+        version: 4.23.12
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
@@ -2420,6 +2432,15 @@ packages:
   map-obj@4.3.0:
     resolution: {integrity: sha512-hdN1wVrZbb29eBGiGjJbeP8JbKjq1urkHJ/LIP/NY48MZ1QVXUsQBV1G1zvYFHn1XE06cwjBsOI2K3Ulnj1YXQ==}
     engines: {node: '>=8'}
+
+  markdown-it-deflist@4.0.0:
+    resolution: {integrity: sha512-06186ZWDwNLg638THD70MxBeFrDMF0+nL7IWU/qwCGHGOcUIm4MTYXbfjpv0ooWnVjkSnAjW8msKaOQmNRfY6Q==}
+
+  markdown-it-emoji@3.1.0:
+    resolution: {integrity: sha512-NhmMEH2ywduD4Nty1E8uB5NqfLhAT1VR0dyvoJyStKOqCzbZmVdn/+8wj7zpDsb/fLBikpCPsWwxqKlvMmbz4g==}
+
+  markdown-it-footnote@4.0.0:
+    resolution: {integrity: sha512-WYJ7urf+khJYl3DqofQpYfEYkZKbmXmwxQV8c8mO/hGIhgZ1wOe7R4HLFNwqx7TjILbnC98fuyeSsin19JdFcQ==}
 
   markdown-it-task-lists@2.1.1:
     resolution: {integrity: sha512-TxFAc76Jnhb2OUu+n3yz9RMu4CwGfaT788br6HhEDlvWfdeJcLUsxk1Hgw2yJio0OXsxv7pyIPmvECY7bMbluA==}
@@ -5958,6 +5979,12 @@ snapshots:
   map-obj@1.0.1: {}
 
   map-obj@4.3.0: {}
+
+  markdown-it-deflist@4.0.0: {}
+
+  markdown-it-emoji@3.1.0: {}
+
+  markdown-it-footnote@4.0.0: {}
 
   markdown-it-task-lists@2.1.1: {}
 

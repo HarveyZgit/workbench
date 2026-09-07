@@ -411,12 +411,95 @@ body {
   line-height: var(--mdc-preview-line-height, 1.7);
   color: var(--vscode-foreground);
 }
-#app { display: flex; height: 100vh; }
+#app { position: relative; display: flex; height: 100vh; }
 #content { flex: 1; min-width: 0; overflow: auto; padding: 24px clamp(16px, 6%, 80px) 80px; box-sizing: border-box; }
+
+/* 左侧大纲（飞书文档风格：无边框，干净树） */
+#outline {
+  width: 220px; flex: none; overflow: auto; box-sizing: border-box;
+  border: none;
+  background: transparent;
+  display: flex; flex-direction: column; min-height: 0;
+  transition: width .23s cubic-bezier(0.4, 0, 0.2, 1), opacity .23s ease, min-width .23s ease;
+}
+#outline-head {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; justify-content: space-between; align-items: center; gap: 4px;
+  padding: 8px 8px 4px 12px;
+  background: transparent;
+  border: none;
+}
+#outline-title {
+  font-size: 0.82em; font-weight: 600; opacity: 0.85;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#mdc-toggle-outline { flex: none; opacity: 0.72; }
+#outline-tree {
+  flex: 1; min-height: 0; overflow: auto;
+  padding: 4px 6px 16px;
+  font-size: 0.86em;
+}
+#outline-tree:empty::before {
+  content: '暂无标题';
+  display: block; padding: 12px 8px; opacity: 0.5; font-size: 0.95em;
+}
+.outline-list { list-style: none; margin: 0; padding: 0; }
+.outline-node { margin: 0; }
+.outline-row {
+  display: flex; align-items: center; gap: 2px;
+  border-radius: 4px; min-height: 28px;
+  padding-right: 6px;
+}
+.outline-row:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.12)); }
+.outline-row.active {
+  background: var(--vscode-list-activeSelectionBackground, rgba(0, 122, 204, 0.18));
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+}
+.outline-row.active .outline-label { color: var(--vscode-textLink-foreground, #3794ff); font-weight: 600; }
+.outline-twisty {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; border: none; border-radius: 3px;
+  background: transparent; color: var(--vscode-foreground); opacity: 0.55; cursor: pointer;
+  outline: none;
+}
+.outline-twisty:focus,
+.outline-twisty:focus-visible { outline: none; box-shadow: none; }
+.outline-twisty:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
+.outline-twisty[aria-hidden="true"] { visibility: hidden; pointer-events: none; }
+.outline-twisty svg { display: block; transition: transform .22s cubic-bezier(0.4, 0, 0.2, 1); }
+.outline-node.collapsed > .outline-row .outline-twisty svg { transform: rotate(-90deg); }
+.outline-node > .outline-list {
+  overflow: hidden;
+  max-height: 2400px;
+  opacity: 1;
+  transition: max-height .24s cubic-bezier(0.4, 0, 0.2, 1), opacity .22s ease;
+}
+.outline-node.collapsed > .outline-list {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.outline-label {
+  flex: 1; min-width: 0; padding: 4px 2px;
+  color: inherit; text-decoration: none; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.35;
+  outline: none;
+}
+.outline-label:focus,
+.outline-label:focus-visible { outline: none; box-shadow: none; }
+.outline-label:hover { color: var(--vscode-textLink-foreground); }
+/* 收起后不留细条：整栏隐藏，改用浮动 peek 图标 */
+#app.outline-collapsed #outline {
+  width: 0; min-width: 0; padding: 0; margin: 0; border: none;
+  overflow: hidden; opacity: 0; pointer-events: none;
+}
+
 #sidebar {
   width: 320px; flex: none; overflow: auto; box-sizing: border-box;
   border-left: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3));
   background: var(--vscode-sideBar-background, transparent);
+  transition: width .23s cubic-bezier(0.4, 0, 0.2, 1), opacity .23s ease, min-width .23s ease, border-width .23s ease;
 }
 
 h1, h2, h3, h4, h5, h6 { line-height: 1.3; margin: 1.6em 0 0.6em; font-weight: 600; }
@@ -439,8 +522,35 @@ th, td { border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3)); p
 th { background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.12)); }
 img { max-width: 100%; }
 hr { border: none; border-top: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3)); margin: 1.6em 0; }
-ul.contains-task-list { list-style: none; padding-left: 1.2em; }
-.task-list-item-checkbox { margin-right: 0.5em; }
+ul.contains-task-list,
+ol.contains-task-list { list-style: none; padding-left: 1.2em; }
+.task-list-item { list-style: none; }
+.task-list-item-checkbox {
+  margin: 0 0.5em 0 0;
+  vertical-align: middle;
+  pointer-events: none;
+}
+.mdc-alert,
+.markdown-alert {
+  border-left: 0.25em solid var(--vscode-textBlockQuote-border, rgba(128,128,128,0.45));
+  padding: 0.5em 1em;
+  margin: 1em 0;
+  background: var(--vscode-textBlockQuote-background, rgba(128,128,128,0.08));
+}
+.mdc-alert-note, .markdown-alert-note { border-left-color: #0969da; }
+.mdc-alert-tip, .markdown-alert-tip { border-left-color: #1a7f37; }
+.mdc-alert-important, .markdown-alert-important { border-left-color: #8250df; }
+.mdc-alert-warning, .markdown-alert-warning { border-left-color: #9a6700; }
+.mdc-alert-caution, .markdown-alert-caution { border-left-color: #cf222e; }
+.mdc-alert-title,
+.markdown-alert-title {
+  font-weight: 600;
+  margin: 0 0 0.35em;
+}
+.footnotes-sep { margin-top: 2em; }
+.footnotes { font-size: 0.92em; opacity: 0.92; }
+.footnote-ref { font-size: 0.85em; }
+.footnote-backref { text-decoration: none; margin-left: 0.25em; }
 
 /* 高亮 */
 mark.mdc-hl { background: rgba(255, 209, 102, 0.28); border-radius: 2px; cursor: pointer; color: inherit; transition: background-color .15s, box-shadow .15s; }
@@ -483,21 +593,44 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 #mdc-add-doc:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.3)); }
 #mdc-toggle-sidebar { flex: none; opacity: 0.72; }
 #app.sidebar-collapsed #sidebar {
-  width: 40px; overflow: visible;
-}
-#app.sidebar-collapsed #mdc-tabs,
-#app.sidebar-collapsed #mdc-add-doc,
-#app.sidebar-collapsed #sidebar-draft,
-#app.sidebar-collapsed #sidebar-inner { display: none; }
-#app.sidebar-collapsed #sidebar-head {
-  justify-content: center; padding: 8px 4px; border-bottom: none;
-}
-#app.sidebar-collapsed #mdc-toggle-sidebar.mdc-tip::after,
-#app.sidebar-collapsed #mdc-toggle-sidebar.mdc-tip:hover::after {
-  right: auto; left: 0; top: 50%; margin-top: 0; margin-right: 0; margin-left: -6px;
-  transform: translate(-100%, -50%);
+  width: 0; min-width: 0; padding: 0; margin: 0; border: none;
+  overflow: hidden; opacity: 0; pointer-events: none;
 }
 #sidebar-inner { padding: 12px; }
+
+/* 收起后的浮动 peek 按钮（目录 / 评论）——置顶，visibility+opacity 淡入淡出 */
+.mdc-peek {
+  position: absolute; z-index: 40;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; padding: 0; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.35));
+  background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #252526));
+  color: var(--vscode-foreground);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.28);
+  visibility: hidden; opacity: 0; pointer-events: none;
+  transform: scale(0.88);
+  transition: opacity .22s ease, transform .22s cubic-bezier(0.4, 0, 0.2, 1), visibility .22s;
+}
+.mdc-peek:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
+.mdc-peek svg { display: block; }
+#mdc-peek-outline { left: 12px; top: 10px; }
+#mdc-peek-sidebar { right: 12px; top: 10px; }
+#app.outline-collapsed #mdc-peek-outline,
+#app.sidebar-collapsed #mdc-peek-sidebar {
+  visibility: visible; opacity: 0.94; pointer-events: auto; transform: scale(1);
+}
+#app.outline-collapsed #mdc-peek-outline:hover,
+#app.sidebar-collapsed #mdc-peek-sidebar:hover { opacity: 1; }
+#mdc-peek-outline.mdc-tip::after,
+#mdc-peek-outline.mdc-tip:hover::after {
+  left: calc(100% + 8px); right: auto; top: 50%; margin-top: 0;
+  transform: translateY(-50%);
+}
+#mdc-peek-sidebar.mdc-tip::after,
+#mdc-peek-sidebar.mdc-tip:hover::after {
+  right: calc(100% + 8px); left: auto; top: 50%; margin-top: 0;
+  transform: translateY(-50%);
+}
 .mdc-empty { opacity: 0.6; padding: 16px 6px; font-size: 0.9em; }
 .mdc-card {
   border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3));
@@ -613,7 +746,16 @@ function buildHtml(
 </head>
 <body>
 <div id="app">
+  <aside id="outline">
+    <div id="outline-head">
+      <span id="outline-title">大纲</span>
+      <button id="mdc-toggle-outline" class="mdc-icon mdc-tip" data-tip="收起目录" aria-label="收起目录" aria-expanded="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4l-4 4 4 4"/></svg></button>
+    </div>
+    <nav id="outline-tree" aria-label="大纲"></nav>
+  </aside>
+  <button type="button" id="mdc-peek-outline" class="mdc-peek mdc-tip" data-tip="展开目录" aria-label="展开目录" title="展开目录"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M3 8h10M3 11.5h7"/><path d="M3 4.5v7"/></svg></button>
   <main id="content"></main>
+  <button type="button" id="mdc-peek-sidebar" class="mdc-peek mdc-tip" data-tip="展开评论" aria-label="展开评论" title="展开评论"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5A1.5 1.5 0 0 1 12.5 11H8.2L5 13.5V11H3.5A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3z"/></svg></button>
   <aside id="sidebar">
     <div id="sidebar-head">
       <div id="mdc-tabs">
@@ -623,7 +765,7 @@ function buildHtml(
       </div>
       <div id="mdc-head-actions">
         <button id="mdc-add-doc" title="对整篇文档添加评论">＋ 全文评论</button>
-        <button id="mdc-toggle-sidebar" class="mdc-icon mdc-tip" data-tip="收起侧边栏" aria-label="收起侧边栏" aria-expanded="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg></button>
+        <button id="mdc-toggle-sidebar" class="mdc-icon mdc-tip" data-tip="收起评论" aria-label="收起评论" aria-expanded="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg></button>
       </div>
     </div>
     <div id="sidebar-draft"></div>

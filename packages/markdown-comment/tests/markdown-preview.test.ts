@@ -66,3 +66,43 @@ test('renderer covers front matter mermaid code math and images', () => {
   const closedDetails = renderer.render('<details>\n<summary>More</summary>\n\ninside\n\n</details>\n');
   assert.match(closedDetails, /details/);
 });
+
+test('renderer covers task lists footnotes alerts deflist emoji and image policy', () => {
+  const renderer = createMarkdownRenderer();
+  const tasks = renderer.render('- [ ] unchecked\n- [x] checked\n1. [ ] ordered\n');
+  assert.match(tasks, /task-list-item-checkbox/);
+  assert.match(tasks, /<input[^>]*type="checkbox"[^>]*>/);
+  assert.match(tasks, /contains-task-list/);
+  assert.match(tasks, /checked=""/);
+
+  const footnotes = renderer.render('See note[^1].\n\n[^1]: Footnote body.\n');
+  assert.match(footnotes, /footnote|footnotes/i);
+  assert.match(footnotes, /Footnote body/);
+
+  const alert = renderer.render('> [!NOTE]\n> Hello alert\n');
+  assert.match(alert, /mdc-alert|markdown-alert/);
+  assert.match(alert, /data-alert="note"/);
+  assert.match(alert, /Hello alert/);
+  assert.doesNotMatch(alert, /\[!NOTE\]/);
+
+  const deflist = renderer.render('Term\n: Definition one\n');
+  assert.match(deflist, /<dl[\s>]/i);
+  assert.match(deflist, /<dt[\s>]/i);
+  assert.match(deflist, /<dd[\s>]/i);
+
+  const emoji = renderer.render('smile :smile: rocket :rocket:\n');
+  assert.doesNotMatch(emoji, /:smile:/);
+
+  const httpImage = renderer.render('![x](http://example.com/x.png)\n');
+  assert.doesNotMatch(httpImage, /<img\b[^>]*http:\/\/example\.com\/x\.png/i);
+  assert.doesNotMatch(httpImage, /data-src="http:\/\/example\.com\/x\.png"/);
+
+  const httpsImage = renderer.render('![ok](https://example.com/ok.png)\n');
+  assert.match(httpsImage, /data-src="https:\/\/example\.com\/ok\.png"/);
+
+  const comment = renderer.render('before\n\n<!-- hidden comment -->\n\nafter\n');
+  assert.doesNotMatch(comment, /&lt;!--/);
+  assert.doesNotMatch(comment, /hidden comment/);
+  assert.match(comment, /before/);
+  assert.match(comment, /after/);
+});

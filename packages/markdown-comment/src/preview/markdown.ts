@@ -16,11 +16,15 @@ import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
 import katex from 'katex';
 import MarkdownIt from 'markdown-it';
+import deflist from 'markdown-it-deflist';
+import { full as emoji } from 'markdown-it-emoji';
+import footnote from 'markdown-it-footnote';
 import taskLists from 'markdown-it-task-lists';
 import texmath from 'markdown-it-texmath';
 import { parseDocument } from 'yaml';
+import { gfmAlertsPlugin } from './gfm-alerts';
 import { headingSlug, headingTextFromInline } from './heading';
-import { sanitizeHtml, sanitizeInlineHtmlToken } from './sanitize';
+import { isSafeImageSource, sanitizeHtml, sanitizeInlineHtmlToken } from './sanitize';
 
 export type FrontMatterMode = 'table' | 'codeBlock' | 'hide';
 
@@ -79,6 +83,70 @@ function escapeHtml(value: string): string {
         }) as const
       )[character as '&' | '<' | '>' | '"' | "'"],
   );
+}
+
+
+/** Strip HTML comments outside fenced code so strict mode does not show escaped leftovers. */
+function stripHtmlCommentsOutsideFences(source: string): string {
+  let result = '';
+  let index = 0;
+  let inFence = false;
+  let fenceChar = '';
+  let fenceLength = 0;
+
+  while (index < source.length) {
+    const atLineStart = index === 0 || source[index - 1] === '\n';
+    if (atLineStart && (source[index] === '`' || source[index] === '~')) {
+      const lineEnd = source.indexOf('\n', index);
+      const line = lineEnd === -1 ? source.slice(index) : source.slice(index, lineEnd);
+      const fence = /^(```+|~~~+)/.exec(line);
+      if (fence) {
+        const marker = fence[1][0];
+        const length = fence[1].length;
+        if (!inFence) {
+          inFence = true;
+          fenceChar = marker;
+          fenceLength = length;
+        } else if (marker === fenceChar && length >= fenceLength && line.slice(length).trim() === '') {
+          inFence = false;
+          fenceChar = '';
+          fenceLength = 0;
+        }
+      }
+    }
+
+    if (!inFence && source.startsWith('<!--', index)) {
+      const end = source.indexOf('-->', index + 4);
+      if (end === -1) {
+        break;
+      }
+      index = end + 3;
+      continue;
+    }
+
+    // In strict mode, drop always-dangerous raw tags (and paired bodies) so they are not noisy escaped text.
+    if (!inFence && source[index] === '<') {
+      const paired = /<(script|style|iframe|object|embed|form)\b[^>]*>[\s\S]*?<\/\1\s*>/i.exec(
+        source.slice(index),
+      );
+      if (paired && paired.index === 0) {
+        index += paired[0].length;
+        continue;
+      }
+      const lonely = /<\/?(?:script|style|iframe|object|embed|form|input|button)\b[^>]*\/?>/i.exec(
+        source.slice(index),
+      );
+      if (lonely && lonely.index === 0) {
+        index += lonely[0].length;
+        continue;
+      }
+    }
+
+    result += source[index];
+    index += 1;
+  }
+
+  return result;
 }
 
 function languageFromInfo(info: string): string {
@@ -168,6 +236,10 @@ function createMarkdownIt(): MarkdownIt {
   });
 
   markdown.use(taskLists, { enabled: false });
+  markdown.use(footnote);
+  markdown.use(deflist);
+  markdown.use(emoji);
+  markdown.use(gfmAlertsPlugin);
   markdown.use(texmath, {
     delimiters: 'dollars',
     engine: katex,
@@ -396,9 +468,10 @@ function createMarkdownIt(): MarkdownIt {
   markdown.renderer.rules.image = (tokens, index, options, environment, renderer) => {
     const token = tokens[index];
     const source = token.attrGet('src');
-    if (source !== null) {
-      token.attrSet('data-src', source);
+    if (source === null || !isSafeImageSource(source)) {
+      return escapeHtml(token.content || '');
     }
+    token.attrSet('data-src', source);
     return renderImage
       ? renderImage(tokens, index, options, environment, renderer)
       : renderer.renderToken(tokens, index, options);
@@ -460,7 +533,9 @@ export function createMarkdownRenderer(defaultOptions: MarkdownRenderOptions = {
         headingCounts: new Map(),
         safeHtml: resolvedOptions.html === 'safe',
       };
-      return markdown.render(source, environment);
+      const markdownSource =
+        resolvedOptions.html === 'safe' ? source : stripHtmlCommentsOutsideFences(source);
+      return markdown.render(markdownSource, environment);
     },
   };
 }
