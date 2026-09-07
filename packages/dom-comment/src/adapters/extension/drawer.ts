@@ -40,8 +40,8 @@ const CSS = `
   .ball.docked {
     right: 0;
     transform: translateX(55%);
-    box-shadow: 0 2px 8px rgb(26 107 84 / .22);
-    opacity: .88;
+    box-shadow: 0 2px 8px rgb(26 107 84 / .18);
+    opacity: .45;
   }
   .ball.docked:hover,
   .ball.docked:focus-visible {
@@ -188,7 +188,7 @@ let selectEnabled = true;
 let selectedId: string | null = null;
 let ballDocked = true;
 let ballIdleTimer = 0;
-const BALL_IDLE_MS = 1600;
+const BALL_IDLE_MS = 1000;
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
