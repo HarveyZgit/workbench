@@ -29,6 +29,7 @@ import {
   setPinClickHandler,
   skipTarget,
 } from './highlight.js';
+import { areaPinsShouldBeInteractive, canOpenPinForEdit, pinsShouldBeInteractive } from './pin-policy.js';
 import { postToBackground, type ExtMessage } from './messages.js';
 import { locateAnchor, pinModels } from './relocate-dom.js';
 import { skillPromptForTab } from '../../core/markdown.js';
@@ -121,6 +122,7 @@ function paintOverlay(): void {
     removeOverlay();
     return;
   }
+  const pinOpts = { modeOn, peeking, drawerOpen: drawerOpen() };
   renderOverlay({
     banner: modeOn && !peeking,
     hover: rubber
@@ -132,7 +134,9 @@ function paintOverlay(): void {
           : null,
     rubber: modeOn && !peeking ? rubber : null,
     pins: peeking ? [] : pins,
-    pinsInteractive: !modeOn,
+    // Annotate: badges reopen threads for edit; browse: pins only while drawer open.
+    pinsInteractive: pinsShouldBeInteractive(pinOpts),
+    areaPinsInteractive: areaPinsShouldBeInteractive(pinOpts),
     selected: !modeOn && !peeking ? selectedHighlight : null,
     draft:
       showDraftPin && activeRect && !peeking
@@ -273,6 +277,13 @@ function bindDrawer(): void {
       },
       onSelect: (thread) => {
         selectThread(thread);
+        // Browse: card select also opens the thread panel so存量 comments can be edited.
+        if (!modeOn) {
+          const rect = resolveThreadRect(thread);
+          if (rect) {
+            showThread(thread, rect);
+          }
+        }
       },
       onOpen: () => {
         applySidebarModePolicy();
@@ -400,15 +411,15 @@ function openPin(id: string): void {
   if (!thread) {
     return;
   }
-  // Annotate mode: ignore selecting existing comments via pins (create-only).
-  if (modeOn) {
+  // Annotate: pin reopens for edit (page clicks still create). Browse: require drawer open.
+  if (!canOpenPinForEdit(modeOn, drawerOpen())) {
     return;
   }
-  // Browse mode: pins only interact when the sidebar is already open.
-  if (!drawerOpen()) {
-    return;
+  const rect = resolveThreadRect(thread) || threadRect(id);
+  if (!modeOn) {
+    selectThread(thread);
   }
-  selectThread(thread);
+  showThread(thread, rect);
 }
 
 /** Agent / SET_FOCUS_THREAD: enter annotate and open the thread composer. */
