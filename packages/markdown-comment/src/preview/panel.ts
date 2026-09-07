@@ -413,6 +413,79 @@ body {
 }
 #app { display: flex; height: 100vh; }
 #content { flex: 1; min-width: 0; overflow: auto; padding: 24px clamp(16px, 6%, 80px) 80px; box-sizing: border-box; }
+
+/* 左侧大纲（飞书文档风格） */
+#outline {
+  width: 220px; flex: none; overflow: auto; box-sizing: border-box;
+  border-right: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3));
+  background: var(--vscode-sideBar-background, transparent);
+  display: flex; flex-direction: column; min-height: 0;
+}
+#outline-head {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; justify-content: space-between; align-items: center; gap: 4px;
+  padding: 8px 8px 8px 12px;
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.25));
+}
+#outline-title {
+  font-size: 0.82em; font-weight: 600; opacity: 0.85;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#mdc-toggle-outline { flex: none; opacity: 0.72; font-size: 12px; width: 22px; height: 22px; }
+#outline-tree {
+  flex: 1; min-height: 0; overflow: auto;
+  padding: 8px 6px 16px;
+  font-size: 0.86em;
+}
+#outline-tree:empty::before {
+  content: '暂无标题';
+  display: block; padding: 12px 8px; opacity: 0.5; font-size: 0.95em;
+}
+.outline-list { list-style: none; margin: 0; padding: 0; }
+.outline-node { margin: 0; }
+.outline-row {
+  display: flex; align-items: center; gap: 2px;
+  border-radius: 4px; min-height: 28px;
+  padding-right: 6px;
+}
+.outline-row:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.12)); }
+.outline-row.active {
+  background: var(--vscode-list-activeSelectionBackground, rgba(0, 122, 204, 0.18));
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+}
+.outline-row.active .outline-label { color: var(--vscode-textLink-foreground, #3794ff); font-weight: 600; }
+.outline-twisty {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; padding: 0; border: none; border-radius: 3px;
+  background: transparent; color: var(--vscode-foreground); opacity: 0.55; cursor: pointer;
+}
+.outline-twisty:hover { opacity: 1; background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
+.outline-twisty[aria-hidden="true"] { visibility: hidden; pointer-events: none; }
+.outline-twisty svg { display: block; transition: transform .12s; }
+.outline-node.collapsed > .outline-row .outline-twisty svg { transform: rotate(-90deg); }
+.outline-node.collapsed > .outline-list { display: none; }
+.outline-label {
+  flex: 1; min-width: 0; padding: 4px 2px;
+  color: inherit; text-decoration: none; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.35;
+}
+.outline-label:hover { color: var(--vscode-textLink-foreground); }
+#app.outline-collapsed #outline {
+  width: 36px; overflow: visible;
+}
+#app.outline-collapsed #outline-title,
+#app.outline-collapsed #outline-tree { display: none; }
+#app.outline-collapsed #outline-head {
+  justify-content: center; padding: 8px 4px; border-bottom: none;
+}
+#app.outline-collapsed #mdc-toggle-outline.mdc-tip::after,
+#app.outline-collapsed #mdc-toggle-outline.mdc-tip:hover::after {
+  left: auto; right: 0; top: 50%; margin-top: 0; margin-left: 0; margin-right: -6px;
+  transform: translate(100%, -50%);
+}
+
 #sidebar {
   width: 320px; flex: none; overflow: auto; box-sizing: border-box;
   border-left: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3));
@@ -613,6 +686,13 @@ function buildHtml(
 </head>
 <body>
 <div id="app">
+  <aside id="outline">
+    <div id="outline-head">
+      <span id="outline-title">大纲</span>
+      <button id="mdc-toggle-outline" class="mdc-icon mdc-tip" data-tip="收起大纲" aria-label="收起大纲" aria-expanded="true"><span aria-hidden="true">&lt;&lt;</span></button>
+    </div>
+    <nav id="outline-tree" aria-label="大纲"></nav>
+  </aside>
   <main id="content"></main>
   <aside id="sidebar">
     <div id="sidebar-head">

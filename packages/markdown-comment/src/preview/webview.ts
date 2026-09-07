@@ -2,6 +2,7 @@
 // 高亮 + 右侧边栏评论 UI + 正文↔边栏联动。host 独占数据，这里只发意图、画视图。
 import './webview.css';
 import { createMarkdownRenderer } from './markdown';
+import { createOutlineUi } from './outline-ui';
 import { createMermaidRuntime, type MermaidCommentIntent, type MermaidViewStates } from './mermaid';
 import type {
   HostToWebview,
@@ -28,6 +29,8 @@ const sidebar = document.getElementById('sidebar-inner');
 const draftEl = document.getElementById('sidebar-draft');
 const app = document.getElementById('app');
 const toggleSidebarBtn = document.getElementById('mdc-toggle-sidebar');
+const outlineTreeEl = document.getElementById('outline-tree');
+const toggleOutlineBtn = document.getElementById('mdc-toggle-outline');
 
 const submitKey = navigator.platform.toLowerCase().includes('mac') ? 'Cmd' : 'Ctrl';
 
@@ -144,6 +147,9 @@ const ICON_SIDEBAR_EXPAND =
 
 interface WebviewState {
   sidebarCollapsed?: boolean;
+  outlineCollapsed?: boolean;
+  /** Heading ids whose children are collapsed in the outline tree. */
+  outlineCollapsedIds?: string[];
 }
 
 function readWebviewState(): WebviewState {
@@ -174,6 +180,25 @@ function expandSidebar(): void {
 setSidebarCollapsed(readWebviewState().sidebarCollapsed === true, false);
 toggleSidebarBtn?.addEventListener('click', () => {
   setSidebarCollapsed(!app?.classList.contains('sidebar-collapsed'));
+});
+
+function persistWebviewState(patch: Partial<WebviewState>): void {
+  vscode.setState({ ...readWebviewState(), ...patch });
+}
+
+const outlineUi = createOutlineUi({
+  app,
+  content,
+  outlineTree: outlineTreeEl,
+  toggleBtn: toggleOutlineBtn,
+  getCollapsed: () => readWebviewState().outlineCollapsed === true,
+  setCollapsedPersist: (collapsed) => persistWebviewState({ outlineCollapsed: collapsed }),
+  getCollapsedIds: () => {
+    const ids = readWebviewState().outlineCollapsedIds;
+    return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []);
+  },
+  setCollapsedIds: (ids) => persistWebviewState({ outlineCollapsedIds: [...ids] }),
+  getSourceText: () => lastText,
 });
 
 /** 在 hay 里找 needle，多处命中时用前后文消歧（与 host 端 anchor.locate 同构）。 */
@@ -903,6 +928,7 @@ function render(
   addImageTools();
   requestLocalResources();
   applyLineChanges(lineChanges);
+  outlineUi.refresh();
   refreshThreads(threads);
   hideButton();
   void mermaidRuntime
