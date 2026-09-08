@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { loadDoc, saveDoc, fileHash, storageKey, getCliId, skillPromptTargetState } from '../storage';
+import { loadDoc, saveDoc, fileHash, storageKey, ensureUntitledCliId, skillPromptTargetState } from '../storage';
 import { isCommentableMarkdown, isMarkdownDocument } from '../markdown-lang';
 import { buildAnchorFromRange, mapRenderedSelectionToRange, relocate } from '../anchor';
 import type { StoredDocument, StoredThread } from '../types';
@@ -788,7 +788,9 @@ function buildHtml(
 
 /** 当前绑定文档的 Skill 提示目标（file=绝对路径；untitled=cliId 或禁用）。 */
 function skillPromptStateFor(storageDir: string, uri: vscode.Uri) {
-  const cliId = uri.scheme === 'untitled' ? getCliId(storageDir, storageKey(uri)) : undefined;
+  // 存量 untitled：有评论但缺 cliId 时 ensure 回填，无需再发一条评论。
+  const cliId =
+    uri.scheme === 'untitled' ? ensureUntitledCliId(storageDir, storageKey(uri)) : undefined;
   return skillPromptTargetState({ scheme: uri.scheme, fsPath: uri.fsPath, cliId });
 }
 

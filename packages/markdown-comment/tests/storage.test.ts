@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { test } from 'node:test';
 import {
   docFile,
+  ensureUntitledCliId,
   fileHash,
   findThread,
   formatSkillPrompt,
@@ -255,4 +256,57 @@ test('migrateDoc clears untitled cliId with source store', () => {
   assert.equal(getCliId(dir, from), undefined);
   assert.equal(getCliId(dir, to), undefined); // file 键不写 cliId
   assert.equal(resolveDocKey(cliId!, dir), cliId); // 旧 id 不再解析到源
+});
+
+test('ensureUntitledCliId backfills legacy index missing cliId', () => {
+  const dir = tmp();
+  const key = 'untitled:Untitled-legacy';
+  const id = 'dddddddd-1111-4111-8111-dddddddddddd';
+  // 模拟存量：先用 saveDoc 写入，再剥掉 index 里的 cliId
+  saveDoc(dir, key, { version: 1, threads: [thread(id, 'legacy')] });
+  const expected = untitledCliId(key);
+  assert.equal(getCliId(dir, key), expected);
+
+  const indexPath = path.join(dir, 'index.json');
+  const idx = JSON.parse(fs.readFileSync(indexPath, 'utf8')) as Record<
+    string,
+    { path: string; updatedAt: string; cliId?: string }
+  >;
+  const h = fileHash(key);
+  delete idx[h].cliId;
+  fs.writeFileSync(indexPath, `${JSON.stringify(idx, null, 2)}\n`, 'utf8');
+  assert.equal(getCliId(dir, key), undefined);
+
+  // 无评论时仍不分配
+  const emptyKey = 'untitled:Untitled-empty';
+  assert.equal(ensureUntitledCliId(dir, emptyKey), undefined);
+  assert.equal(getCliId(dir, emptyKey), undefined);
+
+  // file 键不回填
+  assert.equal(ensureUntitledCliId(dir, '/tmp/file.md'), undefined);
+
+  // 有评论 + 缺 cliId → 回填并持久化
+  const backfilled = ensureUntitledCliId(dir, key);
+  assert.equal(backfilled, expected);
+  assert.equal(getCliId(dir, key), expected);
+  // 幂等
+  assert.equal(ensureUntitledCliId(dir, key), expected);
+
+  // skillPromptTargetState 随 ensure 结果启用
+  const state = skillPromptTargetState({
+    scheme: 'untitled',
+    fsPath: '',
+    cliId: ensureUntitledCliId(dir, key),
+  });
+  assert.equal(state.enabled, true);
+  assert.equal(state.prompt, formatSkillPrompt(expected));
+
+  // 空线程仍 disabled
+  const emptyState = skillPromptTargetState({
+    scheme: 'untitled',
+    fsPath: '',
+    cliId: ensureUntitledCliId(dir, emptyKey),
+  });
+  assert.equal(emptyState.enabled, false);
+  assert.equal(emptyState.tip, '添加评论后可复制');
 });

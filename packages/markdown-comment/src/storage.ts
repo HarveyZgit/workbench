@@ -183,6 +183,36 @@ export function getCliId(storageDir: string, storageKey: string): string | undef
   return entry?.cliId;
 }
 
+/**
+ * 存量 untitled：有评论但 index 缺 cliId 时回填并持久化。
+ * - 非 untitled / 无评论 → undefined（复制按钮仍禁用）
+ * - index 已有 cliId → 原样返回
+ * - 否则写入 untitledCliId(key) 后返回
+ */
+export function ensureUntitledCliId(storageDir: string, storageKey: string): string | undefined {
+  if (!isUntitledStorageKey(storageKey)) {
+    return undefined;
+  }
+  if (loadDoc(storageDir, storageKey).threads.length === 0) {
+    return undefined;
+  }
+  const idx = readIndex(storageDir);
+  const h = fileHash(storageKey);
+  const existing = idx[h]?.cliId;
+  if (existing) {
+    return existing;
+  }
+  const cliId = untitledCliId(storageKey);
+  const prev = idx[h];
+  idx[h] = {
+    path: prev?.path ?? storageKey,
+    updatedAt: prev?.updatedAt ?? new Date().toISOString(),
+    cliId,
+  };
+  writeIndex(storageDir, idx);
+  return cliId;
+}
+
 function readIndex(storageDir: string): Index {
   try {
     return JSON.parse(fs.readFileSync(indexFile(storageDir), 'utf8')) as Index;
