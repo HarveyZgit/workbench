@@ -136,3 +136,20 @@ Agent 会通过 CLI 自动读取评论、逐条回复并标记已解决，无需
 | `markdownComment.preview.styles` | `[]` | 加载 workspace 内的本地 CSS 文件 |
 | `markdownComment.preview.renderedDiff` | `true` | 在预览中标记未保存的改动 |
 | `markdownComment.preview.mermaidNodeComments` | `false` | 实验：Mermaid Flowchart 节点评论 |
+
+---
+
+## 未保存的 Markdown（Untitled）
+
+`File → New File` 后将语言设为 Markdown（`untitled:` 文档）时，也可以：
+
+- 打开评论预览（大纲 / 渲染）
+- 在预览中创建、回复、解决评论
+
+**另存为**到真实 `file:` 路径后，评论会自动迁移到新路径键，不会因保存丢失。
+
+限制：
+
+- 未保存时相对路径本地图片无法解析（没有磁盘目录）；`https://` 图片仍可用。另存为后如需本地图，可重新打开预览。
+- Untitled 仅在 `languageId === markdown` 时启用；已落盘文件仍可用后缀兜底。
+

@@ -3,11 +3,11 @@ import * as os from 'node:os';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { writePointer, loadDoc, saveDoc, fileHash } from './storage';
-import { isMarkdownDocument } from './markdown-lang';
+import { writePointer, loadDoc, saveDoc, fileHash, storageKey, migrateDoc } from './storage';
+import { isCommentableMarkdown } from './markdown-lang';
 import type { StoredAnchor, StoredComment, StoredThread } from './types';
 import { buildAnchorFromRange, relocate } from './anchor';
-import { openPreview } from './preview/panel';
+import { openPreview, hasPreview, rebindPreview } from './preview/panel';
 import {
   SKILL_NAME,
   detectAgentSkillRoots,
@@ -77,6 +77,11 @@ const loadedDocs = new Set<string>();
 const pendingPersist = new Map<string, ReturnType<typeof setTimeout>>();
 /** fileHash → 最近一次插件自身写入的时间戳，用来在 fs.watch 回调里忽略自己的写入，避免自激刷新。 */
 const recentSelfWrite = new Map<string, number>();
+
+/** Save As 前记住 untitled 键与正文，便于 didSave(file) 时迁移评论。 */
+let pendingUntitledSave:
+  | { untitledKey: string; untitledUriString: string; content: string; at: number }
+  | undefined;
 
 const keyOf = (uri: vscode.Uri) => uri.toString();
 
@@ -189,11 +194,7 @@ function toMarkdownComment(sc: StoredComment, thread: vscode.CommentThread): Mar
 
 function loadForDocument(doc: vscode.TextDocument): void {
   // 关闭源码内联评论：不在源码编辑器里渲染已有评论（也就不会标记 loaded / 不会写盘）。
-  if (
-    !sourceCommentsEnabled() ||
-    doc.uri.scheme !== 'file' ||
-    !isMarkdownDocument(doc.languageId, doc.uri.fsPath)
-  ) {
+  if (!sourceCommentsEnabled() || !isCommentableMarkdown(doc.languageId, doc.uri)) {
     return;
   }
   const k = keyOf(doc.uri);
@@ -202,7 +203,7 @@ function loadForDocument(doc: vscode.TextDocument): void {
   }
   loadedDocs.add(k);
 
-  for (const st of loadDoc(storageDir, doc.uri.fsPath).threads) {
+  for (const st of loadDoc(storageDir, storageKey(doc.uri)).threads) {
     const located = relocate(doc, st.anchor);
     const range = located ?? new vscode.Range(0, 0, 0, 0);
     const thread = controller.createCommentThread(doc.uri, range, []);
@@ -251,15 +252,27 @@ function serialize(doc: vscode.TextDocument): StoredThread[] {
 }
 
 function persistNow(uri: vscode.Uri): void {
-  if (uri.scheme !== 'file') {
+  if (uri.scheme !== 'file' && uri.scheme !== 'untitled') {
     return;
   }
   const doc = vscode.workspace.textDocuments.find((d) => keyOf(d.uri) === keyOf(uri));
   if (!doc) {
     return;
   }
-  recentSelfWrite.set(fileHash(doc.uri.fsPath), Date.now());
-  saveDoc(storageDir, doc.uri.fsPath, { version: 1, threads: serialize(doc) });
+  const key = storageKey(doc.uri);
+  recentSelfWrite.set(fileHash(key), Date.now());
+  saveDoc(storageDir, key, { version: 1, threads: serialize(doc) });
+}
+
+/** 立即冲刷某文档上还在防抖队列里的写盘（迁移前调用，避免丢未落盘线程）。 */
+function flushPersist(uri: vscode.Uri): void {
+  const k = keyOf(uri);
+  const timer = pendingPersist.get(k);
+  if (timer) {
+    clearTimeout(timer);
+    pendingPersist.delete(k);
+  }
+  persistNow(uri);
 }
 
 /** 防抖持久化：高频操作（输入、连续编辑）合并成一次磁盘写，避免同步写阻塞 UI。 */
@@ -280,8 +293,8 @@ function schedulePersist(uri: vscode.Uri): void {
 
 // ─── 自动刷新（Agent 通过 CLI 改了存储 → 重新加载 UI）──────────────
 
-function reloadDocument(fsPath: string): void {
-  const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === fsPath);
+function reloadDocument(uri: vscode.Uri): void {
+  const doc = vscode.workspace.textDocuments.find((d) => keyOf(d.uri) === keyOf(uri));
   if (!doc) {
     return;
   }
@@ -294,6 +307,21 @@ function reloadDocument(fsPath: string): void {
   }
   loadedDocs.delete(keyOf(doc.uri));
   loadForDocument(doc);
+}
+
+/** Save As：untitled → file 后拆掉旧 URI 上的 CommentThread，再按新路径重载。 */
+function migrateLiveThreads(fromUri: vscode.Uri, toDoc: vscode.TextDocument): void {
+  const set = docThreads.get(keyOf(fromUri));
+  if (set) {
+    for (const thread of set) {
+      thread.dispose();
+    }
+    set.clear();
+    docThreads.delete(keyOf(fromUri));
+  }
+  loadedDocs.delete(keyOf(fromUri));
+  loadedDocs.delete(keyOf(toDoc.uri));
+  loadForDocument(toDoc);
 }
 
 function startWatch(context: vscode.ExtensionContext): void {
@@ -309,8 +337,11 @@ function startWatch(context: vscode.ExtensionContext): void {
         return; // 这是插件自己刚写的，跳过。
       }
       for (const d of vscode.workspace.textDocuments) {
-        if (d.uri.scheme === 'file' && fileHash(d.uri.fsPath) === hash) {
-          reloadDocument(d.uri.fsPath);
+        if (
+          (d.uri.scheme === 'file' || d.uri.scheme === 'untitled') &&
+          fileHash(storageKey(d.uri)) === hash
+        ) {
+          reloadDocument(d.uri);
         }
       }
     });
@@ -330,7 +361,7 @@ function startThread(kind: 'selection' | 'document'): void {
     return;
   }
   const editor = vscode.window.activeTextEditor;
-  if (!editor || !isMarkdownDocument(editor.document.languageId, editor.document.uri.fsPath)) {
+  if (!editor || !isCommentableMarkdown(editor.document.languageId, editor.document.uri)) {
     vscode.window.showInformationMessage('请在 Markdown 文件中操作');
     return;
   }
@@ -598,11 +629,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   controller.commentingRangeProvider = {
     provideCommentingRanges(document) {
-      if (
-        !sourceCommentsEnabled() ||
-        document.uri.scheme !== 'file' ||
-        !isMarkdownDocument(document.languageId, document.uri.fsPath)
-      ) {
+      if (!sourceCommentsEnabled() || !isCommentableMarkdown(document.languageId, document.uri)) {
         return [];
       }
       return [new vscode.Range(0, 0, Math.max(0, document.lineCount - 1), 0)];
@@ -624,8 +651,52 @@ export function activate(context: vscode.ExtensionContext): void {
     loadForDocument(doc);
   }
 
+  const normalizeEol = (text: string) => text.replace(/\r\n/g, '\n');
+
+  const rememberUntitledWillSave = (doc: vscode.TextDocument): void => {
+    if (doc.uri.scheme !== 'untitled' || !isCommentableMarkdown(doc.languageId, doc.uri)) {
+      return;
+    }
+    flushPersist(doc.uri);
+    const untitledKey = storageKey(doc.uri);
+    const hasStored = loadDoc(storageDir, untitledKey).threads.length > 0;
+    if (!hasStored && !hasPreview(doc.uri) && !(docThreads.get(keyOf(doc.uri))?.size)) {
+      return;
+    }
+    pendingUntitledSave = {
+      untitledKey,
+      untitledUriString: doc.uri.toString(),
+      content: doc.getText(),
+      at: Date.now(),
+    };
+  };
+
+  const tryMigrateAfterFileSave = (doc: vscode.TextDocument): void => {
+    if (doc.uri.scheme !== 'file' || !pendingUntitledSave) {
+      return;
+    }
+    if (Date.now() - pendingUntitledSave.at > 10_000) {
+      pendingUntitledSave = undefined;
+      return;
+    }
+    const pending = pendingUntitledSave;
+    const sameContent = normalizeEol(doc.getText()) === normalizeEol(pending.content);
+    // 正文一致优先；短窗口内也接受（部分平台 Save As 可能微调换行后再读）。
+    if (!sameContent && Date.now() - pending.at > 3_000) {
+      return;
+    }
+    pendingUntitledSave = undefined;
+    const toKey = storageKey(doc.uri);
+    migrateDoc(storageDir, pending.untitledKey, toKey);
+    const fromUri = vscode.Uri.parse(pending.untitledUriString);
+    migrateLiveThreads(fromUri, doc);
+    rebindPreview(fromUri, doc.uri);
+  };
+
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument((doc) => loadForDocument(doc)),
+    vscode.workspace.onWillSaveTextDocument((e) => rememberUntitledWillSave(e.document)),
+    vscode.workspace.onDidSaveTextDocument((doc) => tryMigrateAfterFileSave(doc)),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       if (editor) {
         loadForDocument(editor.document);

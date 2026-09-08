@@ -4,6 +4,7 @@ import {
   MARKDOWN_EXTENSIONS,
   MARKDOWN_EXTNAME_PATTERN,
   hasMarkdownExtension,
+  isCommentableMarkdown,
   isMarkdownDocument,
 } from '../src/markdown-lang.ts';
 
@@ -19,4 +20,13 @@ test('isMarkdownDocument accepts languageId or suffix fallback', () => {
   assert.equal(isMarkdownDocument('markdown', 'SKILL.txt'), true);
   assert.equal(isMarkdownDocument('plaintext', 'AGENTS.md'), true);
   assert.equal(isMarkdownDocument('typescript', 'foo.ts'), false);
+});
+
+test('isCommentableMarkdown allows untitled markdown and file md', () => {
+  assert.equal(isCommentableMarkdown('markdown', { scheme: 'untitled', fsPath: '' }), true);
+  assert.equal(isCommentableMarkdown('plaintext', { scheme: 'untitled', fsPath: '' }), false);
+  assert.equal(isCommentableMarkdown('markdown', { scheme: 'file', fsPath: '/tmp/a.md' }), true);
+  assert.equal(isCommentableMarkdown('plaintext', { scheme: 'file', fsPath: '/tmp/a.md' }), true);
+  assert.equal(isCommentableMarkdown('typescript', { scheme: 'file', fsPath: '/tmp/a.ts' }), false);
+  assert.equal(isCommentableMarkdown('markdown', { scheme: 'http', fsPath: '' }), false);
 });

@@ -35,6 +35,28 @@ export function fileHash(absPath: string): string {
   return createHash('sha1').update(absPath).digest('hex');
 }
 
+/**
+ * 稳定的存储键：
+ * - `file:` → 绝对 fsPath（与历史 hash 兼容）
+ * - `untitled:` → `uri.toString()`（含 Untitled-N id），避免空 fsPath 撞车
+ * - 其它 scheme → 回退 toString()
+ */
+export interface StorageUriLike {
+  scheme: string;
+  fsPath: string;
+  toString(): string;
+}
+
+export function storageKey(uri: StorageUriLike): string {
+  if (uri.scheme === 'file') {
+    return uri.fsPath;
+  }
+  if (uri.scheme === 'untitled') {
+    return uri.toString();
+  }
+  return uri.toString();
+}
+
 function docsDir(storageDir: string): string {
   return path.join(storageDir, 'docs');
 }
@@ -51,7 +73,7 @@ interface IndexEntry {
   path: string;
   updatedAt: string;
 }
-// hash → { 原始绝对路径, 更新时间 }，让 CLI 能反查 hash 对应哪个 markdown。
+// hash → { 原始绝对路径 / 存储键, 更新时间 }，让 CLI 能反查 hash 对应哪个 markdown。
 type Index = Record<string, IndexEntry>;
 
 function readIndex(storageDir: string): Index {
@@ -97,6 +119,34 @@ export function saveDoc(storageDir: string, absPath: string, data: StoredDocumen
   fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
   idx[h] = { path: absPath, updatedAt: new Date().toISOString() };
   writeIndex(storageDir, idx);
+}
+
+/**
+ * 把评论从 untitled（或其它）键迁移到 file 路径键，并清空源键。
+ * 目标已有同 id 线程时以源为准覆盖；目标独有线程保留。
+ * @returns 是否实际写入了目标线程
+ */
+export function migrateDoc(storageDir: string, fromKey: string, toKey: string): boolean {
+  if (fromKey === toKey) {
+    return false;
+  }
+  const from = loadDoc(storageDir, fromKey);
+  if (from.threads.length === 0) {
+    // 仍尝试清掉空源（幂等）。
+    saveDoc(storageDir, fromKey, { version: 1, threads: [] });
+    return false;
+  }
+  const to = loadDoc(storageDir, toKey);
+  const byId = new Map<string, StoredThread>();
+  for (const thread of to.threads) {
+    byId.set(thread.id, thread);
+  }
+  for (const thread of from.threads) {
+    byId.set(thread.id, thread);
+  }
+  saveDoc(storageDir, toKey, { version: 1, threads: [...byId.values()] });
+  saveDoc(storageDir, fromKey, { version: 1, threads: [] });
+  return true;
 }
 
 export function listAll(storageDir: string): { path: string; doc: StoredDocument }[] {

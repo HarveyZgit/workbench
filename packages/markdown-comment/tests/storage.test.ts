@@ -9,8 +9,10 @@ import {
   findThread,
   listAll,
   loadDoc,
+  migrateDoc,
   readStorageDir,
   saveDoc,
+  storageKey,
   writePointer,
 } from '../src/storage.ts';
 import type { StoredDocument, StoredThread } from '../src/types.ts';
@@ -44,6 +46,23 @@ test('fileHash is stable sha1 of the absolute path', () => {
   assert.equal(a.length, 40);
 });
 
+test('storageKey keeps file fsPath and stable untitled toString', () => {
+  assert.equal(storageKey({ scheme: 'file', fsPath: '/tmp/a.md', toString: () => 'file:///tmp/a.md' }), '/tmp/a.md');
+  assert.equal(
+    storageKey({ scheme: 'untitled', fsPath: '', toString: () => 'untitled:Untitled-1' }),
+    'untitled:Untitled-1',
+  );
+  assert.notEqual(
+    storageKey({ scheme: 'untitled', fsPath: '', toString: () => 'untitled:Untitled-1' }),
+    storageKey({ scheme: 'untitled', fsPath: '', toString: () => 'untitled:Untitled-2' }),
+  );
+  // 空 fsPath 绝不能作为 untitled 键（会互相撞车）。
+  assert.notEqual(
+    storageKey({ scheme: 'untitled', fsPath: '', toString: () => 'untitled:Untitled-1' }),
+    '',
+  );
+});
+
 test('loadDoc returns empty document when missing or invalid', () => {
   const dir = tmp();
   const empty = loadDoc(dir, '/tmp/missing.md');
@@ -63,6 +82,43 @@ test('saveDoc writes index and deletes empty docs', () => {
   saveDoc(dir, file, { version: 1, threads: [] });
   assert.equal(listAll(dir).length, 0);
   assert.equal(fs.existsSync(docFile(dir, file)), false);
+});
+
+test('migrateDoc moves untitled threads to file key and clears source', () => {
+  const dir = tmp();
+  const from = 'untitled:Untitled-1';
+  const to = '/tmp/saved.md';
+  const id = 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb';
+  saveDoc(dir, from, { version: 1, threads: [thread(id, 'draft')] });
+  assert.equal(migrateDoc(dir, from, to), true);
+  assert.equal(loadDoc(dir, from).threads.length, 0);
+  assert.equal(fs.existsSync(docFile(dir, from)), false);
+  assert.equal(loadDoc(dir, to).threads[0].id, id);
+  assert.equal(listAll(dir).map((x) => x.path).join(','), to);
+  // 幂等：源已空时再迁返回 false。
+  assert.equal(migrateDoc(dir, from, to), false);
+  assert.equal(loadDoc(dir, to).threads.length, 1);
+});
+
+test('migrateDoc merges with existing target threads by id', () => {
+  const dir = tmp();
+  const from = 'untitled:Untitled-2';
+  const to = '/tmp/merged.md';
+  saveDoc(dir, to, { version: 1, threads: [thread('cccccccc-3333-4333-8333-cccccccccccc', 'old')] });
+  saveDoc(dir, from, {
+    version: 1,
+    threads: [
+      thread('cccccccc-3333-4333-8333-cccccccccccc', 'newer'),
+      thread('dddddddd-4444-4444-8444-dddddddddddd', 'extra'),
+    ],
+  });
+  assert.equal(migrateDoc(dir, from, to), true);
+  const ids = loadDoc(dir, to).threads.map((t) => t.id).sort();
+  assert.deepEqual(ids, [
+    'cccccccc-3333-4333-8333-cccccccccccc',
+    'dddddddd-4444-4444-8444-dddddddddddd',
+  ]);
+  assert.equal(loadDoc(dir, to).threads.find((t) => t.id.startsWith('cccccccc'))?.anchor.quote, 'newer');
 });
 
 test('findThread prefers exact id and rejects ambiguous prefixes', () => {
