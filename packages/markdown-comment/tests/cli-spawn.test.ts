@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { docFile, saveDoc } from '../src/storage.ts';
+import { docFile, getCliId, saveDoc } from '../src/storage.ts';
 import type { StoredAnchor, StoredDocument, StoredThread } from '../src/types.ts';
 
 const cliPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'cli.ts');
@@ -238,12 +238,20 @@ test('--name-only prints file and count', () => {
 
 test('--json emits thread objects', () => {
   const ctx = seed();
-  const result = run(['list', '--json', '--hidden'], { cwd: ctx.workspace, storage: ctx.storage, home: ctx.home });
+  const result = run(['list', '--json', '--hidden'], {
+    cwd: ctx.workspace,
+    storage: ctx.storage,
+    home: ctx.home,
+  });
   assert.equal(result.status, 0, result.stderr);
   const rows = JSON.parse(result.stdout) as Array<{ threadId: string; orphaned: boolean; target?: unknown }>;
   assert.ok(rows.some((row) => row.threadId === ctx.ids.selection));
   assert.ok(rows.some((row) => row.orphaned));
-  const openOnly = run(['list', '--json', '--open'], { cwd: ctx.workspace, storage: ctx.storage, home: ctx.home });
+  const openOnly = run(['list', '--json', '--open'], {
+    cwd: ctx.workspace,
+    storage: ctx.storage,
+    home: ctx.home,
+  });
   const openRows = JSON.parse(openOnly.stdout) as Array<{ status: string }>;
   assert.ok(openRows.every((row) => row.status === 'open'));
 });
@@ -270,7 +278,11 @@ test('empty cwd prints the scoped empty message', () => {
   const empty = tmp('mdc-cli-empty-cwd-');
   const result = run(['list'], { cwd: empty, storage: ctx.storage, home: ctx.home });
   assert.match(result.stdout, /当前目录下没有评论；加 -g 看全部/);
-  const globalEmptyStore = run(['list', '-g'], { cwd: empty, storage: tmp('mdc-cli-empty-store-'), home: ctx.home });
+  const globalEmptyStore = run(['list', '-g'], {
+    cwd: empty,
+    storage: tmp('mdc-cli-empty-store-'),
+    home: ctx.home,
+  });
   assert.match(globalEmptyStore.stdout, /没有评论/);
 });
 
@@ -284,9 +296,14 @@ test('reply appends an agent comment', () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /OK: 已回复 #11111111/);
   const listed = run(['list', '--json'], { cwd: ctx.workspace, storage: ctx.storage, home: ctx.home });
-  const rows = JSON.parse(listed.stdout) as Array<{ threadId: string; comments: Array<{ author: string; body: string }> }>;
+  const rows = JSON.parse(listed.stdout) as Array<{
+    threadId: string;
+    comments: Array<{ author: string; body: string }>;
+  }>;
   const target = rows.find((row) => row.threadId === ctx.ids.selection);
-  assert.ok(target?.comments.some((comment) => comment.author === 'agent' && comment.body === 'agent says hi'));
+  assert.ok(
+    target?.comments.some((comment) => comment.author === 'agent' && comment.body === 'agent says hi'),
+  );
 });
 
 test('resolve marks a thread resolved', () => {
@@ -298,7 +315,11 @@ test('resolve marks a thread resolved', () => {
   });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /OK: 已标记已解决 #11111111/);
-  const listed = run(['list', '--json', '--hidden'], { cwd: ctx.workspace, storage: ctx.storage, home: ctx.home });
+  const listed = run(['list', '--json', '--hidden'], {
+    cwd: ctx.workspace,
+    storage: ctx.storage,
+    home: ctx.home,
+  });
   const rows = JSON.parse(listed.stdout) as Array<{ threadId: string; status: string }>;
   assert.equal(rows.find((row) => row.threadId === ctx.ids.selection)?.status, 'resolved');
 });
@@ -318,7 +339,11 @@ test('missing args and missing ids fail', () => {
   });
   assert.equal(replyMissing.status, 1);
   assert.match(replyMissing.stderr, /未找到 thread/);
-  const resolveMissing = run(['resolve', 'ffffff'], { cwd: ctx.workspace, storage: ctx.storage, home: ctx.home });
+  const resolveMissing = run(['resolve', 'ffffff'], {
+    cwd: ctx.workspace,
+    storage: ctx.storage,
+    home: ctx.home,
+  });
   assert.equal(resolveMissing.status, 1);
   assert.match(resolveMissing.stderr, /未找到 thread/);
 });
@@ -351,3 +376,82 @@ test('mermaid fallback is not used when a closing fence is nearer than a mermaid
 function requireDoc(storage: string, absPath: string): string {
   return docFile(storage, absPath);
 }
+
+test('list accepts untitled storage key without path.resolve', () => {
+  const storage = tmp('mdc-cli-untitled-store-');
+  const home = tmp('mdc-cli-untitled-home-');
+  const workspace = tmp('mdc-cli-untitled-ws-');
+  const key = 'untitled:Untitled-1';
+  const id = 'ffffffff-6666-4666-8666-ffffffffffff';
+  saveDoc(storage, key, {
+    version: 1,
+    threads: [thread(id, { kind: 'document', body: 'untitled whole-doc note' })],
+  });
+  const cliId = getCliId(storage, key)!;
+  const broken = run(['list', key], { cwd: workspace, storage, home });
+  assert.equal(broken.status, 0, broken.stderr);
+  // 展示优先 cliId（与 Skill 提示一致）；仍能按 untitled: 键解析
+  assert.match(broken.stdout, new RegExp(cliId));
+  assert.match(broken.stdout, /untitled whole-doc note/);
+  // Confirm path.resolve would have missed the doc (wrong key → empty)
+  const wrongKey = path.resolve(key);
+  assert.notEqual(wrongKey, key);
+  const miss = run(['list', wrongKey], { cwd: workspace, storage, home });
+  assert.equal(miss.status, 0, miss.stderr);
+  assert.match(miss.stdout, /没有评论/);
+});
+
+test('list resolves untitled via cliId and displays cliId', () => {
+  const storage = tmp('mdc-cli-cliid-store-');
+  const home = tmp('mdc-cli-cliid-home-');
+  const workspace = tmp('mdc-cli-cliid-ws-');
+  const key = 'untitled:Untitled-7';
+  const id = 'cccccccc-7777-4777-8777-cccccccccccc';
+  saveDoc(storage, key, {
+    version: 1,
+    threads: [thread(id, { kind: 'document', body: 'cliid whole-doc note' })],
+  });
+  const cliId = getCliId(storage, key);
+  assert.ok(cliId);
+  assert.match(cliId!, /^u_[0-9a-f]{8}$/);
+
+  const byId = run(['list', cliId!], { cwd: workspace, storage, home });
+  assert.equal(byId.status, 0, byId.stderr);
+  assert.match(byId.stdout, /cliid whole-doc note/);
+
+  const global = run(['list', '-g'], { cwd: workspace, storage, home });
+  assert.equal(global.status, 0, global.stderr);
+  assert.match(global.stdout, new RegExp(cliId!));
+  assert.doesNotMatch(global.stdout, /untitled:Untitled-7/);
+});
+
+test('default list excludes untitled; -g includes cliId', () => {
+  const storage = tmp('mdc-cli-scope-store-');
+  const home = tmp('mdc-cli-scope-home-');
+  const workspace = tmp('mdc-cli-scope-ws-');
+  const key = 'untitled:Untitled-scope';
+  const id = 'dddddddd-8888-4888-8888-dddddddddddd';
+  saveDoc(storage, key, {
+    version: 1,
+    threads: [thread(id, { kind: 'document', body: 'scope untitled note' })],
+  });
+  const fileInWs = path.join(workspace, 'local.md');
+  fs.writeFileSync(fileInWs, '# local\n', 'utf8');
+  saveDoc(storage, fileInWs, {
+    version: 1,
+    threads: [thread('eeeeeeee-9999-4999-8999-eeeeeeeeeeee', { kind: 'document', body: 'local note' })],
+  });
+  const cliId = getCliId(storage, key)!;
+  assert.match(cliId, /^u_[0-9a-f]{8}$/);
+
+  const scoped = run(['list'], { cwd: workspace, storage, home });
+  assert.equal(scoped.status, 0, scoped.stderr);
+  assert.match(scoped.stdout, /local note/);
+  assert.doesNotMatch(scoped.stdout, new RegExp(cliId));
+  assert.doesNotMatch(scoped.stdout, /scope untitled note/);
+
+  const global = run(['list', '-g'], { cwd: workspace, storage, home });
+  assert.equal(global.status, 0, global.stderr);
+  assert.match(global.stdout, new RegExp(cliId));
+  assert.match(global.stdout, /scope untitled note/);
+});

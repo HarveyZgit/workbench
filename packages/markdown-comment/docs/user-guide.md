@@ -120,7 +120,12 @@ Skill 是给 Agent 看的操作指令，安装后 Agent 可以通过 CLI 读取�
 - "列出当前目录下所有未解决的评论"
 - "回复 #abc123 这条评论"
 
-Agent 会通过 CLI 自动读取评论、逐条回复并标记已解决，无需你手动操作。
+也可在评论预览工具栏点「复制 Skill 提示」，把 `/markdown-comment <target>` 粘贴给 Agent：
+
+- **已落盘文件**：`<target>` 为该文件的**绝对路径**（不是 workspace 相对路径）
+- **Untitled**：`<target>` 为 CLI 短 id `u_<8hex>`（不是 `untitled:Untitled-1`）；该未保存文档至少有一条评论后才能复制。默认 `list`（当前目录）不会列出 untitled，Agent 需用 `list -g` 或你给出的 `u_*`
+
+Agent 会通过 CLI 自动读取评论、逐条回复并标记已解决，无需你手动操作。装过新版扩展后，若 Agent 仍按旧说明行事，请再跑一次命令面板 **Markdown Comment：安装 / 更新 Agent Skill**（激活时也会 reconcile 刷新真源）。
 
 ### 常用设置
 
@@ -136,3 +141,22 @@ Agent 会通过 CLI 自动读取评论、逐条回复并标记已解决，无需
 | `markdownComment.preview.styles` | `[]` | 加载 workspace 内的本地 CSS 文件 |
 | `markdownComment.preview.renderedDiff` | `true` | 在预览中标记未保存的改动 |
 | `markdownComment.preview.mermaidNodeComments` | `false` | 实验：Mermaid Flowchart 节点评论 |
+
+---
+
+## 未保存的 Markdown（Untitled）
+
+`File → New File` 后将语言设为 Markdown（`untitled:` 文档）时，也可以：
+
+- 打开评论预览（大纲 / 渲染）
+- 在预览中创建、回复、解决评论
+- 有评论后，用预览「复制 Skill 提示」得到 `/markdown-comment u_<8hex>`（稳定短 id；不要把 `untitled:Untitled-N` 当作 Agent/CLI 目标）
+
+**另存为**到真实 `file:` 路径后，评论会自动迁移到新路径键，不会因保存丢失。
+
+限制：
+
+- 未保存时相对路径本地图片无法解析（没有磁盘目录）；`https://` 图片仍可用。另存为后如需本地图，可重新打开预览。
+- Untitled 仅在 `languageId === markdown` 时启用；已落盘文件仍可用后缀兜底。
+- 默认 CLI `list`（cwd 范围）不包含 untitled；要用 `list -g` 或显式传入 `u_*`。
+

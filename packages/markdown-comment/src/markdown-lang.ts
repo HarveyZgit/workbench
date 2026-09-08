@@ -32,3 +32,21 @@ export function hasMarkdownExtension(fsPath: string): boolean {
 export function isMarkdownDocument(languageId: string, fsPath: string): boolean {
   return languageId === 'markdown' || hasMarkdownExtension(fsPath);
 }
+
+/**
+ * 预览 / 评论入口是否支持该文档：
+ * - `file:` → languageId 或后缀兜底（与 isMarkdownDocument 一致）
+ * - `untitled:` → 必须 languageId === 'markdown'（无可靠后缀；Save As 前用户手动设语言）
+ */
+export function isCommentableMarkdown(
+  languageId: string,
+  uri: { scheme: string; fsPath: string },
+): boolean {
+  if (uri.scheme === 'untitled') {
+    return languageId === 'markdown';
+  }
+  if (uri.scheme === 'file') {
+    return isMarkdownDocument(languageId, uri.fsPath);
+  }
+  return false;
+}

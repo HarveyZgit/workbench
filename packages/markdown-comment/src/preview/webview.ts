@@ -567,6 +567,60 @@ function submitDraft(): void {
 
 document.getElementById('mdc-add-doc')?.addEventListener('click', openDocDraft);
 
+const TIP_COPY_SKILL = '复制 Skill 提示';
+const TIP_COPY_SKILL_DISABLED = '添加评论后可复制';
+const TIP_COPIED = '已复制';
+let copySkillTipTimer: ReturnType<typeof setTimeout> | undefined;
+let copySkillEnabled = true;
+let copySkillTip = TIP_COPY_SKILL;
+
+function setCopySkillButtonAttrs(tip: string): void {
+  const btn = document.getElementById('mdc-copy-skill') as HTMLButtonElement | null;
+  if (!btn) {
+    return;
+  }
+  btn.setAttribute('data-tip', tip);
+  btn.setAttribute('aria-label', tip);
+  btn.setAttribute('title', tip);
+}
+
+function applySkillPromptTarget(enabled: boolean, tip: string): void {
+  const btn = document.getElementById('mdc-copy-skill') as HTMLButtonElement | null;
+  if (!btn) {
+    return;
+  }
+  copySkillEnabled = enabled;
+  copySkillTip = tip || (enabled ? TIP_COPY_SKILL : TIP_COPY_SKILL_DISABLED);
+  btn.disabled = !enabled;
+  btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+  if (copySkillTipTimer) {
+    clearTimeout(copySkillTipTimer);
+    copySkillTipTimer = undefined;
+  }
+  setCopySkillButtonAttrs(copySkillTip);
+}
+
+function flashCopySkillTip(): void {
+  const btn = document.getElementById('mdc-copy-skill');
+  if (!btn || !copySkillEnabled) {
+    return;
+  }
+  setCopySkillButtonAttrs(TIP_COPIED);
+  if (copySkillTipTimer) {
+    clearTimeout(copySkillTipTimer);
+  }
+  copySkillTipTimer = setTimeout(() => {
+    setCopySkillButtonAttrs(copySkillTip);
+  }, 1500);
+}
+
+document.getElementById('mdc-copy-skill')?.addEventListener('click', () => {
+  if (!copySkillEnabled) {
+    return;
+  }
+  post({ type: 'copySkillPrompt' });
+});
+
 draftEl?.addEventListener('click', (e) => {
   const act = (e.target as HTMLElement).getAttribute('data-act');
   if (act === 'submit') {
@@ -1198,6 +1252,10 @@ window.addEventListener('message', (e: MessageEvent) => {
     if (renderOptions.scrollPreviewWithEditor) {
       navigation?.scrollToSourceLine(msg.line);
     }
+  } else if (msg.type === 'skillPromptCopied') {
+    flashCopySkillTip();
+  } else if (msg.type === 'skillPromptTarget') {
+    applySkillPromptTarget(msg.enabled, msg.tip);
   } else if (msg.type === 'resolvedResources' && pendingResourceRequests.delete(msg.requestId)) {
     const resources = new Map(msg.resources.map((resource) => [resource.source, resource]));
     content?.querySelectorAll<HTMLImageElement>('img[data-src]').forEach((image) => {

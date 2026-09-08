@@ -5,8 +5,8 @@ import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { loadDoc, saveDoc, fileHash } from '../storage';
-import { isMarkdownDocument } from '../markdown-lang';
+import { loadDoc, saveDoc, fileHash, storageKey, ensureUntitledCliId, skillPromptTargetState } from '../storage';
+import { isCommentableMarkdown, isMarkdownDocument } from '../markdown-lang';
 import { buildAnchorFromRange, mapRenderedSelectionToRange, relocate } from '../anchor';
 import type { StoredDocument, StoredThread } from '../types';
 import { computePreviewLineChanges } from './diff';
@@ -38,6 +38,7 @@ const MAX_DIFF_DOCUMENT_LINES = 10_000;
 interface PreviewController {
   panel: vscode.WebviewPanel;
   uri: vscode.Uri;
+  rebind: (next: vscode.Uri) => void;
   dispose: () => void;
 }
 
@@ -84,7 +85,8 @@ function renderOptions(
 function localResourceRoots(context: vscode.ExtensionContext, uri: vscode.Uri): vscode.Uri[] {
   const roots = [
     vscode.Uri.joinPath(context.extensionUri, 'dist'),
-    vscode.Uri.file(path.dirname(uri.fsPath)),
+    // untitled 无磁盘目录：跳过 dirname(fsPath)，相对本地图在未保存时不可解析。
+    ...(uri.scheme === 'file' ? [vscode.Uri.file(path.dirname(uri.fsPath))] : []),
     ...(vscode.workspace.workspaceFolders?.map((folder) => folder.uri) ?? []),
   ];
   return roots.filter(
@@ -110,7 +112,7 @@ function realPath(candidate: string): string | null {
 
 function allowedFileRoots(uri: vscode.Uri): string[] {
   return [
-    path.dirname(uri.fsPath),
+    ...(uri.scheme === 'file' ? [path.dirname(uri.fsPath)] : []),
     ...(vscode.workspace.workspaceFolders
       ?.filter((folder) => folder.uri.scheme === 'file')
       .map((folder) => folder.uri.fsPath) ?? []),
@@ -137,6 +139,10 @@ function resolveLocalReference(uri: vscode.Uri, source: string): vscode.Uri | nu
     return null;
   }
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri) ?? vscode.workspace.workspaceFolders?.[0];
+  // untitled：没有可靠的磁盘 dirname，相对路径本地资源直接放弃（https / data 仍由调用方放行）。
+  if (uri.scheme !== 'file' && !decodedPath.startsWith('/')) {
+    return null;
+  }
   const absolutePath = decodedPath.startsWith('/')
     ? workspaceFolder
       ? path.resolve(workspaceFolder.uri.fsPath, `.${decodedPath}`)
@@ -296,6 +302,8 @@ function isWebviewMessage(value: unknown): value is WebviewToHost {
     case 'revealSourceLine':
     case 'previewScroll':
       return hasFiniteNumber('line');
+    case 'copySkillPrompt':
+      return true;
     default:
       return false;
   }
@@ -585,12 +593,12 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 }
 .mdc-tab-n.show { display: inline-block; }
 #mdc-head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
-#mdc-add-doc {
-  flex: none; font-size: 0.82em; padding: 4px 7px; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;
-  background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.2));
-  color: var(--vscode-button-secondaryForeground, inherit);
+#mdc-head-actions .mdc-icon { flex: none; opacity: 0.72; }
+#mdc-head-actions .mdc-icon:hover { opacity: 1; }
+#mdc-copy-skill:disabled {
+  opacity: 0.32; cursor: default;
 }
-#mdc-add-doc:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.3)); }
+#mdc-copy-skill:disabled:hover { opacity: 0.32; background: transparent; }
 #mdc-toggle-sidebar { flex: none; opacity: 0.72; }
 #app.sidebar-collapsed #sidebar {
   width: 0; min-width: 0; padding: 0; margin: 0; border: none;
@@ -764,7 +772,8 @@ function buildHtml(
         <button class="mdc-tab" data-tab="all">全部<span class="mdc-tab-n"></span></button>
       </div>
       <div id="mdc-head-actions">
-        <button id="mdc-add-doc" title="对整篇文档添加评论">＋ 全文评论</button>
+        <button type="button" id="mdc-add-doc" class="mdc-icon mdc-tip" data-tip="全文评论" aria-label="全文评论" title="全文评论"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h5.5L12.5 5.5V13.5H4z"/><path d="M9.5 2.5V5.5h3"/><path d="M6 8h4.5M6 10.5h3"/><circle cx="11.2" cy="11.2" r="2.3"/><path d="M11.2 10.2v2M10.2 11.2h2"/></svg></button>
+        <button type="button" id="mdc-copy-skill" class="mdc-icon mdc-tip" data-tip="复制 Skill 提示" aria-label="复制 Skill 提示" title="复制 Skill 提示"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="3" width="7" height="9" rx="1.2"/><path d="M4 5.5H3.5A1.5 1.5 0 0 0 2 7v5.5A1.5 1.5 0 0 0 3.5 14H9"/><path d="M7.5 6.5h3M7.5 9h3"/></svg></button>
         <button id="mdc-toggle-sidebar" class="mdc-icon mdc-tip" data-tip="收起评论" aria-label="收起评论" aria-expanded="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg></button>
       </div>
     </div>
@@ -777,13 +786,50 @@ function buildHtml(
 </html>`;
 }
 
+/** 当前绑定文档的 Skill 提示目标（file=绝对路径；untitled=cliId 或禁用）。 */
+function skillPromptStateFor(storageDir: string, uri: vscode.Uri) {
+  // 存量 untitled：有评论但缺 cliId 时 ensure 回填，无需再发一条评论。
+  const cliId =
+    uri.scheme === 'untitled' ? ensureUntitledCliId(storageDir, storageKey(uri)) : undefined;
+  return skillPromptTargetState({ scheme: uri.scheme, fsPath: uri.fsPath, cliId });
+}
+
+function previewTitle(uri: vscode.Uri): string {
+  if (uri.scheme === 'untitled') {
+    const name = uri.path || uri.toString().replace(/^untitled:/, '') || 'Untitled';
+    return `评论预览：${name}`;
+  }
+  return `评论预览：${path.basename(uri.fsPath)}`;
+}
+
+export function hasPreview(uri: vscode.Uri): boolean {
+  return previews.has(keyOf(uri));
+}
+
+/** untitled Save As 成 file 后：把已打开的预览改绑到新 URI，不丢 webview。 */
+export function rebindPreview(fromUri: vscode.Uri, toUri: vscode.Uri): void {
+  if (keyOf(fromUri) === keyOf(toUri)) {
+    return;
+  }
+  const ctrl = previews.get(keyOf(fromUri));
+  if (!ctrl) {
+    return;
+  }
+  previews.delete(keyOf(fromUri));
+  // 若目标已有预览，关掉旧的，保留迁移来的（含未提交草稿态更完整）。
+  const conflict = previews.get(keyOf(toUri));
+  if (conflict) {
+    conflict.dispose();
+    conflict.panel.dispose();
+    previews.delete(keyOf(toUri));
+  }
+  ctrl.rebind(toUri);
+  previews.set(keyOf(toUri), ctrl);
+}
+
 export function openPreview(context: vscode.ExtensionContext, editor?: vscode.TextEditor): void {
   const ed = editor ?? vscode.window.activeTextEditor;
-  if (
-    !ed ||
-    ed.document.uri.scheme !== 'file' ||
-    !isMarkdownDocument(ed.document.languageId, ed.document.uri.fsPath)
-  ) {
+  if (!ed || !isCommentableMarkdown(ed.document.languageId, ed.document.uri)) {
     vscode.window.showInformationMessage('请在 Markdown 文件中打开评论预览');
     return;
   }
@@ -796,9 +842,12 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
 
   const storageDir = context.globalStorageUri.fsPath;
   const distUri = vscode.Uri.joinPath(context.extensionUri, 'dist');
+  // 可变绑定：Save As 后 rebind 更新，闭包内读写均走 boundUri / docKey。
+  let boundUri = uri;
+  const docKey = () => storageKey(boundUri);
   const panel = vscode.window.createWebviewPanel(
     'markdownCommentPreview',
-    `评论预览：${path.basename(uri.fsPath)}`,
+    previewTitle(uri),
     vscode.ViewColumn.Active,
     // enableFindWidget：让 webview 支持 Cmd/Ctrl+F 唤起 VS Code 查找框，在渲染预览文本里搜索。
     {
@@ -814,13 +863,17 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
 
   const post = (msg: HostToWebview) => void panel.webview.postMessage(msg);
   const wireFor = (doc?: vscode.TextDocument) =>
-    loadDoc(storageDir, uri.fsPath).threads.map((t) => toWire(t, doc));
+    loadDoc(storageDir, docKey()).threads.map((t) => toWire(t, doc));
   // 取当前文本来 relocate（源码 tab 没开则后台加载），保证回推 webview 的行号是最新的。
-  const sendThreads = async () => post({ type: 'threads', threads: wireFor(await getDoc(uri)) });
+  const sendThreads = async () => post({ type: 'threads', threads: wireFor(await getDoc(boundUri)) });
+  const sendSkillPromptTarget = () => {
+    const state = skillPromptStateFor(storageDir, boundUri);
+    post({ type: 'skillPromptTarget', enabled: state.enabled, tip: state.tip });
+  };
   const sendRender = async () => {
-    const doc = await getDoc(uri);
+    const doc = await getDoc(boundUri);
     const text = doc?.getText() ?? '';
-    const options = renderOptions(panel.webview, uri, doc);
+    const options = renderOptions(panel.webview, boundUri, doc);
     const encoding =
       doc &&
       'encoding' in doc &&
@@ -829,7 +882,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
         : 'utf8';
     const changes =
       options.renderedDiff && doc?.isDirty && encoding === 'utf8'
-        ? readLineChanges(uri.fsPath, text)
+        ? (boundUri.scheme === 'file' ? readLineChanges(boundUri.fsPath, text) : undefined)
         : undefined;
     post({
       type: 'render',
@@ -842,17 +895,18 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
 
   // 改 storage 后即时回推 webview（源码侧由 fs.watch 自行重载）。
   const mutate = (fn: (doc: StoredDocument) => void) => {
-    const stored = loadDoc(storageDir, uri.fsPath);
+    const stored = loadDoc(storageDir, docKey());
     fn(stored);
-    saveDoc(storageDir, uri.fsPath, stored);
+    saveDoc(storageDir, docKey(), stored);
     void sendThreads();
+    sendSkillPromptTarget();
   };
 
   const handleCreate = async (selection: RenderedSelection, text: string) => {
     if (!text.trim()) {
       return;
     }
-    const doc = await getDoc(uri);
+    const doc = await getDoc(boundUri);
     if (!doc) {
       vscode.window.showWarningMessage('源 Markdown 文件无法读取（可能已删除或移动），无法创建评论');
       return;
@@ -884,7 +938,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     if (!text.trim()) {
       return;
     }
-    const doc = await getDoc(uri);
+    const doc = await getDoc(boundUri);
     const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
     const range = doc ? doc.lineAt(safeStartLine).range : null;
     if (!doc || !range) {
@@ -908,7 +962,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     if (!text.trim()) {
       return;
     }
-    const doc = await getDoc(uri);
+    const doc = await getDoc(boundUri);
     const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
     const range = doc ? doc.lineAt(safeStartLine).range : null;
     if (!doc || !range) {
@@ -933,7 +987,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       if (/^https:/i.test(source) || /^data:image\//i.test(source)) {
         return { source, uri: source };
       }
-      const resolved = resolveLocalReference(uri, source);
+      const resolved = resolveLocalReference(boundUri, source);
       if (!resolved) {
         return { source, error: '不允许读取该资源路径' };
       }
@@ -962,7 +1016,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       await vscode.env.openExternal(parsed);
       return;
     }
-    const resolved = resolveLocalReference(uri, trimmed);
+    const resolved = resolveLocalReference(boundUri, trimmed);
     if (!resolved) {
       vscode.window.showWarningMessage(`不支持打开链接：${href}`);
       return;
@@ -988,14 +1042,14 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       await vscode.env.openExternal(vscode.Uri.parse(source, true));
       return;
     }
-    const resolved = resolveLocalReference(uri, source);
+    const resolved = resolveLocalReference(boundUri, source);
     if (resolved) {
       await vscode.commands.executeCommand('vscode.open', resolved.with({ query: '', fragment: '' }));
     }
   };
 
   const revealSourceLine = async (line: number, preserveFocus = false) => {
-    const doc = await getDoc(uri);
+    const doc = await getDoc(boundUri);
     if (!doc) {
       return;
     }
@@ -1013,11 +1067,11 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
   };
 
   const revealSource = async (threadId: string) => {
-    const t = loadDoc(storageDir, uri.fsPath).threads.find((x) => x.id === threadId);
+    const t = loadDoc(storageDir, docKey()).threads.find((x) => x.id === threadId);
     if (!t) {
       return;
     }
-    const doc = await getDoc(uri);
+    const doc = await getDoc(boundUri);
     if (!doc) {
       vscode.window.showWarningMessage('源 Markdown 文件无法读取（可能已删除或移动）');
       return;
@@ -1062,6 +1116,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       switch (msg.type) {
         case 'ready':
           void sendRender();
+          sendSkillPromptTarget();
           break;
         case 'createThread':
           void handleCreate(msg.selection, msg.text);
@@ -1162,19 +1217,30 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
         case 'copyImageFallback':
           void vscode.env.clipboard.writeText(msg.source);
           break;
+        case 'copySkillPrompt': {
+          const state = skillPromptStateFor(storageDir, boundUri);
+          if (!state.enabled || !state.prompt) {
+            sendSkillPromptTarget();
+            break;
+          }
+          void vscode.env.clipboard.writeText(state.prompt).then(() => {
+            post({ type: 'skillPromptCopied' });
+          });
+          break;
+        }
         case 'revealSourceLine':
           suppressPreviewScrollUntil = Date.now() + 200;
           void revealSourceLine(msg.line);
           break;
         case 'previewScroll': {
           if (
-            !renderOptions(panel.webview, uri).scrollEditorWithPreview ||
+            !renderOptions(panel.webview, boundUri).scrollEditorWithPreview ||
             Date.now() < suppressEditorScrollUntil
           ) {
             break;
           }
           const editor = vscode.window.visibleTextEditors.find(
-            (candidate) => keyOf(candidate.document.uri) === keyOf(uri),
+            (candidate) => keyOf(candidate.document.uri) === keyOf(boundUri),
           );
           if (!editor) {
             break;
@@ -1194,24 +1260,24 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       }
     }),
     vscode.workspace.onDidChangeTextDocument((e) => {
-      if (keyOf(e.document.uri) === keyOf(uri)) {
+      if (keyOf(e.document.uri) === keyOf(boundUri)) {
         scheduleRender();
       }
     }),
     vscode.workspace.onDidSaveTextDocument((doc) => {
-      if (keyOf(doc.uri) === keyOf(uri)) {
+      if (keyOf(doc.uri) === keyOf(boundUri)) {
         void sendRender();
       }
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('markdownComment.preview', uri)) {
+      if (e.affectsConfiguration('markdownComment.preview', boundUri)) {
         void sendRender();
       }
     }),
     vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
       if (
-        keyOf(e.textEditor.document.uri) !== keyOf(uri) ||
-        !renderOptions(panel.webview, uri).scrollPreviewWithEditor ||
+        keyOf(e.textEditor.document.uri) !== keyOf(boundUri) ||
+        !renderOptions(panel.webview, boundUri).scrollPreviewWithEditor ||
         Date.now() < suppressPreviewScrollUntil
       ) {
         return;
@@ -1227,7 +1293,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
   // 监听本文档的 storage 文件：源码侧 / CLI / Agent 改了评论 → 回灌 webview。
   // 不区分写入方（含本预览自身的写），重复 sendThreads 是幂等的。
   const docsDir = path.join(storageDir, 'docs');
-  const myHash = fileHash(uri.fsPath);
+  let myHash = fileHash(docKey());
   let watcher: fs.FSWatcher | undefined;
   let watchTimer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -1239,7 +1305,10 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       if (watchTimer) {
         clearTimeout(watchTimer);
       }
-      watchTimer = setTimeout(sendThreads, 120);
+      watchTimer = setTimeout(() => {
+        void sendThreads();
+        sendSkillPromptTarget();
+      }, 120);
     });
   } catch {
     // 平台/文件系统不支持 fs.watch：外部改动不自动回灌，webview 自身改动仍即时刷新。
@@ -1247,7 +1316,16 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
 
   const controller: PreviewController = {
     panel,
-    uri,
+    get uri() {
+      return boundUri;
+    },
+    rebind(next: vscode.Uri) {
+      boundUri = next;
+      myHash = fileHash(docKey());
+      panel.title = previewTitle(next);
+      void sendRender();
+      sendSkillPromptTarget();
+    },
     dispose() {
       if (timer) {
         clearTimeout(timer);
@@ -1259,9 +1337,9 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       subs.forEach((d) => d.dispose());
     },
   };
-  previews.set(keyOf(uri), controller);
+  previews.set(keyOf(boundUri), controller);
   panel.onDidDispose(() => {
     controller.dispose();
-    previews.delete(keyOf(uri));
+    previews.delete(keyOf(controller.uri));
   });
 }

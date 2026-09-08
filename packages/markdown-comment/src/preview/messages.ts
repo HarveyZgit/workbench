@@ -76,7 +76,9 @@ export type HostToWebview =
   | { type: 'threads'; threads: WireThread[] }
   | { type: 'revealThread'; threadId: string }
   | { type: 'revealLine'; line: number }
-  | { type: 'resolvedResources'; requestId: string; resources: ResolvedPreviewResource[] };
+  | { type: 'resolvedResources'; requestId: string; resources: ResolvedPreviewResource[] }
+  | { type: 'skillPromptCopied' }
+  | { type: 'skillPromptTarget'; enabled: boolean; tip: string };
 
 export type WebviewToHost =
   | { type: 'ready' }
@@ -109,4 +111,5 @@ export type WebviewToHost =
   | { type: 'copyImageFallback'; source: string }
   | { type: 'openImage'; source: string }
   | { type: 'revealSourceLine'; line: number }
-  | { type: 'previewScroll'; line: number };
+  | { type: 'previewScroll'; line: number }
+  | { type: 'copySkillPrompt' };
