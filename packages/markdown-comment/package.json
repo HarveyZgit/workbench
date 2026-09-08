@@ -2,7 +2,7 @@
   "name": "vscode-markdown-comment",
   "displayName": "Markdown Comment",
   "description": "为 Markdown 文档建立可重定位评论线程，并提供 VS Code、CLI 与 Agent Skill 接入。",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "publisher": "harveyz",
   "license": "MIT",
   "repository": {
