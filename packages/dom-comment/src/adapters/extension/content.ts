@@ -29,6 +29,13 @@ import {
   setPinClickHandler,
   skipTarget,
 } from './highlight.js';
+import { resolveEscapeAction } from './esc-policy.js';
+import {
+  areaPinsShouldBeInteractive,
+  canOpenPinForEdit,
+  drawerCardsShouldSelect,
+  pinsShouldBeInteractive,
+} from './pin-policy.js';
 import { postToBackground, type ExtMessage } from './messages.js';
 import { locateAnchor, pinModels } from './relocate-dom.js';
 import { skillPromptForTab } from '../../core/markdown.js';
@@ -121,6 +128,7 @@ function paintOverlay(): void {
     removeOverlay();
     return;
   }
+  const pinOpts = { modeOn, peeking, drawerOpen: drawerOpen() };
   renderOverlay({
     banner: modeOn && !peeking,
     hover: rubber
@@ -132,7 +140,9 @@ function paintOverlay(): void {
           : null,
     rubber: modeOn && !peeking ? rubber : null,
     pins: peeking ? [] : pins,
-    pinsInteractive: !modeOn,
+    // Annotate: badges reopen threads for edit; browse: pins only while drawer open.
+    pinsInteractive: pinsShouldBeInteractive(pinOpts),
+    areaPinsInteractive: areaPinsShouldBeInteractive(pinOpts),
     selected: !modeOn && !peeking ? selectedHighlight : null,
     draft:
       showDraftPin && activeRect && !peeking
@@ -155,10 +165,9 @@ function applySidebarModePolicy(): void {
   // Policy applies when the drawer is open; never auto-opens the drawer on mode toggle.
   if (modeOn) {
     clearBrowseSelection();
-    setSelectEnabled(false);
-  } else {
-    setSelectEnabled(true);
   }
+  // Cards reopen for edit in annotate and browse (same as numbered pins).
+  setSelectEnabled(drawerCardsShouldSelect(modeOn, drawerOpen()));
   paint();
 }
 
@@ -272,7 +281,18 @@ function bindDrawer(): void {
         postToBackground({ type: 'RESOLVE_THREAD', threadId });
       },
       onSelect: (thread) => {
-        selectThread(thread);
+        // Browse: scroll + persistent highlight. Annotate and browse: open thread panel (like pins).
+        if (!modeOn) {
+          selectThread(thread);
+        } else {
+          setSelectedThreadId(thread.id);
+        }
+        const rect = resolveThreadRect(thread);
+        if (rect) {
+          showThread(thread, rect);
+        } else if (modeOn) {
+          setDrawerStatus('找不到该评论的锚点（可能已失效）');
+        }
       },
       onOpen: () => {
         applySidebarModePolicy();
@@ -400,15 +420,15 @@ function openPin(id: string): void {
   if (!thread) {
     return;
   }
-  // Annotate mode: ignore selecting existing comments via pins (create-only).
-  if (modeOn) {
+  // Annotate: pin reopens for edit (page clicks still create). Browse: require drawer open.
+  if (!canOpenPinForEdit(modeOn, drawerOpen())) {
     return;
   }
-  // Browse mode: pins only interact when the sidebar is already open.
-  if (!drawerOpen()) {
-    return;
+  const rect = resolveThreadRect(thread) || threadRect(id);
+  if (!modeOn) {
+    selectThread(thread);
   }
-  selectThread(thread);
+  showThread(thread, rect);
 }
 
 /** Agent / SET_FOCUS_THREAD: enter annotate and open the thread composer. */
@@ -551,24 +571,30 @@ document.addEventListener(
   'keydown',
   (ev) => {
     if (ev.key === 'Escape') {
-      if (drawerOpen()) {
-        ev.preventDefault();
-        closeDrawer();
-        return;
-      }
-      if (composerOpen()) {
+      const action = resolveEscapeAction({
+        composerOpen: composerOpen(),
+        drawerOpen: drawerOpen(),
+        dragging,
+        modeOn,
+      });
+      if (action === 'composer') {
         ev.preventDefault();
         dismissComposer();
         return;
       }
-      if (dragging) {
+      if (action === 'drawer') {
+        ev.preventDefault();
+        closeDrawer();
+        return;
+      }
+      if (action === 'rubber') {
         dragging = false;
         rubber = null;
         dragStart = null;
         paint();
         return;
       }
-      if (modeOn) {
+      if (action === 'mode') {
         ev.preventDefault();
         postToBackground({ type: 'SET_MODE_REQUEST', on: false });
       }

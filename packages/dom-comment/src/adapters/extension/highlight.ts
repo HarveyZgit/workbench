@@ -86,14 +86,20 @@ export function renderOverlay(opts: {
   rubber: { x: number; y: number; w: number; h: number } | null;
   pins: { x: number; y: number; w: number; h: number; area: boolean; id: string; number: number }[];
   draft?: { x: number; y: number; w: number; h: number; number?: number } | null;
-  /** When false, numbered pins are visible but not clickable (annotate mode). Default true. */
+  /** When false, numbered pin badges are visible but not clickable. Default true. */
   pinsInteractive?: boolean;
+  /**
+   * When false, area fill overlays are not click targets (annotate: click-through to create).
+   * Defaults to pinsInteractive.
+   */
+  areaPinsInteractive?: boolean;
   /** Persistent selected-region highlight (browse / sidebar select). */
   selected?: DOMRect | null;
 }): void {
   const host = ensureOverlayHost();
   const root = host.shadowRoot!;
   const interactive = opts.pinsInteractive !== false;
+  const areaInteractive = opts.areaPinsInteractive ?? interactive;
   const hover = opts.hover
     ? `<div style="position:fixed;left:${opts.hover.left}px;top:${opts.hover.top}px;width:${opts.hover.width}px;height:${opts.hover.height}px;border:2px solid ${BLUE};pointer-events:none;box-sizing:border-box;"></div>`
     : '';
@@ -106,16 +112,16 @@ export function renderOverlay(opts: {
   const banner = opts.banner
     ? `<div style="position:fixed;left:50%;top:12px;transform:translateX(-50%);background:${BLUE};color:#fff;font:13px/1.4 system-ui,sans-serif;padding:6px 12px;border-radius:999px;pointer-events:none;">标注中 · Esc 退出 · 长按空格看原页面</div>`
     : '';
-  const pe = interactive ? 'auto' : 'none';
-  const cur = interactive ? 'pointer' : 'default';
+  const areaPe = areaInteractive ? 'auto' : 'none';
+  const areaCur = areaInteractive ? 'pointer' : 'default';
   const pins = opts.pins
     .map((p) => {
       const bx = Math.min(window.innerWidth - 26, Math.max(4, p.x + p.w - 10));
       const by = Math.max(4, p.y - 8);
       const mark = numberPin(p.id, p.number, bx, by, interactive);
       if (p.area) {
-        const pinAttr = interactive ? `data-pin="${p.id}"` : '';
-        return `<div ${pinAttr} style="position:fixed;left:${p.x}px;top:${p.y}px;width:${p.w}px;height:${p.h}px;border:2px solid ${BLUE};background:rgba(37,99,235,.08);pointer-events:${pe};cursor:${cur};box-sizing:border-box;"></div>${mark}`;
+        const pinAttr = areaInteractive ? `data-pin="${p.id}"` : '';
+        return `<div ${pinAttr} style="position:fixed;left:${p.x}px;top:${p.y}px;width:${p.w}px;height:${p.h}px;border:2px solid ${BLUE};background:rgba(37,99,235,.08);pointer-events:${areaPe};cursor:${areaCur};box-sizing:border-box;"></div>${mark}`;
       }
       return mark;
     })
