@@ -7,13 +7,17 @@ import {
   docFile,
   fileHash,
   findThread,
+  formatSkillPrompt,
+  getCliId,
   listAll,
   loadDoc,
   migrateDoc,
   readStorageDir,
   saveDoc,
   resolveDocKey,
+  skillPromptTargetState,
   storageKey,
+  untitledCliId,
   writePointer,
 } from '../src/storage.ts';
 import type { StoredDocument, StoredThread } from '../src/types.ts';
@@ -167,4 +171,88 @@ test('untitled key round-trips via saveDoc/loadDoc and resolveDocKey', () => {
   assert.equal(resolved, key);
   assert.equal(loadDoc(dir, resolved).threads[0].id, id);
   assert.equal(listAll(dir)[0].path, key);
+});
+
+
+test('formatSkillPrompt uses absolute path and quotes spaces', () => {
+  assert.equal(formatSkillPrompt('/Users/x/proj/docs/a.md'), '/markdown-comment /Users/x/proj/docs/a.md');
+  assert.equal(
+    formatSkillPrompt('/path/with spaces.md'),
+    '/markdown-comment "/path/with spaces.md"',
+  );
+  assert.equal(formatSkillPrompt('u_deadbeef'), '/markdown-comment u_deadbeef');
+});
+
+test('saveDoc assigns stable untitled cliId only when threads exist', () => {
+  const dir = tmp();
+  const key = 'untitled:Untitled-1';
+  const expected = untitledCliId(key);
+  assert.match(expected, /^u_[0-9a-f]{8}$/);
+  saveDoc(dir, key, { version: 1, threads: [] });
+  assert.equal(getCliId(dir, key), undefined);
+  assert.equal(listAll(dir).length, 0);
+
+  const id = 'ffffffff-7777-4777-8777-ffffffffffff';
+  saveDoc(dir, key, { version: 1, threads: [thread(id, 'first')] });
+  assert.equal(getCliId(dir, key), expected);
+  assert.equal(listAll(dir)[0].cliId, expected);
+
+  // 再次保存保持同一 cliId
+  saveDoc(dir, key, { version: 1, threads: [thread(id, 'first'), thread('aaaaaaaa-8888-4888-8888-aaaaaaaaaaaa')] });
+  assert.equal(getCliId(dir, key), expected);
+
+  // 清空后 cliId 随 index 条目清除
+  saveDoc(dir, key, { version: 1, threads: [] });
+  assert.equal(getCliId(dir, key), undefined);
+});
+
+test('resolveDocKey looks up cliId via index', () => {
+  const dir = tmp();
+  const key = 'untitled:Untitled-42';
+  const id = 'bbbbbbbb-9999-4999-8999-bbbbbbbbbbbb';
+  saveDoc(dir, key, { version: 1, threads: [thread(id)] });
+  const cliId = getCliId(dir, key)!;
+  assert.equal(resolveDocKey(cliId, dir), key);
+  assert.equal(resolveDocKey(key, dir), key);
+  assert.equal(resolveDocKey('/tmp/abs.md', dir), '/tmp/abs.md');
+  // 未知 cliId 不 path.resolve
+  assert.equal(resolveDocKey('u_00000000', dir), 'u_00000000');
+  assert.notEqual(resolveDocKey('u_00000000', dir), path.resolve('u_00000000'));
+});
+
+test('skillPromptTargetState disables untitled without cliId', () => {
+  const disabled = skillPromptTargetState({ scheme: 'untitled', fsPath: '', cliId: undefined });
+  assert.equal(disabled.enabled, false);
+  assert.equal(disabled.tip, '添加评论后可复制');
+  assert.equal(disabled.prompt, undefined);
+
+  const enabledUntitled = skillPromptTargetState({ scheme: 'untitled', fsPath: '', cliId: 'u_abcd1234' });
+  assert.equal(enabledUntitled.enabled, true);
+  assert.equal(enabledUntitled.prompt, '/markdown-comment u_abcd1234');
+
+  const filePrompt = skillPromptTargetState({
+    scheme: 'file',
+    fsPath: '/Users/x/proj/docs/a.md',
+  });
+  assert.equal(filePrompt.enabled, true);
+  assert.equal(filePrompt.prompt, '/markdown-comment /Users/x/proj/docs/a.md');
+
+  const spaced = skillPromptTargetState({
+    scheme: 'file',
+    fsPath: '/path/with spaces.md',
+  });
+  assert.equal(spaced.prompt, '/markdown-comment "/path/with spaces.md"');
+});
+
+test('migrateDoc clears untitled cliId with source store', () => {
+  const dir = tmp();
+  const from = 'untitled:Untitled-migrate';
+  const to = '/tmp/saved-migrate.md';
+  saveDoc(dir, from, { version: 1, threads: [thread('cccccccc-0000-4000-8000-cccccccccccc')] });
+  const cliId = getCliId(dir, from);
+  assert.ok(cliId);
+  assert.equal(migrateDoc(dir, from, to), true);
+  assert.equal(getCliId(dir, from), undefined);
+  assert.equal(getCliId(dir, to), undefined); // file 键不写 cliId
+  assert.equal(resolveDocKey(cliId!, dir), cliId); // 旧 id 不再解析到源
 });

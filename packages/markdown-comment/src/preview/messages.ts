@@ -77,7 +77,8 @@ export type HostToWebview =
   | { type: 'revealThread'; threadId: string }
   | { type: 'revealLine'; line: number }
   | { type: 'resolvedResources'; requestId: string; resources: ResolvedPreviewResource[] }
-  | { type: 'skillPromptCopied' };
+  | { type: 'skillPromptCopied' }
+  | { type: 'skillPromptTarget'; enabled: boolean; tip: string };
 
 export type WebviewToHost =
   | { type: 'ready' }

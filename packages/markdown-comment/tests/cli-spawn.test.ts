@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
-import { docFile, saveDoc } from '../src/storage.ts';
+import { docFile, getCliId, saveDoc } from '../src/storage.ts';
 import type { StoredAnchor, StoredDocument, StoredThread } from '../src/types.ts';
 
 const cliPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'cli.ts');
@@ -362,9 +362,11 @@ test('list accepts untitled storage key without path.resolve', () => {
     version: 1,
     threads: [thread(id, { kind: 'document', body: 'untitled whole-doc note' })],
   });
+  const cliId = getCliId(storage, key)!;
   const broken = run(['list', key], { cwd: workspace, storage, home });
   assert.equal(broken.status, 0, broken.stderr);
-  assert.match(broken.stdout, /untitled:Untitled-1/);
+  // 展示优先 cliId（与 Skill 提示一致）；仍能按 untitled: 键解析
+  assert.match(broken.stdout, new RegExp(cliId));
   assert.match(broken.stdout, /untitled whole-doc note/);
   // Confirm path.resolve would have missed the doc (wrong key → empty)
   const wrongKey = path.resolve(key);
@@ -372,4 +374,29 @@ test('list accepts untitled storage key without path.resolve', () => {
   const miss = run(['list', wrongKey], { cwd: workspace, storage, home });
   assert.equal(miss.status, 0, miss.stderr);
   assert.match(miss.stdout, /没有评论/);
+});
+
+
+test('list resolves untitled via cliId and displays cliId', () => {
+  const storage = tmp('mdc-cli-cliid-store-');
+  const home = tmp('mdc-cli-cliid-home-');
+  const workspace = tmp('mdc-cli-cliid-ws-');
+  const key = 'untitled:Untitled-7';
+  const id = 'cccccccc-7777-4777-8777-cccccccccccc';
+  saveDoc(storage, key, {
+    version: 1,
+    threads: [thread(id, { kind: 'document', body: 'cliid whole-doc note' })],
+  });
+  const cliId = getCliId(storage, key);
+  assert.ok(cliId);
+  assert.match(cliId!, /^u_[0-9a-f]{8}$/);
+
+  const byId = run(['list', cliId!], { cwd: workspace, storage, home });
+  assert.equal(byId.status, 0, byId.stderr);
+  assert.match(byId.stdout, /cliid whole-doc note/);
+
+  const global = run(['list', '-g'], { cwd: workspace, storage, home });
+  assert.equal(global.status, 0, global.stderr);
+  assert.match(global.stdout, new RegExp(cliId!));
+  assert.doesNotMatch(global.stdout, /untitled:Untitled-7/);
 });

@@ -2,7 +2,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readStorageDir, listAll, loadDoc, saveDoc, findThread, resolveDocKey } from './storage';
+import { readStorageDir, listAll, loadDoc, saveDoc, findThread, resolveDocKey, getCliId } from './storage';
 import type { StoredComment, StoredThread } from './types';
 
 function fail(msg: string): never {
@@ -67,10 +67,10 @@ function isUnder(base: string, p: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
-/** 展示路径：untitled 键原样；文件在当前终端目录下则转相对路径，否则保留绝对路径。 */
-function displayPath(abs: string): string {
+/** 展示路径：untitled 优先 cliId（Skill 提示同源）；文件在 cwd 下转相对路径。 */
+function displayPath(abs: string, cliId?: string): string {
   if (abs.startsWith('untitled:')) {
-    return abs;
+    return cliId ?? abs;
   }
   const rel = path.relative(process.cwd(), abs);
   return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : abs;
@@ -126,8 +126,8 @@ function cmdList(): void {
   const fileArg = args.find((a) => a !== '-g');
   let docs = fileArg
     ? (() => {
-        const key = resolveDocKey(fileArg);
-        return [{ path: key, doc: loadDoc(storageDir, key) }];
+        const key = resolveDocKey(fileArg, storageDir);
+        return [{ path: key, doc: loadDoc(storageDir, key), cliId: getCliId(storageDir, key) }];
       })()
     : listAll(storageDir);
   const scoped = !fileArg && !global;
@@ -171,7 +171,7 @@ function cmdList(): void {
 
   const nameOnly = flags.has('--name-only');
   const blocks: string[] = [];
-  for (const { path: p, doc } of docs) {
+  for (const { path: p, doc, cliId } of docs) {
     const text = fileTextOf(p);
     const threads = doc.threads.filter((t) => {
       const state = anchorState(text, t.anchor);
@@ -181,10 +181,10 @@ function cmdList(): void {
       continue;
     }
     if (nameOnly) {
-      blocks.push(`${displayPath(p)}  ${threads.length} 条`);
+      blocks.push(`${displayPath(p, cliId)}  ${threads.length} 条`);
       continue;
     }
-    const lines = [displayPath(p)];
+    const lines = [displayPath(p, cliId)];
     for (const t of threads) {
       const status = t.status === 'resolved' ? ' [已解决]' : '';
       const state = anchorState(text, t.anchor);

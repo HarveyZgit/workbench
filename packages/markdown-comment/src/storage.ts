@@ -57,14 +57,83 @@ export function storageKey(uri: StorageUriLike): string {
   return uri.toString();
 }
 
+/** untitled 存储键判断。 */
+export function isUntitledStorageKey(key: string): boolean {
+  return key.startsWith('untitled:');
+}
+
+/** CLI 友好短 id：`u_` + storageKey sha1 前 8 hex；同一 untitled URI 稳定不变。 */
+export function untitledCliId(storageKey: string): string {
+  return `u_${createHash('sha1').update(storageKey).digest('hex').slice(0, 8)}`;
+}
+
+const CLI_ID_RE = /^u_[0-9a-f]{8}$/;
+
+export function isCliId(arg: string): boolean {
+  return CLI_ID_RE.test(arg);
+}
+
+/**
+ * 复制到剪贴板的 Skill 提示：`/markdown-comment <target>`。
+ * target 含空白时加双引号（不做 path 解析）。
+ */
+export function formatSkillPrompt(target: string): string {
+  const xxx = /\s/.test(target) ? `"${target}"` : target;
+  return `/markdown-comment ${xxx}`;
+}
+
+export interface SkillPromptTargetState {
+  enabled: boolean;
+  tip: string;
+  /** 可复制时的完整提示词；未启用时为 undefined。 */
+  prompt?: string;
+}
+
+/**
+ * Host/webview 共用：file → 绝对路径；untitled → 有 cliId 才可复制。
+ */
+export function skillPromptTargetState(input: {
+  scheme: string;
+  fsPath: string;
+  cliId?: string | null;
+}): SkillPromptTargetState {
+  if (input.scheme === 'file') {
+    return {
+      enabled: true,
+      tip: '复制 Skill 提示',
+      prompt: formatSkillPrompt(input.fsPath),
+    };
+  }
+  if (input.scheme === 'untitled') {
+    if (!input.cliId) {
+      return { enabled: false, tip: '添加评论后可复制' };
+    }
+    return {
+      enabled: true,
+      tip: '复制 Skill 提示',
+      prompt: formatSkillPrompt(input.cliId),
+    };
+  }
+  return { enabled: false, tip: '添加评论后可复制' };
+}
+
 /**
  * CLI 文档键解析：
  * - `untitled:…` 存储键原样使用（禁止 path.resolve，否则会拼进 cwd）
+ * - `u_<8hex>` cliId → 查 index 得存储键（需传 storageDir）
  * - 已是绝对路径（含 index 里的 file 键）原样使用
  * - 其余相对路径按 process.cwd() resolve（与展示用相对路径对齐）
  */
-export function resolveDocKey(arg: string): string {
+export function resolveDocKey(arg: string, storageDir?: string | null): string {
   if (arg.startsWith('untitled:')) {
+    return arg;
+  }
+  if (storageDir && isCliId(arg)) {
+    const key = lookupStorageKeyByCliId(storageDir, arg);
+    if (key) {
+      return key;
+    }
+    // 未命中时不要 path.resolve（会变成 cwd/u_xxxx）
     return arg;
   }
   if (path.isAbsolute(arg)) {
@@ -88,9 +157,31 @@ function indexFile(storageDir: string): string {
 interface IndexEntry {
   path: string;
   updatedAt: string;
+  /** 仅 untitled 键：CLI / Skill 提示用短 id（如 u_a1b2c3d4）。 */
+  cliId?: string;
 }
-// hash → { 原始绝对路径 / 存储键, 更新时间 }，让 CLI 能反查 hash 对应哪个 markdown。
+// hash → { 原始绝对路径 / 存储键, 更新时间, 可选 cliId }，让 CLI 能反查 hash 对应哪个 markdown。
 type Index = Record<string, IndexEntry>;
+
+/** 按 cliId 反查存储键；未命中返回 null。 */
+export function lookupStorageKeyByCliId(storageDir: string, cliId: string): string | null {
+  if (!isCliId(cliId)) {
+    return null;
+  }
+  const idx = readIndex(storageDir);
+  for (const entry of Object.values(idx)) {
+    if (entry.cliId === cliId) {
+      return entry.path;
+    }
+  }
+  return null;
+}
+
+/** 读 index 里某存储键的 cliId（仅 untitled 有）。 */
+export function getCliId(storageDir: string, storageKey: string): string | undefined {
+  const entry = readIndex(storageDir)[fileHash(storageKey)];
+  return entry?.cliId;
+}
 
 function readIndex(storageDir: string): Index {
   try {
@@ -133,7 +224,12 @@ export function saveDoc(storageDir: string, absPath: string, data: StoredDocumen
   }
   fs.mkdirSync(docsDir(storageDir), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-  idx[h] = { path: absPath, updatedAt: new Date().toISOString() };
+  const entry: IndexEntry = { path: absPath, updatedAt: new Date().toISOString() };
+  if (isUntitledStorageKey(absPath)) {
+    // 首次有评论时写入；之后保持稳定（同 URI → 同 cliId）。
+    entry.cliId = idx[h]?.cliId ?? untitledCliId(absPath);
+  }
+  idx[h] = entry;
   writeIndex(storageDir, idx);
 }
 
@@ -165,9 +261,13 @@ export function migrateDoc(storageDir: string, fromKey: string, toKey: string): 
   return true;
 }
 
-export function listAll(storageDir: string): { path: string; doc: StoredDocument }[] {
+export function listAll(storageDir: string): { path: string; doc: StoredDocument; cliId?: string }[] {
   const idx = readIndex(storageDir);
-  return Object.values(idx).map((entry) => ({ path: entry.path, doc: loadDoc(storageDir, entry.path) }));
+  return Object.values(idx).map((entry) => ({
+    path: entry.path,
+    doc: loadDoc(storageDir, entry.path),
+    cliId: entry.cliId,
+  }));
 }
 
 /** 按完整 id 或 id 前缀定位线程；前缀命中多条（歧义）时返回 null。 */

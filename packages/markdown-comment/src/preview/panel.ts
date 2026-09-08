@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { loadDoc, saveDoc, fileHash, storageKey } from '../storage';
+import { loadDoc, saveDoc, fileHash, storageKey, getCliId, skillPromptTargetState } from '../storage';
 import { isCommentableMarkdown, isMarkdownDocument } from '../markdown-lang';
 import { buildAnchorFromRange, mapRenderedSelectionToRange, relocate } from '../anchor';
 import type { StoredDocument, StoredThread } from '../types';
@@ -595,6 +595,10 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 #mdc-head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
 #mdc-head-actions .mdc-icon { flex: none; opacity: 0.72; }
 #mdc-head-actions .mdc-icon:hover { opacity: 1; }
+#mdc-copy-skill:disabled {
+  opacity: 0.32; cursor: default;
+}
+#mdc-copy-skill:disabled:hover { opacity: 0.32; background: transparent; }
 #mdc-toggle-sidebar { flex: none; opacity: 0.72; }
 #app.sidebar-collapsed #sidebar {
   width: 0; min-width: 0; padding: 0; margin: 0; border: none;
@@ -782,19 +786,10 @@ function buildHtml(
 </html>`;
 }
 
-/** Skill / CLI 用的文档标识：file 优先 workspace 相对路径，untitled 用存储键。 */
-function skillTargetOf(uri: vscode.Uri): string {
-  if (uri.scheme === 'file') {
-    return vscode.workspace.asRelativePath(uri, false);
-  }
-  return storageKey(uri);
-}
-
-/** 复制到剪贴板的 Skill 提示：`/markdown-comment xxx`（路径含空格时给 xxx 加双引号）。 */
-function skillPromptOf(uri: vscode.Uri): string {
-  const target = skillTargetOf(uri);
-  const xxx = /\s/.test(target) ? `"${target}"` : target;
-  return `/markdown-comment ${xxx}`;
+/** 当前绑定文档的 Skill 提示目标（file=绝对路径；untitled=cliId 或禁用）。 */
+function skillPromptStateFor(storageDir: string, uri: vscode.Uri) {
+  const cliId = uri.scheme === 'untitled' ? getCliId(storageDir, storageKey(uri)) : undefined;
+  return skillPromptTargetState({ scheme: uri.scheme, fsPath: uri.fsPath, cliId });
 }
 
 function previewTitle(uri: vscode.Uri): string {
@@ -869,6 +864,10 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     loadDoc(storageDir, docKey()).threads.map((t) => toWire(t, doc));
   // 取当前文本来 relocate（源码 tab 没开则后台加载），保证回推 webview 的行号是最新的。
   const sendThreads = async () => post({ type: 'threads', threads: wireFor(await getDoc(boundUri)) });
+  const sendSkillPromptTarget = () => {
+    const state = skillPromptStateFor(storageDir, boundUri);
+    post({ type: 'skillPromptTarget', enabled: state.enabled, tip: state.tip });
+  };
   const sendRender = async () => {
     const doc = await getDoc(boundUri);
     const text = doc?.getText() ?? '';
@@ -898,6 +897,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     fn(stored);
     saveDoc(storageDir, docKey(), stored);
     void sendThreads();
+    sendSkillPromptTarget();
   };
 
   const handleCreate = async (selection: RenderedSelection, text: string) => {
@@ -1114,6 +1114,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       switch (msg.type) {
         case 'ready':
           void sendRender();
+          sendSkillPromptTarget();
           break;
         case 'createThread':
           void handleCreate(msg.selection, msg.text);
@@ -1215,8 +1216,12 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
           void vscode.env.clipboard.writeText(msg.source);
           break;
         case 'copySkillPrompt': {
-          const prompt = skillPromptOf(boundUri);
-          void vscode.env.clipboard.writeText(prompt).then(() => {
+          const state = skillPromptStateFor(storageDir, boundUri);
+          if (!state.enabled || !state.prompt) {
+            sendSkillPromptTarget();
+            break;
+          }
+          void vscode.env.clipboard.writeText(state.prompt).then(() => {
             post({ type: 'skillPromptCopied' });
           });
           break;
@@ -1298,7 +1303,10 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       if (watchTimer) {
         clearTimeout(watchTimer);
       }
-      watchTimer = setTimeout(sendThreads, 120);
+      watchTimer = setTimeout(() => {
+        void sendThreads();
+        sendSkillPromptTarget();
+      }, 120);
     });
   } catch {
     // 平台/文件系统不支持 fs.watch：外部改动不自动回灌，webview 自身改动仍即时刷新。
@@ -1314,6 +1322,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       myHash = fileHash(docKey());
       panel.title = previewTitle(next);
       void sendRender();
+      sendSkillPromptTarget();
     },
     dispose() {
       if (timer) {
