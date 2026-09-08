@@ -2,7 +2,16 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readStorageDir, listAll, loadDoc, saveDoc, findThread, resolveDocKey, getCliId } from './storage';
+import {
+  readStorageDir,
+  listAll,
+  loadDoc,
+  saveDoc,
+  findThread,
+  resolveDocKey,
+  getCliId,
+  isUntitledStorageKey,
+} from './storage';
 import type { StoredComment, StoredThread } from './types';
 
 function fail(msg: string): never {
@@ -133,7 +142,8 @@ function cmdList(): void {
   const scoped = !fileArg && !global;
   if (scoped) {
     const cwd = process.cwd();
-    docs = docs.filter(({ path: p }) => isUnder(cwd, p));
+    // untitled 键不是真实路径；path.relative(cwd, 'untitled:…') 会误判为 cwd 下文件。
+    docs = docs.filter(({ path: p }) => !isUntitledStorageKey(p) && isUnder(cwd, p));
   }
 
   const showHidden = flags.has('--hidden');
