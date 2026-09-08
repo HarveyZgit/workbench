@@ -351,3 +351,25 @@ test('mermaid fallback is not used when a closing fence is nearer than a mermaid
 function requireDoc(storage: string, absPath: string): string {
   return docFile(storage, absPath);
 }
+
+test('list accepts untitled storage key without path.resolve', () => {
+  const storage = tmp('mdc-cli-untitled-store-');
+  const home = tmp('mdc-cli-untitled-home-');
+  const workspace = tmp('mdc-cli-untitled-ws-');
+  const key = 'untitled:Untitled-1';
+  const id = 'ffffffff-6666-4666-8666-ffffffffffff';
+  saveDoc(storage, key, {
+    version: 1,
+    threads: [thread(id, { kind: 'document', body: 'untitled whole-doc note' })],
+  });
+  const broken = run(['list', key], { cwd: workspace, storage, home });
+  assert.equal(broken.status, 0, broken.stderr);
+  assert.match(broken.stdout, /untitled:Untitled-1/);
+  assert.match(broken.stdout, /untitled whole-doc note/);
+  // Confirm path.resolve would have missed the doc (wrong key → empty)
+  const wrongKey = path.resolve(key);
+  assert.notEqual(wrongKey, key);
+  const miss = run(['list', wrongKey], { cwd: workspace, storage, home });
+  assert.equal(miss.status, 0, miss.stderr);
+  assert.match(miss.stdout, /没有评论/);
+});

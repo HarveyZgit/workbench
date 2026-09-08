@@ -302,6 +302,8 @@ function isWebviewMessage(value: unknown): value is WebviewToHost {
     case 'revealSourceLine':
     case 'previewScroll':
       return hasFiniteNumber('line');
+    case 'copySkillPrompt':
+      return true;
     default:
       return false;
   }
@@ -591,12 +593,8 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 }
 .mdc-tab-n.show { display: inline-block; }
 #mdc-head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
-#mdc-add-doc {
-  flex: none; font-size: 0.82em; padding: 4px 7px; border: none; border-radius: 4px; cursor: pointer; white-space: nowrap;
-  background: var(--vscode-button-secondaryBackground, rgba(128,128,128,0.2));
-  color: var(--vscode-button-secondaryForeground, inherit);
-}
-#mdc-add-doc:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.3)); }
+#mdc-head-actions .mdc-icon { flex: none; opacity: 0.72; }
+#mdc-head-actions .mdc-icon:hover { opacity: 1; }
 #mdc-toggle-sidebar { flex: none; opacity: 0.72; }
 #app.sidebar-collapsed #sidebar {
   width: 0; min-width: 0; padding: 0; margin: 0; border: none;
@@ -770,7 +768,8 @@ function buildHtml(
         <button class="mdc-tab" data-tab="all">全部<span class="mdc-tab-n"></span></button>
       </div>
       <div id="mdc-head-actions">
-        <button id="mdc-add-doc" title="对整篇文档添加评论">＋ 全文评论</button>
+        <button type="button" id="mdc-add-doc" class="mdc-icon mdc-tip" data-tip="全文评论" aria-label="全文评论" title="全文评论"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h5.5L12.5 5.5V13.5H4z"/><path d="M9.5 2.5V5.5h3"/><path d="M6 8h4.5M6 10.5h3"/><circle cx="11.2" cy="11.2" r="2.3"/><path d="M11.2 10.2v2M10.2 11.2h2"/></svg></button>
+        <button type="button" id="mdc-copy-skill" class="mdc-icon mdc-tip" data-tip="复制 Skill 提示" aria-label="复制 Skill 提示" title="复制 Skill 提示"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="3" width="7" height="9" rx="1.2"/><path d="M4 5.5H3.5A1.5 1.5 0 0 0 2 7v5.5A1.5 1.5 0 0 0 3.5 14H9"/><path d="M7.5 6.5h3M7.5 9h3"/></svg></button>
         <button id="mdc-toggle-sidebar" class="mdc-icon mdc-tip" data-tip="收起评论" aria-label="收起评论" aria-expanded="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg></button>
       </div>
     </div>
@@ -781,6 +780,21 @@ function buildHtml(
 <script nonce="${n}" src="${scriptUri}"></script>
 </body>
 </html>`;
+}
+
+/** Skill / CLI 用的文档标识：file 优先 workspace 相对路径，untitled 用存储键。 */
+function skillTargetOf(uri: vscode.Uri): string {
+  if (uri.scheme === 'file') {
+    return vscode.workspace.asRelativePath(uri, false);
+  }
+  return storageKey(uri);
+}
+
+/** 复制到剪贴板的 Skill 提示：`/markdown-comment xxx`（路径含空格时给 xxx 加双引号）。 */
+function skillPromptOf(uri: vscode.Uri): string {
+  const target = skillTargetOf(uri);
+  const xxx = /\s/.test(target) ? `"${target}"` : target;
+  return `/markdown-comment ${xxx}`;
 }
 
 function previewTitle(uri: vscode.Uri): string {
@@ -1200,6 +1214,13 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
         case 'copyImageFallback':
           void vscode.env.clipboard.writeText(msg.source);
           break;
+        case 'copySkillPrompt': {
+          const prompt = skillPromptOf(boundUri);
+          void vscode.env.clipboard.writeText(prompt).then(() => {
+            post({ type: 'skillPromptCopied' });
+          });
+          break;
+        }
         case 'revealSourceLine':
           suppressPreviewScrollUntil = Date.now() + 200;
           void revealSourceLine(msg.line);

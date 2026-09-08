@@ -12,6 +12,7 @@ import {
   migrateDoc,
   readStorageDir,
   saveDoc,
+  resolveDocKey,
   storageKey,
   writePointer,
 } from '../src/storage.ts';
@@ -146,4 +147,24 @@ test('readStorageDir prefers env override then pointer file', () => {
   } else {
     process.env.MARKDOWN_COMMENT_STORAGE_DIR = prev;
   }
+});
+
+test('resolveDocKey keeps untitled and absolute keys, resolves relative', () => {
+  assert.equal(resolveDocKey('untitled:Untitled-1'), 'untitled:Untitled-1');
+  assert.equal(resolveDocKey('/tmp/abs.md'), '/tmp/abs.md');
+  const rel = 'docs/note.md';
+  assert.equal(resolveDocKey(rel), path.resolve(rel));
+  // path.resolve would otherwise turn untitled into a cwd-joined path
+  assert.notEqual(resolveDocKey('untitled:Untitled-1'), path.resolve('untitled:Untitled-1'));
+});
+
+test('untitled key round-trips via saveDoc/loadDoc and resolveDocKey', () => {
+  const dir = tmp();
+  const key = 'untitled:Untitled-9';
+  const id = 'eeeeeeee-5555-4555-8555-eeeeeeeeeeee';
+  saveDoc(dir, key, { version: 1, threads: [thread(id, 'draft text')] });
+  const resolved = resolveDocKey(key);
+  assert.equal(resolved, key);
+  assert.equal(loadDoc(dir, resolved).threads[0].id, id);
+  assert.equal(listAll(dir)[0].path, key);
 });

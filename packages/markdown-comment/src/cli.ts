@@ -2,7 +2,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { readStorageDir, listAll, loadDoc, saveDoc, findThread } from './storage';
+import { readStorageDir, listAll, loadDoc, saveDoc, findThread, resolveDocKey } from './storage';
 import type { StoredComment, StoredThread } from './types';
 
 function fail(msg: string): never {
@@ -67,8 +67,11 @@ function isUnder(base: string, p: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
-/** 展示路径：文件在当前终端目录下则转相对路径，否则保留绝对路径。 */
+/** 展示路径：untitled 键原样；文件在当前终端目录下则转相对路径，否则保留绝对路径。 */
 function displayPath(abs: string): string {
+  if (abs.startsWith('untitled:')) {
+    return abs;
+  }
   const rel = path.relative(process.cwd(), abs);
   return rel && !rel.startsWith('..') && !path.isAbsolute(rel) ? rel : abs;
 }
@@ -122,7 +125,10 @@ function cmdList(): void {
   const global = flags.has('--global') || rest.includes('-g');
   const fileArg = args.find((a) => a !== '-g');
   let docs = fileArg
-    ? [{ path: path.resolve(fileArg), doc: loadDoc(storageDir, path.resolve(fileArg)) }]
+    ? (() => {
+        const key = resolveDocKey(fileArg);
+        return [{ path: key, doc: loadDoc(storageDir, key) }];
+      })()
     : listAll(storageDir);
   const scoped = !fileArg && !global;
   if (scoped) {

@@ -57,6 +57,22 @@ export function storageKey(uri: StorageUriLike): string {
   return uri.toString();
 }
 
+/**
+ * CLI 文档键解析：
+ * - `untitled:…` 存储键原样使用（禁止 path.resolve，否则会拼进 cwd）
+ * - 已是绝对路径（含 index 里的 file 键）原样使用
+ * - 其余相对路径按 process.cwd() resolve（与展示用相对路径对齐）
+ */
+export function resolveDocKey(arg: string): string {
+  if (arg.startsWith('untitled:')) {
+    return arg;
+  }
+  if (path.isAbsolute(arg)) {
+    return arg;
+  }
+  return path.resolve(arg);
+}
+
 function docsDir(storageDir: string): string {
   return path.join(storageDir, 'docs');
 }
