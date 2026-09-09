@@ -4,16 +4,38 @@ Zed 没有内置 WebView。这个薄扩展负责一件事：对当前 Markdown �
 
 ## 安装
 
-1. 先能跑 CLI（任选其一）
-   - 仓库根目录：`rush build --to vscode-markdown-comment`，把 `packages/markdown-comment/dist/cli.js` 挂到 PATH，或 `export MARKDOWN_COMMENT_CLI=…/dist/cli.js`
-   - 或安装 VS Code 扩展后，用其自带的 `dist/cli.js`
-2. 打印扩展目录：
+### 推荐：不装 Dev Extension（Task，无需 Rust）
+
+1. 全局 CLI 可用：`npm i -g ./markdown-comment-*.tgz`，确认 `markdown-comment` 在 PATH。
+2. Zed 命令面板 → `zed: open tasks`，把本目录 `tasks.json` 合并进 `~/.config/zed/tasks.json`（或项目 `.zed/tasks.json`）。
+3. 打开**已保存**的 `.md` → `task: spawn` → **Markdown Comment: 打开评论预览**。
+
+可选：把 `keybindings.example.json` 合并进 keymap（默认 `cmd-alt-m`）。
+
+### 可选：Install Dev Extension（`/mdc-preview` slash）
+
+Zed 会在本机用 Rust 编译 WASM。**必须用 rustup**（不要用 Homebrew rust），并确保有 wasm target：
 
 ```bash
-markdown-comment extension zed
+# 若尚未安装：https://rustup.rs
+rustup target add wasm32-wasip1
+# 新版 Zed 也可能用 wasm32-wasip2；若日志提示缺 target，再：
+# rustup target add wasm32-wasip2
 ```
 
-3. Zed → **Extensions → Install Dev Extension…** → 选择上一步打印的目录（本仓库的 `packages/markdown-comment/zed`）。
+然后：
+
+1. 先能跑 CLI（`npm i -g` tgz，或仓库 `rush build` + PATH / `MARKDOWN_COMMENT_CLI`）。
+2. `markdown-comment extension zed` 打印扩展目录。
+3. Zed → **Extensions → Install Dev Extension…** → 选该目录。
+
+若出现 `Failed to install dev extension: failed to compile Rust extension`，先看 `~/Library/Logs/Zed/Zed.log`（或 Linux `~/.local/share/zed/logs/Zed.log`），并在本目录执行：
+
+```bash
+cargo build --target wasm32-wasip1 --release
+```
+
+编通后再重试 Install Dev Extension。临时用不了 slash 时，用上面的 Task 路径即可。
 
 ## 使用
 

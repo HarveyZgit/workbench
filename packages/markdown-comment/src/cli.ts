@@ -313,8 +313,19 @@ function cmdExtension(): void {
       fail(`Zed 扩展目录不完整: ${dir}`);
     }
     const abs = path.resolve(dir);
-    process.stdout.write(`${abs}\n`);
-    process.stdout.write('hint: Zed → Extensions → Install Dev Extension… → 选择该目录\n');
+    process.stdout.write(`${abs}
+`);
+    process.stdout.write(
+      [
+        'hint: 推荐先用 Task（无需 Rust）：把该目录 tasks.json 合并进 ~/.config/zed/tasks.json，',
+        '      然后 task: spawn → Markdown Comment: 打开评论预览',
+        'hint: 若要 /mdc-preview：先 rustup + `rustup target add wasm32-wasip1`（勿用 Homebrew rust），',
+        '      再 Zed → Extensions → Install Dev Extension… → 选择该目录',
+        'hint: 编译失败看 ~/Library/Logs/Zed/Zed.log；本目录可先 `cargo build --target wasm32-wasip1 --release`',
+        '',
+      ].join('
+'),
+    );
     return;
   }
   fail(`未知 extension 目标: ${target}（可用 vscode 或 zed）`);
