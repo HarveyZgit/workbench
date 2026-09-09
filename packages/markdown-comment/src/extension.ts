@@ -80,8 +80,7 @@ const recentSelfWrite = new Map<string, number>();
 
 /** Save As 前记住 untitled 键与正文，便于 didSave(file) 时迁移评论。 */
 let pendingUntitledSave:
-  | { untitledKey: string; untitledUriString: string; content: string; at: number }
-  | undefined;
+  { untitledKey: string; untitledUriString: string; content: string; at: number } | undefined;
 
 const keyOf = (uri: vscode.Uri) => uri.toString();
 
@@ -205,7 +204,9 @@ function loadForDocument(doc: vscode.TextDocument): void {
 
   for (const st of loadDoc(storageDir, storageKey(doc.uri)).threads) {
     const located = relocate(doc, st.anchor);
-    const range = located ?? new vscode.Range(0, 0, 0, 0);
+    const range = located
+      ? new vscode.Range(located.start.line, located.start.character, located.end.line, located.end.character)
+      : new vscode.Range(0, 0, 0, 0);
     const thread = controller.createCommentThread(doc.uri, range, []);
     const meta: ThreadMeta = {
       id: st.id,
@@ -660,7 +661,7 @@ export function activate(context: vscode.ExtensionContext): void {
     flushPersist(doc.uri);
     const untitledKey = storageKey(doc.uri);
     const hasStored = loadDoc(storageDir, untitledKey).threads.length > 0;
-    if (!hasStored && !hasPreview(doc.uri) && !(docThreads.get(keyOf(doc.uri))?.size)) {
+    if (!hasStored && !hasPreview(doc.uri) && !docThreads.get(keyOf(doc.uri))?.size) {
       return;
     }
     pendingUntitledSave = {
