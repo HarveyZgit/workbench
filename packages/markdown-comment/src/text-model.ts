@@ -37,12 +37,17 @@ export interface TextLine {
 }
 
 /** Minimal document surface used by anchor helpers (and satisfied by vscode.TextDocument). */
+// Method syntax is bivariant so vscode.TextDocument remains assignable.
 export interface TextModel {
   readonly lineCount: number;
-  getText: (range?: Range) => string;
-  offsetAt: (position: Position) => number;
-  positionAt: (offset: number) => Position;
-  lineAt: (line: number) => TextLine;
+  // eslint-disable-next-line @typescript-eslint/method-signature-style
+  getText(range?: Range): string;
+  // eslint-disable-next-line @typescript-eslint/method-signature-style
+  offsetAt(position: Position): number;
+  // eslint-disable-next-line @typescript-eslint/method-signature-style
+  positionAt(offset: number): Position;
+  // eslint-disable-next-line @typescript-eslint/method-signature-style
+  lineAt(line: number): TextLine;
 }
 
 export class PlainTextDocument implements TextModel {
