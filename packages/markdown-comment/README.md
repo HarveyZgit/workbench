@@ -53,7 +53,16 @@ Sync interval: `--sync-interval <seconds>`, `MARKDOWN_COMMENT_SYNC_INTERVAL`, or
 
 ## Install
 
-Install the VSIX first (it ships the CLI). Then register the Skill in either way:
+Preferred CLI path — install the zero-dependency npm tarball (from `rushx pack-release` / a GitHub Release asset `markdown-comment-<ver>.tgz`):
+
+```sh
+npm install -g ./markdown-comment-1.4.0.tgz
+markdown-comment extension zed      # absolute path for Zed → Install Dev Extension
+markdown-comment extension vscode   # absolute path to the shipped VSIX
+code --install-extension "$(markdown-comment extension vscode | head -n1)" --force
+```
+
+Or install a standalone VSIX first (it also ships `dist/cli.js`). Then register the Skill in either way:
 
 1. Install the extension: `code --install-extension "$(markdown-comment extension vscode | head -n1)" --force`
 2. **Plugin install:** command palette (⇧⌘P) → **Markdown Comment：安装 / 更新 Agent Skill**. Pick one or more Agent directories (multi-select). The list combines already-installed targets, skill roots auto-detected under your home directory, and a few common host seeds; you can also add a custom directory. Each selected root gets a `markdown-comment` symlink pointing at the extension's resolved Skill copy in its stable global storage, so the link keeps working across extension upgrades. Already-installed targets are refreshed/migrated to the latest version.
@@ -73,8 +82,11 @@ rush typecheck --to vscode-markdown-comment
 rush build --to vscode-markdown-comment
 ```
 
-Pack the VSIX from the package directory:
+Pack the VSIX or the npm CLI tarball from the package directory:
 
 ```sh
-(cd packages/markdown-comment && rushx package)
+(cd packages/markdown-comment && rushx package)       # dist/vscode-markdown-comment.vsix
+(cd packages/markdown-comment && rushx pack-release)  # dist/markdown-comment-<ver>.tgz (+ vsix)
 ```
+
+`pack-release` stages a publish name `markdown-comment` with **empty dependencies** so `npm install -g ./markdown-comment-<ver>.tgz` works offline-ish; the tarball includes `zed/` and the VSIX for `markdown-comment extension zed|vscode`.

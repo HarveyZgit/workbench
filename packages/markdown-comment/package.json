@@ -292,7 +292,8 @@
     "package": "vsce package --no-dependencies --ignoreFile .vscodeignore -o dist/vscode-markdown-comment.vsix",
     "prepack": "node esbuild.mjs --production && vsce package --no-dependencies --ignoreFile .vscodeignore -o dist/vscode-markdown-comment.vsix",
     "test": "tsx --test tests/*.test.ts",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-exclude='tests/**' --test-coverage-exclude='**/extension.ts' --test-coverage-exclude='**/anchor.ts' --test-coverage-exclude='**/preview/webview.ts' --test-coverage-exclude='**/preview/panel.ts' --test-coverage-exclude='**/preview/navigation.ts' --test-coverage-exclude='**/preview/mermaid.ts' --test-coverage-exclude='**/preview/messages.ts' --test-coverage-exclude='**/preview/sanitize.ts' --import tsx tests/*.test.ts"
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-exclude='tests/**' --test-coverage-exclude='**/extension.ts' --test-coverage-exclude='**/anchor.ts' --test-coverage-exclude='**/preview/webview.ts' --test-coverage-exclude='**/preview/panel.ts' --test-coverage-exclude='**/preview/navigation.ts' --test-coverage-exclude='**/preview/mermaid.ts' --test-coverage-exclude='**/preview/messages.ts' --test-coverage-exclude='**/preview/sanitize.ts' --import tsx tests/*.test.ts",
+    "pack-release": "bash scripts/pack-release.sh"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",

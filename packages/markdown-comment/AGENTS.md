@@ -26,6 +26,6 @@ rush typecheck --to vscode-markdown-comment
 
 Browser preview / Zed: `markdown-comment preview <file.md>` starts an on-demand local server; `markdown-comment extension zed|vscode` prints install paths. The Zed extension must call the public CLI, not a private store format.
 
-Browser preview / Zed: `markdown-comment preview <file.md>` starts an on-demand local server; `markdown-comment extension zed|vscode` prints install paths. The Zed extension must call the public CLI, not a private store format.
+CLI npm tarball: `rushx pack-release` → `dist/markdown-comment-<ver>.tgz` (zero runtime deps; ships `zed/` + VSIX). Prefer `npm install -g ./markdown-comment-<ver>.tgz` over unpack-only install paths.
 
 Do not run `pnpm` at the repository root. When the migration changes the build or test setup, update this file and the package README in the same change.
