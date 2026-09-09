@@ -6,9 +6,19 @@ Zed 没有内置 WebView。这个薄扩展负责一件事：对当前 Markdown �
 
 ### 推荐：不装 Dev Extension（Task，无需 Rust）
 
-1. 全局 CLI 可用：`npm i -g ./markdown-comment-*.tgz`，确认 `markdown-comment` 在 PATH。
-2. Zed 命令面板 → `zed: open tasks`，把本目录 `tasks.json` 合并进 `~/.config/zed/tasks.json`（或项目 `.zed/tasks.json`）。
+Zed 的 Install Dev Extension 要本机编 WASM，经常不可用。**不要走那条路。**
+
+1. `npm i -g ./markdown-comment-*.tgz`，确认 `markdown-comment` 在 PATH。
+2. 一键合并任务：
+
+```bash
+markdown-comment zed-setup
+```
+
+会把本包 `zed/tasks.json` 合并进 `~/.config/zed/tasks.json`（同名 label 更新，不覆盖其它 task）。
 3. 打开**已保存**的 `.md` → `task: spawn` → **Markdown Comment: 打开评论预览**。
+
+也可以完全离开 Zed：`markdown-comment preview /path/to/file.md`。
 
 可选：把 `keybindings.example.json` 合并进 keymap（默认 `cmd-alt-m`）。
 

@@ -313,22 +313,102 @@ function cmdExtension(): void {
       fail(`Zed 扩展目录不完整: ${dir}`);
     }
     const abs = path.resolve(dir);
-    process.stdout.write(`${abs}
-`);
+    process.stdout.write(`${abs}\n`);
     process.stdout.write(
       [
-        'hint: 推荐先用 Task（无需 Rust）：把该目录 tasks.json 合并进 ~/.config/zed/tasks.json，',
-        '      然后 task: spawn → Markdown Comment: 打开评论预览',
-        'hint: 若要 /mdc-preview：先 rustup + `rustup target add wasm32-wasip1`（勿用 Homebrew rust），',
-        '      再 Zed → Extensions → Install Dev Extension… → 选择该目录',
-        'hint: 编译失败看 ~/Library/Logs/Zed/Zed.log；本目录可先 `cargo build --target wasm32-wasip1 --release`',
+        'hint: 一键安装任务: markdown-comment zed-setup',
+        'hint: 然后 Zed → task: spawn → Markdown Comment: 打开评论预览',
+        'hint: 不要用 Install Dev Extension（Zed 会编 wasm，基本不可用）',
         '',
-      ].join('
-'),
+      ].join('\n'),
     );
     return;
   }
   fail(`未知 extension 目标: ${target}（可用 vscode 或 zed）`);
+}
+
+function zedTasksPath(): string {
+  const xdg = process.env.XDG_CONFIG_HOME?.trim();
+  const base = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), '.config');
+  return path.join(base, 'zed', 'tasks.json');
+}
+
+/** Merge packaged zed/tasks.json into ~/.config/zed/tasks.json (same label → replace). */
+function cmdZedSetup(): void {
+  const bundled = path.join(packageRoot(), 'zed', 'tasks.json');
+  if (!fs.existsSync(bundled)) {
+    fail(`找不到打包的 tasks.json: ${bundled}`);
+  }
+  let incoming: unknown;
+  try {
+    incoming = JSON.parse(fs.readFileSync(bundled, 'utf8'));
+  } catch (err) {
+    fail(`无法解析 ${bundled}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!Array.isArray(incoming)) {
+    fail(`期望 ${bundled} 为 JSON 数组`);
+  }
+  const toMerge = incoming as Array<Record<string, unknown>>;
+  for (const t of toMerge) {
+    if (typeof t?.label !== 'string' || !t.label.trim()) {
+      fail('bundled tasks.json 含无效 label');
+    }
+  }
+
+  const target = zedTasksPath();
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+
+  let existing: unknown[] = [];
+  if (fs.existsSync(target)) {
+    const raw = fs.readFileSync(target, 'utf8').trim();
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+          fail(`${target} 不是 JSON 数组，请手动备份后重试`);
+        }
+        existing = parsed;
+      } catch (err) {
+        fail(`无法解析 ${target}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  const byLabel = new Map<string, number>();
+  existing.forEach((item, i) => {
+    if (item && typeof item === 'object' && typeof (item as { label?: unknown }).label === 'string') {
+      byLabel.set((item as { label: string }).label, i);
+    }
+  });
+
+  const added: string[] = [];
+  const updated: string[] = [];
+  for (const task of toMerge) {
+    const label = String(task.label);
+    const idx = byLabel.get(label);
+    if (idx === undefined) {
+      byLabel.set(label, existing.length);
+      existing.push(task);
+      added.push(label);
+    } else {
+      existing[idx] = task;
+      updated.push(label);
+    }
+  }
+
+  fs.writeFileSync(target, `${JSON.stringify(existing, null, 2)}\n`, 'utf8');
+  process.stdout.write(`已写入 ${target}\n`);
+  if (added.length) process.stdout.write(`新增: ${added.join(', ')}\n`);
+  if (updated.length) process.stdout.write(`更新: ${updated.join(', ')}\n`);
+  if (!added.length && !updated.length) process.stdout.write('无变更\n');
+  process.stdout.write(
+    [
+      '',
+      '下一步：Zed 打开已保存的 .md → 命令面板 task: spawn → Markdown Comment: 打开评论预览',
+      '（不要再用 Install Dev Extension）',
+      '',
+    ].join('\n'),
+  );
 }
 
 async function cmdPreview(): Promise<void> {
@@ -470,6 +550,7 @@ function printHelp(): void {
       'markdown-comment <command>',
       '',
       '  extension vscode|zed              打印 VS Code VSIX 或 Zed 扩展目录的绝对路径',
+      '  zed-setup                         一键合并 zed/tasks.json 到 ~/.config/zed/tasks.json（推荐，无需 Rust）',
       '  preview <file.md> [--port 8765] [--sync-interval 5] [--no-open] [--detach] [--no-reuse]',
       '                                  启动本机评论预览（按间隔同步，默认 5s；Save / 关页立即写入）',
       '  list [file] [-g] [--open] [--name-only] [--hidden] [--json]',
@@ -496,6 +577,10 @@ switch (cmd) {
     break;
   case 'extension':
     cmdExtension();
+    break;
+  case 'zed-setup':
+  case 'zed_setup':
+    cmdZedSetup();
     break;
   case 'preview':
     void cmdPreview().catch((err) => {
