@@ -13,11 +13,23 @@ import type {
   WireThread,
 } from './messages';
 import { createPreviewNavigation, type PreviewNavigation, type PreviewNavigationState } from './navigation';
+import { createBrowserHost, readBrowserConfig, type PreviewHostApi } from './browser-host';
 
 const CONTEXT_LEN = 40;
 const RESOURCE_BATCH_SIZE = 100;
 
-const vscode = acquireVsCodeApi();
+function resolveHost(): PreviewHostApi {
+  const browser = readBrowserConfig();
+  if (browser) {
+    return createBrowserHost(browser);
+  }
+  if (typeof acquireVsCodeApi === 'function') {
+    return acquireVsCodeApi();
+  }
+  throw new Error('Markdown Comment preview host is not available');
+}
+
+const vscode = resolveHost();
 const markdownRenderer = createMarkdownRenderer();
 
 function post(msg: WebviewToHost): void {

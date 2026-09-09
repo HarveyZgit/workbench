@@ -187,13 +187,40 @@ test('no-command prints help', () => {
   assert.match(result.stdout, /markdown-comment <command>/);
   assert.match(result.stdout, /list \[file\]/);
   assert.match(result.stdout, /reply <threadId>/);
+  assert.match(result.stdout, /extension vscode\|zed/);
+  assert.match(result.stdout, /preview <file\.md>/);
 });
 
-test('list without storage pointer fails when env is unset', () => {
+test('list without storage pointer bootstraps a default store', () => {
   const home = tmp('mdc-cli-empty-home-');
-  const result = run(['list'], { cwd: tmp('mdc-cli-empty-cwd-'), home, unsetStorage: true });
+  const result = run(['list', '-g'], { cwd: tmp('mdc-cli-empty-cwd-'), home, unsetStorage: true });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /没有评论/);
+  assert.equal(fs.existsSync(path.join(home, '.markdown-comment', 'store')), true);
+});
+
+test('extension zed prints the installable extension directory', () => {
+  const { workspace, home, storage } = seed();
+  const result = run(['extension', 'zed'], { cwd: workspace, storage, home });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /[/\\]zed\s*$/m);
+  assert.match(result.stdout, /Install Dev Extension/);
+  const printed = result.stdout.split('\n')[0].trim();
+  assert.equal(fs.existsSync(path.join(printed, 'extension.toml')), true);
+});
+
+test('preview without a file prints usage', () => {
+  const { workspace, home, storage } = seed();
+  const result = run(['preview'], { cwd: workspace, storage, home });
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /未找到评论存储/);
+  assert.match(result.stderr, /preview <file\.md>/);
+});
+
+test('extension without target prints usage', () => {
+  const { workspace, home, storage } = seed();
+  const result = run(['extension'], { cwd: workspace, storage, home });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /extension <vscode\|zed>/);
 });
 
 test('list prints 划词 全文 Mermaid 图 Mermaid 节点 and 整行 kinds', () => {

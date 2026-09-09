@@ -15,3 +15,4 @@ tsconfig.webview.json
 .gitignore
 pnpm-lock.yaml
 .tmp-*
+zed/target/

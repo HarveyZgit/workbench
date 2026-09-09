@@ -1,0 +1,26 @@
+id = "markdown-comment"
+name = "Markdown Comment"
+version = "0.1.0"
+schema_version = 1
+authors = ["HarveyZ <57336273+HarveyZgit@users.noreply.github.com>"]
+description = "在系统浏览器中打开 Markdown Comment 本地预览（与 VS Code / CLI 共用评论存储）。"
+repository = "https://github.com/HarveyZgit/workbench"
+
+[slash_commands.mdc-preview]
+description = "打开当前 Markdown 的浏览器评论预览。可传路径；省略时尝试 ZED_FILE。"
+requires_argument = false
+
+[[capabilities]]
+kind = "process:exec"
+command = "node"
+args = ["**"]
+
+[[capabilities]]
+kind = "process:exec"
+command = "markdown-comment"
+args = ["**"]
+
+[[capabilities]]
+kind = "process:exec"
+command = "sh"
+args = ["-c", "**"]

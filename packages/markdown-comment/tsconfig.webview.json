@@ -14,6 +14,9 @@
   },
   "include": [
     "src/preview/webview.ts",
+    "src/preview/browser-host.ts",
+    "src/preview/sync-queue.ts",
+    "src/preview/protocol.ts",
     "src/preview/heading.ts",
     "src/preview/markdown.ts",
     "src/preview/mermaid.ts",

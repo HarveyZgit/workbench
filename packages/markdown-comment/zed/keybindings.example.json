@@ -1,0 +1,8 @@
+[
+  {
+    "context": "Editor && (markdown || Markdown)",
+    "bindings": {
+      "cmd-alt-m": ["task::Spawn", { "task_name": "Markdown Comment: 打开评论预览" }]
+    }
+  }
+]

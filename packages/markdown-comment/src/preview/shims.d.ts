@@ -22,7 +22,6 @@ declare module 'markdown-it-texmath' {
   export default plugin;
 }
 
-
 declare module 'markdown-it-footnote' {
   import type MarkdownIt from 'markdown-it';
   const plugin: (md: MarkdownIt) => void;
@@ -43,9 +42,20 @@ declare module 'markdown-it-emoji' {
   export const bare: EmojiPlugin;
 }
 
-// Webview 沙箱注入的全局：拿 postMessage 通道。
+// Webview 沙箱注入的全局：拿 postMessage 通道。浏览器预览没有这个函数。
 declare function acquireVsCodeApi(): {
   postMessage: (msg: unknown) => void;
   getState: () => unknown;
   setState: (state: unknown) => void;
 };
+
+interface MdcBrowserConfig {
+  file: string;
+  syncIntervalMs: number;
+  apiBase: string;
+}
+
+interface Window {
+  mdcBrowser?: MdcBrowserConfig;
+  acquireVsCodeApi?: typeof acquireVsCodeApi;
+}

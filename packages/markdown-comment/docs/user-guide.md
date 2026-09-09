@@ -22,7 +22,7 @@ Markdown Comment 为 Markdown 文档提供可重定位的评论线程，支持�
 
 ## 插件安装
 
-Markdown Comment 以 VS Code 扩展（VSIX）形式分发。
+Markdown Comment 以 VS Code 扩展（VSIX）形式分发，并提供本机浏览器预览供 Zed / CLI 使用。
 
 ### 前置要求
 
@@ -44,6 +44,31 @@ code --install-extension <path-to-vscode-markdown-comment.vsix> --force
 ```
 
 安装后重新加载 VS Code 窗口，打开任意 `.md` 文件即可使用。
+
+打印路径：
+
+```bash
+markdown-comment extension vscode
+```
+
+---
+
+## Zed / 浏览器预览
+
+Zed 没有内置预览页。对**已保存**的 Markdown：
+
+1. 安装 CLI（`rush build --to vscode-markdown-comment`，或使用 VSIX 自带的 `dist/cli.js`）
+2. `markdown-comment extension zed` 打印扩展目录
+3. Zed → Extensions → **Install Dev Extension…** → 选择该目录
+4. 打开 `.md`，用 `/mdc-preview` 或 Task「Markdown Comment: 打开评论预览」（见 `zed/tasks.json`）
+
+系统浏览器会打开与 VS Code 相同的渲染预览。评论默认每 5 秒写入本地存储，也可点 **保存**，关标签页会再 flush 一次。之后 `markdown-comment list` 能看到。
+
+```bash
+markdown-comment preview ./doc.md --sync-interval 5
+```
+
+间隔还可写在 `MARKDOWN_COMMENT_SYNC_INTERVAL` 或 `~/.markdown-comment/config.json` 的 `syncIntervalSeconds`。未保存文档请继续用 VS Code 预览。
 
 ---
 

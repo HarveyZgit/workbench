@@ -18,3 +18,4 @@ pnpm-lock.yaml
 dist/skill-hub/**
 .rush/**
 rush-logs/**
+zed/target/**
