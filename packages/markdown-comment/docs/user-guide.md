@@ -20,30 +20,76 @@ Markdown Comment 为 Markdown 文档提供可重定位的评论线程，支持�
 
 ---
 
-## 插件安装
+## 插件 / CLI 安装
 
-Markdown Comment 以 VS Code 扩展（VSIX）形式分发。
+Markdown Comment 以 **npm 全局 tarball（推荐）** 和 VS Code VSIX 形式分发，并提供本机浏览器预览供 Zed / CLI 使用。
 
 ### 前置要求
 
-- VS Code `>= 1.85.0`
 - Node.js `>= 22`
+- VS Code `>= 1.85.0`（仅 VS Code 扩展路径需要）
 
-### 手动安装
+### 推荐：npm 全局安装 CLI tarball
+
+从 Release 下载 `markdown-comment-<ver>.tgz`（由 `rushx pack-release` / `scripts/pack-release.sh` 产出），然后：
+
+```bash
+npm install -g ./markdown-comment-1.4.0.tgz
+markdown-comment --help
+```
+
+该 tarball **零 runtime 依赖**（CLI / 预览资源已 bundle），并内含：
+
+- 可执行 CLI（`markdown-comment`）
+- VS Code VSIX（`dist/vscode-markdown-comment.vsix`）
+- Zed 扩展目录（`zed/`）
+
+安装后打印编辑器扩展绝对路径：
+
+```bash
+markdown-comment extension zed      # → …/node_modules/markdown-comment/zed
+markdown-comment extension vscode   # → …/node_modules/markdown-comment/dist/vscode-markdown-comment.vsix
+```
+
+再用这些路径安装：
+
+```bash
+# VS Code
+code --install-extension "$(markdown-comment extension vscode | head -n1)" --force
+
+# Zed：Extensions → Install Dev Extension… → 选择 `extension zed` 打印的目录
+```
+
+### 仅安装 VS Code VSIX
 
 1. 打开 VS Code 扩展面板（`Cmd+Shift+X` / `Ctrl+Shift+X`）
 2. 点击右上角 `...` → **从 VSIX 安装…**
-3. 选择 `.vsix` 文件即可完成安装
-
-### 命令行安装
-
-在终端执行：
+3. 选择 `.vsix` 文件；或：
 
 ```bash
 code --install-extension <path-to-vscode-markdown-comment.vsix> --force
 ```
 
 安装后重新加载 VS Code 窗口，打开任意 `.md` 文件即可使用。
+
+---
+
+## Zed / 浏览器预览
+
+Zed 没有内置预览页。对**已保存**的 Markdown：
+
+1. 安装 CLI：`npm install -g ./markdown-comment-<ver>.tgz`（或 `rush build --to vscode-markdown-comment`）
+2. `markdown-comment extension zed` 打印扩展目录
+3. Zed → Extensions → **Install Dev Extension…** → 选择该目录
+4. 打开 `.md`，用 `/mdc-preview` 或 Task「Markdown Comment: 打开评论预览」（见 `zed/tasks.json`）
+
+系统浏览器会打开与 VS Code 相同的渲染预览。评论默认每 5 秒写入本地存储，也可点 **保存**，关标签页会再 flush 一次。之后 `markdown-comment list` 能看到。
+
+```bash
+markdown-comment preview ./doc.md --sync-interval 5
+```
+
+间隔还可写在 `MARKDOWN_COMMENT_SYNC_INTERVAL` 或 `~/.markdown-comment/config.json` 的 `syncIntervalSeconds`。未保存文档请继续用 VS Code 预览。
 
 ---
 

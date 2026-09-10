@@ -11,9 +11,7 @@ Markdown Comment 为 Markdown 提供划词、全文和 Mermaid 图表评论。�
 
 ## CLI
 
-下文 `{{CLI}}` 是评论 CLI 入口（{{CLI_NOTE}}）。当前迁移兼容层仍从 VS Code 全局存储定位评论数据，路径记录在 `~/.markdown-comment/pointer.json`。
-
-前置：首次使用当前兼容实现时，用户必须在 VS Code 启动过插件一次（否则指针不存在，CLI 会给出提示）。
+下文 `{{CLI}}` 是评论 CLI 入口（{{CLI_NOTE}}）。评论存在本机存储：优先 `MARKDOWN_COMMENT_STORAGE_DIR`，其次 `~/.markdown-comment/pointer.json`（可能指向旧 VS Code globalStorage），否则 CLI 会在 `~/.markdown-comment/store` 自动建一份。
 
 ```bash
 {{CLI}} list [target] [--open]  # 列出评论。默认只看当前目录（含子目录）下的已落盘文档、且隐藏失联评论；--open 只看未解决

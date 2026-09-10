@@ -4,7 +4,7 @@ Read the repository-level [AGENTS.md](../../AGENTS.md) and this package's target
 
 ## Current state
 
-The current implementation has been migrated from the former standalone VS Code package. It is functional but still VS Code-centred: `src/anchor.ts` uses VS Code ranges and `src/storage.ts` follows the existing VS Code global-storage pointer. Treat the architecture document as the destination, not a claim about the current source layout.
+The current implementation has been migrated from the former standalone VS Code package. Anchors use an editor-neutral `TextModel`; CLI/browser preview can bootstrap `~/.markdown-comment/store` without launching VS Code, while an existing pointer to VS Code globalStorage is still reused. The VS Code extension remains the in-editor adapter. Treat the architecture document as the destination for further core extraction.
 
 ## Design constraints
 
@@ -23,5 +23,9 @@ Use Rush commands from the repository root:
 rush build --to vscode-markdown-comment
 rush typecheck --to vscode-markdown-comment
 ```
+
+Browser preview / Zed: `markdown-comment preview <file.md>` starts an on-demand local server; `markdown-comment extension zed|vscode` prints install paths. The Zed extension must call the public CLI, not a private store format.
+
+CLI npm tarball: `rushx pack-release` → `dist/markdown-comment-<ver>.tgz` (zero runtime deps; ships `zed/` + VSIX). Prefer `npm install -g ./markdown-comment-<ver>.tgz` over unpack-only install paths.
 
 Do not run `pnpm` at the repository root. When the migration changes the build or test setup, update this file and the package README in the same change.

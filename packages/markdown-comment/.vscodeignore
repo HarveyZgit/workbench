@@ -6,6 +6,8 @@ fixtures/**
 resources/**
 skill/**
 src/**
+scripts/**
+tests/**
 node_modules/**
 esbuild.mjs
 tsconfig.json
@@ -15,6 +17,11 @@ pnpm-lock.yaml
 **/*.map
 **/*.ts
 **/*.vsix
+**/*.tgz
+**/*.tar.gz
 dist/skill-hub/**
+dist/npm-stage/**
+dist/markdown-comment-zed-extension.tar.gz
 .rush/**
 rush-logs/**
+zed/target/**

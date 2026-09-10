@@ -6,13 +6,24 @@ import { createHash } from 'node:crypto';
 import type { StoredDocument, StoredThread } from './types';
 
 // 指针文件：固定在用户主目录，记录插件 globalStorage 的真实路径，
-// 让脱离 VS Code 的 CLI 也能找到评论数据。
-const POINTER_DIR = path.join(os.homedir(), '.markdown-comment');
-const POINTER_FILE = path.join(POINTER_DIR, 'pointer.json');
+// 让脱离 VS Code 的 CLI 也能找到评论数据。调用时读 os.homedir()，便于测试改 HOME。
+
+export function pointerDir(): string {
+  return path.join(os.homedir(), '.markdown-comment');
+}
+
+export function pointerFile(): string {
+  return path.join(pointerDir(), 'pointer.json');
+}
+
+/** CLI / 浏览器预览的默认存储（不依赖 VS Code globalStorage）。 */
+export function defaultStoreDir(): string {
+  return path.join(pointerDir(), 'store');
+}
 
 export function writePointer(storageDir: string): void {
-  fs.mkdirSync(POINTER_DIR, { recursive: true });
-  fs.writeFileSync(POINTER_FILE, `${JSON.stringify({ storageDir }, null, 2)}\n`, 'utf8');
+  fs.mkdirSync(pointerDir(), { recursive: true });
+  fs.writeFileSync(pointerFile(), `${JSON.stringify({ storageDir }, null, 2)}\n`, 'utf8');
 }
 
 export function readStorageDir(): string | null {
@@ -21,7 +32,7 @@ export function readStorageDir(): string | null {
     return process.env.MARKDOWN_COMMENT_STORAGE_DIR;
   }
   try {
-    const data = JSON.parse(fs.readFileSync(POINTER_FILE, 'utf8'));
+    const data = JSON.parse(fs.readFileSync(pointerFile(), 'utf8'));
     if (data && typeof data.storageDir === 'string') {
       return data.storageDir;
     }
@@ -29,6 +40,22 @@ export function readStorageDir(): string | null {
     // 指针不存在：插件还没启动过。
   }
   return null;
+}
+
+/**
+ * 保证评论存储可用：环境变量 / 已有指针优先（兼容旧 VS Code globalStorage），
+ * 否则在 ~/.markdown-comment/store 建一份并写指针。不覆盖已有指针。
+ */
+export function ensureStorageDir(): string {
+  const existing = readStorageDir();
+  if (existing) {
+    fs.mkdirSync(existing, { recursive: true });
+    return existing;
+  }
+  const dir = defaultStoreDir();
+  fs.mkdirSync(dir, { recursive: true });
+  writePointer(dir);
+  return dir;
 }
 
 export function fileHash(absPath: string): string {
@@ -44,7 +71,7 @@ export function fileHash(absPath: string): string {
 export interface StorageUriLike {
   scheme: string;
   fsPath: string;
-  toString(): string;
+  toString: () => string;
 }
 
 export function storageKey(uri: StorageUriLike): string {

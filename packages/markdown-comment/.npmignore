@@ -1,5 +1,7 @@
-# npm 发布内容控制（vsce 用 .vscodeignore，两者分开，不能写进 package.json 的 files）。
-# 发布物保留：dist/cli.js、dist/extension.js、vscode-markdown-comment.vsix、skill/、README.md、package.json
+# npm 发布内容控制（vsce 用 .vscodeignore，两者分开）。
+# 推荐发布路径：scripts/pack-release.sh → dist/markdown-comment-<ver>.tgz
+# （零依赖 runtime；内含 dist/cli.js、webview 资源、vscode-markdown-comment.vsix、zed/）。
+# 若直接在本目录 npm pack，仍会带上 package.json 的 dependencies，可能拉私源。
 src/
 node_modules/
 .vscode/
@@ -15,3 +17,9 @@ tsconfig.webview.json
 .gitignore
 pnpm-lock.yaml
 .tmp-*
+zed/target/
+tests/
+docs/
+.rush/
+rush-logs/
+scripts/

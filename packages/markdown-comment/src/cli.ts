@@ -1,9 +1,10 @@
-// markdown-comment CLI —— 给 Agent 读取/回复评论（list/reply/resolve）。
+// markdown-comment CLI —— 给 Agent 读取/回复评论（list/reply/resolve），以及浏览器预览 / 扩展路径。
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import {
-  readStorageDir,
   listAll,
   loadDoc,
   saveDoc,
@@ -11,7 +12,11 @@ import {
   resolveDocKey,
   getCliId,
   isUntitledStorageKey,
+  ensureStorageDir,
 } from './storage';
+import { hasMarkdownExtension } from './markdown-lang';
+import { DEFAULT_PREVIEW_HOST, DEFAULT_PREVIEW_PORT, resolveSyncIntervalSeconds } from './config';
+import { probePreviewServer, requestOpenFile, startPreviewServer } from './preview/web-server';
 import type { StoredComment, StoredThread } from './types';
 
 function fail(msg: string): never {
@@ -20,13 +25,16 @@ function fail(msg: string): never {
 }
 
 function getStorageDir(): string {
-  const dir = readStorageDir();
-  if (!dir) {
-    fail(
-      '未找到评论存储。请先在 VS Code 里启动 Markdown Comment 插件（它会写入存储指针 ~/.markdown-comment/pointer.json）。',
-    );
-  }
-  return dir;
+  return ensureStorageDir();
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function packageRoot(): string {
+  const here = path.resolve(__dirname);
+  return path.basename(here) === 'dist' ? path.dirname(here) : path.resolve(here, '..');
 }
 
 const [, , cmd, ...rest] = process.argv;
@@ -247,6 +255,316 @@ function cmdResolve(): void {
   process.stdout.write(`OK: 已标记已解决 #${shortId(found.thread.id)}\n`);
 }
 
+function flagValue(name: string): string | undefined {
+  const idx = rest.findIndex((a) => a === name || a.startsWith(`${name}=`));
+  if (idx < 0) {
+    return undefined;
+  }
+  const token = rest[idx];
+  if (token.startsWith(`${name}=`)) {
+    return token.slice(name.length + 1);
+  }
+  const next = rest[idx + 1];
+  return next && !next.startsWith('--') ? next : undefined;
+}
+
+function openBrowser(url: string): void {
+  try {
+    if (process.platform === 'darwin') {
+      spawn('open', [url], { detached: true, stdio: 'ignore' }).unref();
+    } else if (process.platform === 'win32') {
+      spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
+    } else {
+      spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
+    }
+  } catch (err) {
+    process.stderr.write(`无法自动打开浏览器: ${err}\n`);
+  }
+}
+
+function cmdExtension(): void {
+  const target = (args[0] ?? '').toLowerCase();
+  const root = packageRoot();
+  if (!target || target === 'help' || target === '--help' || target === '-h') {
+    process.stdout.write(
+      [
+        'markdown-comment extension <vscode|zed>',
+        '',
+        '  vscode   打印 VS Code VSIX 绝对路径',
+        '  zed      打印可 Install Dev Extension 的 Zed 扩展目录',
+        '',
+      ].join('\n'),
+    );
+    return;
+  }
+  if (target === 'vscode' || target === 'vsix' || target === 'code') {
+    const vsix = path.join(root, 'dist', 'vscode-markdown-comment.vsix');
+    if (!fs.existsSync(vsix)) {
+      fail(`VSIX 不存在: ${vsix}\n请先在 package 目录执行 rushx package`);
+    }
+    const abs = path.resolve(vsix);
+    process.stdout.write(`${abs}\n`);
+    process.stdout.write(`hint: code --install-extension ${shellQuote(abs)} --force\n`);
+    return;
+  }
+  if (target === 'zed') {
+    const dir = path.join(root, 'zed');
+    if (!fs.existsSync(path.join(dir, 'extension.toml'))) {
+      fail(`Zed 扩展目录不完整: ${dir}`);
+    }
+    const abs = path.resolve(dir);
+    process.stdout.write(`${abs}\n`);
+    process.stdout.write(
+      [
+        'hint: 一键安装任务: markdown-comment zed-setup',
+        'hint: 然后 Zed → task: spawn → Markdown Comment: 打开评论预览',
+        'hint: 不要用 Install Dev Extension（Zed 会编 wasm，基本不可用）',
+        '',
+      ].join('\n'),
+    );
+    return;
+  }
+  fail(`未知 extension 目标: ${target}（可用 vscode 或 zed）`);
+}
+
+function zedTasksPath(): string {
+  const xdg = process.env.XDG_CONFIG_HOME?.trim();
+  const base = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), '.config');
+  return path.join(base, 'zed', 'tasks.json');
+}
+
+/** Merge packaged zed/tasks.json into ~/.config/zed/tasks.json (same label → replace). */
+function cmdZedSetup(): void {
+  const bundled = path.join(packageRoot(), 'zed', 'tasks.json');
+  if (!fs.existsSync(bundled)) {
+    fail(`找不到打包的 tasks.json: ${bundled}`);
+  }
+  let incoming: unknown;
+  try {
+    incoming = JSON.parse(fs.readFileSync(bundled, 'utf8'));
+  } catch (err) {
+    fail(`无法解析 ${bundled}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!Array.isArray(incoming)) {
+    fail(`期望 ${bundled} 为 JSON 数组`);
+  }
+  const toMerge = incoming as Array<Record<string, unknown>>;
+  for (const t of toMerge) {
+    if (typeof t?.label !== 'string' || !t.label.trim()) {
+      fail('bundled tasks.json 含无效 label');
+    }
+  }
+
+  const target = zedTasksPath();
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+
+  let existing: unknown[] = [];
+  if (fs.existsSync(target)) {
+    const raw = fs.readFileSync(target, 'utf8').trim();
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) {
+          fail(`${target} 不是 JSON 数组，请手动备份后重试`);
+        }
+        existing = parsed;
+      } catch (err) {
+        fail(`无法解析 ${target}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  const byLabel = new Map<string, number>();
+  existing.forEach((item, i) => {
+    if (item && typeof item === 'object' && typeof (item as { label?: unknown }).label === 'string') {
+      byLabel.set((item as { label: string }).label, i);
+    }
+  });
+
+  const added: string[] = [];
+  const updated: string[] = [];
+  for (const task of toMerge) {
+    const label = String(task.label);
+    const idx = byLabel.get(label);
+    if (idx === undefined) {
+      byLabel.set(label, existing.length);
+      existing.push(task);
+      added.push(label);
+    } else {
+      existing[idx] = task;
+      updated.push(label);
+    }
+  }
+
+  fs.writeFileSync(target, `${JSON.stringify(existing, null, 2)}\n`, 'utf8');
+  process.stdout.write(`已写入 ${target}\n`);
+  if (added.length) process.stdout.write(`新增: ${added.join(', ')}\n`);
+  if (updated.length) process.stdout.write(`更新: ${updated.join(', ')}\n`);
+  if (!added.length && !updated.length) process.stdout.write('无变更\n');
+  process.stdout.write(
+    [
+      '',
+      '下一步：Zed 打开已保存的 .md → 命令面板 task: spawn → Markdown Comment: 打开评论预览',
+      '（不要再用 Install Dev Extension）',
+      '',
+    ].join('\n'),
+  );
+}
+
+async function cmdPreview(): Promise<void> {
+  const fileArg = args[0];
+  if (!fileArg) {
+    fail(
+      '用法: markdown-comment preview <file.md> [--port 8765] [--sync-interval 5] [--no-open] [--detach] [--no-reuse]',
+    );
+  }
+  const filePath = path.resolve(fileArg);
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    fail(`文件不存在: ${filePath}`);
+  }
+  if (!hasMarkdownExtension(filePath)) {
+    fail(`不是 Markdown 文件: ${filePath}`);
+  }
+  const portRaw = flagValue('--port');
+  const port = portRaw ? Number(portRaw) : DEFAULT_PREVIEW_PORT;
+  if (!Number.isInteger(port) || port < 0 || port > 65535) {
+    fail(`无效端口: ${portRaw}`);
+  }
+  const intervalRaw = flagValue('--sync-interval');
+  const syncIntervalSeconds = resolveSyncIntervalSeconds(
+    intervalRaw !== undefined ? Number(intervalRaw) : undefined,
+  );
+  const syncIntervalMs = syncIntervalSeconds * 1000;
+  const noOpen = flags.has('--no-open');
+  const detach = flags.has('--detach');
+  const noReuse = flags.has('--no-reuse');
+  const host = DEFAULT_PREVIEW_HOST;
+
+  if (detach && process.env.MDC_PREVIEW_DETACHED !== '1') {
+    const logPath = path.join(os.homedir(), '.markdown-comment', 'preview-detach.log');
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    const logFd = fs.openSync(logPath, 'w');
+    const childArgv = process.argv.slice(1).filter((a) => a !== '--detach');
+    const child = spawn(process.execPath, childArgv, {
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
+      env: { ...process.env, MDC_PREVIEW_DETACHED: '1' },
+    });
+    fs.closeSync(logFd);
+    child.unref();
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 150));
+      let text = '';
+      try {
+        text = fs.readFileSync(logPath, 'utf8');
+      } catch {
+        continue;
+      }
+      const m = text.match(/url:\s+(\S+)/);
+      if (m) {
+        process.stdout.write(text);
+        process.stdout.write(`(detached pid ${child.pid}; stop: kill ${child.pid})\n`);
+        process.exit(0);
+      }
+      if (/文件不存在|不是 Markdown|无效端口|Failed to bind/.test(text)) {
+        process.stderr.write(text);
+        process.exit(1);
+      }
+    }
+    fail(`preview 启动超时，见 ${logPath}`);
+  }
+
+  if (port > 0 && !noReuse) {
+    const existing = await probePreviewServer(host, port);
+    if (existing?.ok) {
+      const opened = await requestOpenFile(host, port, filePath);
+      if (opened?.url) {
+        process.stdout.write('Markdown Comment preview (reused)\n');
+        process.stdout.write(`  file:    ${filePath}\n`);
+        process.stdout.write(`  storage: ${getStorageDir()}\n`);
+        process.stdout.write(`  url:     ${opened.url}\n`);
+        process.stdout.write(`  sync:    ${syncIntervalSeconds}s\n`);
+        if (!noOpen) {
+          openBrowser(opened.url);
+        }
+        return;
+      }
+    }
+  }
+
+  const storageDir = getStorageDir();
+  const distDir = path.basename(__dirname) === 'dist' ? __dirname : path.join(packageRoot(), 'dist');
+  let server;
+  try {
+    server = await startPreviewServer({
+      storageDir,
+      port,
+      host,
+      distDir,
+      syncIntervalMs,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (port > 0 && /EADDRINUSE/.test(message) && !noReuse) {
+      const opened = await requestOpenFile(host, port, filePath);
+      if (opened?.url) {
+        process.stdout.write('Markdown Comment preview (reused)\n');
+        process.stdout.write(`  file:    ${filePath}\n`);
+        process.stdout.write(`  storage: ${storageDir}\n`);
+        process.stdout.write(`  url:     ${opened.url}\n`);
+        process.stdout.write(`  sync:    ${syncIntervalSeconds}s\n`);
+        if (!noOpen) {
+          openBrowser(opened.url);
+        }
+        return;
+      }
+    }
+    fail(message);
+  }
+  server.openFile(filePath);
+  const url = server.urlFor(filePath);
+  process.stdout.write('Markdown Comment preview\n');
+  process.stdout.write(`  file:    ${filePath}\n`);
+  process.stdout.write(`  storage: ${storageDir}\n`);
+  process.stdout.write(`  url:     ${url}\n`);
+  process.stdout.write(`  sync:    ${syncIntervalSeconds}s（保存按钮 / 关页会立即写入）\n`);
+  process.stdout.write(process.env.MDC_PREVIEW_DETACHED === '1' ? '后台运行中\n' : '按 Ctrl+C 停止\n');
+  if (!noOpen) {
+    openBrowser(url);
+  }
+  const shutdown = async () => {
+    try {
+      await server.close();
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.on('SIGINT', () => void shutdown());
+  process.on('SIGTERM', () => void shutdown());
+}
+
+function printHelp(): void {
+  process.stdout.write(
+    [
+      'markdown-comment <command>',
+      '',
+      '  extension vscode|zed              打印 VS Code VSIX 或 Zed 扩展目录的绝对路径',
+      '  zed-setup                         一键合并 zed/tasks.json 到 ~/.config/zed/tasks.json（推荐，无需 Rust）',
+      '  preview <file.md> [--port 8765] [--sync-interval 5] [--no-open] [--detach] [--no-reuse]',
+      '                                  启动本机评论预览（按间隔同步，默认 5s；Save / 关页立即写入）',
+      '  list [file] [-g] [--open] [--name-only] [--hidden] [--json]',
+      '                                  列出评论。默认只看当前目录（含子目录）下的文档、且隐藏失联评论；',
+      '                                  -g/--global 看全局；指定 file 只看该文件；--open 只看未解决；',
+      '                                  --hidden 连已隐藏的失联评论（原文已删/被替换）一并列出（标 [失联]）；',
+      '                                  --name-only 只列文件+条数；--json 输出原始 JSON。本地文件路径显示为相对路径',
+      '  reply <threadId> <text>         以 Agent 身份回复（threadId 可用前 8 位短 id）',
+      '  resolve <threadId>              把线程标记为已解决',
+      '',
+    ].join('\n'),
+  );
+}
+
 switch (cmd) {
   case 'list':
     cmdList();
@@ -257,19 +575,18 @@ switch (cmd) {
   case 'resolve':
     cmdResolve();
     break;
+  case 'extension':
+    cmdExtension();
+    break;
+  case 'zed-setup':
+  case 'zed_setup':
+    cmdZedSetup();
+    break;
+  case 'preview':
+    void cmdPreview().catch((err) => {
+      fail(err instanceof Error ? err.message : String(err));
+    });
+    break;
   default:
-    process.stdout.write(
-      [
-        'markdown-comment <command>',
-        '',
-        '  list [file] [-g] [--open] [--name-only] [--hidden] [--json]',
-        '                                  列出评论。默认只看当前目录（含子目录）下的文档、且隐藏失联评论；',
-        '                                  -g/--global 看全局；指定 file 只看该文件；--open 只看未解决；',
-        '                                  --hidden 连已隐藏的失联评论（原文已删/被替换）一并列出（标 [失联]）；',
-        '                                  --name-only 只列文件+条数；--json 输出原始 JSON。本地文件路径显示为相对路径',
-        '  reply <threadId> <text>         以 Agent 身份回复（threadId 可用前 8 位短 id）',
-        '  resolve <threadId>              把线程标记为已解决',
-        '',
-      ].join('\n'),
-    );
+    printHelp();
 }

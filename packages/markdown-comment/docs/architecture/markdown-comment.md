@@ -91,7 +91,7 @@ Split these into published packages only when separate release cadence or reuse 
 2. Extract editor-neutral types, anchors, operations, and storage from the VS Code extension into the core.
 3. Make the CLI use the portable store directly; retain a one-time, safe import path for existing VS Code data.
 4. Convert the VS Code extension into an adapter over the core, preserving the rendered-preview experience.
-5. Add a local web/agent adapter only after the core and storage boundaries are exercised by CLI and VS Code.
+5. ✅ Add a local web/agent adapter: CLI `preview` starts an on-demand HTTP server that reuses the preview webview UI. The browser queues comment mutations and flushes on a configurable interval, an explicit Save control, and tab close. A thin Zed extension opens that URL for the active saved Markdown file. VS Code webview preview remains the editor-native adapter.
 
 Each step must leave a working tool. Avoid a flag-day rewrite or a storage-format break.
 
