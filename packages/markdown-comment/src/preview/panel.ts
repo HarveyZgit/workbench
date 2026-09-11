@@ -5,9 +5,25 @@ import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { loadDoc, saveDoc, fileHash, storageKey, ensureUntitledCliId, skillPromptTargetState } from '../storage';
+import {
+  loadDoc,
+  saveDoc,
+  fileHash,
+  storageKey,
+  ensureUntitledCliId,
+  skillPromptTargetState,
+} from '../storage';
+import {
+  findMatchingDocument,
+  implicitFileWorkspaceRoot,
+  readSavedMarkdownText,
+  resolveLocalResourcePath,
+  sameDocumentUri,
+} from '../document-uri';
 import { isCommentableMarkdown, isMarkdownDocument } from '../markdown-lang';
-import { buildAnchorFromRange, mapRenderedSelectionToRange, relocate } from '../anchor';
+import { buildAnchorFromRange, relocate } from '../anchor';
+import { createSelectionThreadFromText } from './selection-thread';
+import { PlainTextDocument, type TextModel } from '../text-model';
 import type { StoredDocument, StoredThread } from '../types';
 import { computePreviewLineChanges } from './diff';
 import { findHeadingLine } from './heading';
@@ -52,7 +68,7 @@ function nonce(): string {
 }
 
 function docFor(uri: vscode.Uri): vscode.TextDocument | undefined {
-  return vscode.workspace.textDocuments.find((d) => keyOf(d.uri) === keyOf(uri));
+  return findMatchingDocument(vscode.workspace.textDocuments, uri);
 }
 
 function renderOptions(
@@ -140,14 +156,18 @@ function resolveLocalReference(uri: vscode.Uri, source: string): vscode.Uri | nu
   }
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri) ?? vscode.workspace.workspaceFolders?.[0];
   // untitled：没有可靠的磁盘 dirname，相对路径本地资源直接放弃（https / data 仍由调用方放行）。
+  // 无 workspace folder 时：已落盘 file 用文件所在目录当作隐式根，不依赖 workspaceFolders[0]。
   if (uri.scheme !== 'file' && !decodedPath.startsWith('/')) {
     return null;
   }
-  const absolutePath = decodedPath.startsWith('/')
-    ? workspaceFolder
-      ? path.resolve(workspaceFolder.uri.fsPath, `.${decodedPath}`)
-      : decodedPath
-    : path.resolve(path.dirname(uri.fsPath), decodedPath);
+  const absolutePath = resolveLocalResourcePath(
+    decodedPath,
+    uri.scheme === 'file' ? uri.fsPath : undefined,
+    workspaceFolder?.uri.fsPath ?? implicitFileWorkspaceRoot(uri),
+  );
+  if (!absolutePath) {
+    return null;
+  }
   const resolvedRealPath = realPath(absolutePath);
   if (
     !resolvedRealPath ||
@@ -309,7 +329,7 @@ function isWebviewMessage(value: unknown): value is WebviewToHost {
   }
 }
 
-function lineForFragment(doc: vscode.TextDocument, fragment: string): number | null {
+function lineForFragment(doc: TextModel, fragment: string): number | null {
   let decoded = fragment;
   try {
     decoded = decodeURIComponent(fragment);
@@ -319,7 +339,7 @@ function lineForFragment(doc: vscode.TextDocument, fragment: string): number | n
   return findHeadingLine(doc.getText(), decoded);
 }
 
-function mermaidBlockEndLine(doc: vscode.TextDocument, startLine: number): number {
+function mermaidBlockEndLine(doc: TextModel, startLine: number): number {
   const opening = /^(?: {0,3})(`{3,}|~{3,})\s*mermaid(?:\s.*)?$/i.exec(doc.lineAt(startLine).text);
   if (!opening) {
     return startLine + 1;
@@ -335,10 +355,7 @@ function mermaidBlockEndLine(doc: vscode.TextDocument, startLine: number): numbe
   return doc.lineCount;
 }
 
-function mermaidBlockNear(
-  doc: vscode.TextDocument,
-  line: number,
-): { startLine: number; endLine: number } | null {
+function mermaidBlockNear(doc: TextModel, line: number): { startLine: number; endLine: number } | null {
   const blocks: Array<{ startLine: number; endLine: number }> = [];
   for (let candidate = 0; candidate < doc.lineCount; candidate++) {
     if (!/^(?: {0,3})(`{3,}|~{3,})\s*mermaid(?:\s.*)?$/i.test(doc.lineAt(candidate).text)) {
@@ -351,18 +368,43 @@ function mermaidBlockNear(
   return blocks.find((block) => block.startLine <= line && line < block.endLine) ?? null;
 }
 
-// 拿源文档：优先用已打开的，否则后台 openTextDocument 加载（不显示标签页）。
+// 拿源文档：优先用已打开的（按绝对 fsPath 匹配，不要求 workspace folder），
+// 否则用 file URI / 绝对 fsPath 后台 openTextDocument。
 // 关掉源码标签后预览仍能建评论/重渲；文件已删/读失败返回 undefined。
 async function getDoc(uri: vscode.Uri): Promise<vscode.TextDocument | undefined> {
   const open = docFor(uri);
   if (open) {
     return open;
   }
-  try {
-    return await vscode.workspace.openTextDocument(uri);
-  } catch {
-    return undefined;
+  const attempts: Array<() => Thenable<vscode.TextDocument>> = [];
+  if (uri.scheme === 'file' && uri.fsPath) {
+    attempts.push(() => vscode.workspace.openTextDocument(vscode.Uri.file(uri.fsPath)));
+    attempts.push(() => vscode.workspace.openTextDocument(uri.fsPath));
   }
+  attempts.push(() => vscode.workspace.openTextDocument(uri));
+  for (const attempt of attempts) {
+    try {
+      return await attempt();
+    } catch {
+      // 无 folder / 宿主拒绝对 URI 打开时换下一种键再试。
+    }
+  }
+  return undefined;
+}
+
+/** vscode 文档优先（含未保存改动）；否则按绝对 fsPath 读盘成 TextModel。 */
+async function getSourceModel(uri: vscode.Uri): Promise<TextModel | undefined> {
+  const doc = await getDoc(uri);
+  if (doc) {
+    return doc;
+  }
+  if (uri.scheme === 'file' && uri.fsPath) {
+    const text = readSavedMarkdownText(uri.fsPath);
+    if (text !== undefined) {
+      return PlainTextDocument.fromString(text);
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -371,7 +413,7 @@ async function getDoc(uri: vscode.Uri): Promise<vscode.TextDocument | undefined>
  * relocate 失败（原文被完整删除/替换、全文都搜不到）→ 返回 null，预览里隐藏这条评论。
  * 数据仍留在 storage；若原文恢复，下次 relocate 成功会重新出现并定位。引用文本始终用冻结快照。
  */
-function toWire(t: StoredThread, doc?: vscode.TextDocument): WireThread {
+function toWire(t: StoredThread, doc?: TextModel): WireThread {
   let { startLine } = t.anchor;
   let { endLine } = t.anchor;
   let orphaned = false;
@@ -789,8 +831,7 @@ function buildHtml(
 /** 当前绑定文档的 Skill 提示目标（file=绝对路径；untitled=cliId 或禁用）。 */
 function skillPromptStateFor(storageDir: string, uri: vscode.Uri) {
   // 存量 untitled：有评论但缺 cliId 时 ensure 回填，无需再发一条评论。
-  const cliId =
-    uri.scheme === 'untitled' ? ensureUntitledCliId(storageDir, storageKey(uri)) : undefined;
+  const cliId = uri.scheme === 'untitled' ? ensureUntitledCliId(storageDir, storageKey(uri)) : undefined;
   return skillPromptTargetState({ scheme: uri.scheme, fsPath: uri.fsPath, cliId });
 }
 
@@ -802,8 +843,21 @@ function previewTitle(uri: vscode.Uri): string {
   return `评论预览：${path.basename(uri.fsPath)}`;
 }
 
+function previewFor(uri: vscode.Uri): PreviewController | undefined {
+  const direct = previews.get(keyOf(uri));
+  if (direct) {
+    return direct;
+  }
+  for (const ctrl of previews.values()) {
+    if (sameDocumentUri(ctrl.uri, uri)) {
+      return ctrl;
+    }
+  }
+  return undefined;
+}
+
 export function hasPreview(uri: vscode.Uri): boolean {
-  return previews.has(keyOf(uri));
+  return previewFor(uri) !== undefined;
 }
 
 /** untitled Save As 成 file 后：把已打开的预览改绑到新 URI，不丢 webview。 */
@@ -834,7 +888,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     return;
   }
   const { uri } = ed.document;
-  const existing = previews.get(keyOf(uri));
+  const existing = previewFor(uri);
   if (existing) {
     existing.panel.reveal();
     return;
@@ -862,32 +916,34 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
   panel.webview.html = buildHtml(panel.webview, scriptUri, styleUri, panel.title);
 
   const post = (msg: HostToWebview) => void panel.webview.postMessage(msg);
-  const wireFor = (doc?: vscode.TextDocument) =>
-    loadDoc(storageDir, docKey()).threads.map((t) => toWire(t, doc));
-  // 取当前文本来 relocate（源码 tab 没开则后台加载），保证回推 webview 的行号是最新的。
-  const sendThreads = async () => post({ type: 'threads', threads: wireFor(await getDoc(boundUri)) });
+  const wireFor = (doc?: TextModel) => loadDoc(storageDir, docKey()).threads.map((t) => toWire(t, doc));
+  // 取当前文本来 relocate（源码 tab 没开则后台加载 / 无 folder 时读盘），保证回推 webview 的行号是最新的。
+  const sendThreads = async () => post({ type: 'threads', threads: wireFor(await getSourceModel(boundUri)) });
   const sendSkillPromptTarget = () => {
     const state = skillPromptStateFor(storageDir, boundUri);
     post({ type: 'skillPromptTarget', enabled: state.enabled, tip: state.tip });
   };
   const sendRender = async () => {
-    const doc = await getDoc(boundUri);
-    const text = doc?.getText() ?? '';
-    const options = renderOptions(panel.webview, boundUri, doc);
+    const vscodeDoc = await getDoc(boundUri);
+    const model = vscodeDoc ?? (await getSourceModel(boundUri));
+    const text = model?.getText() ?? '';
+    const options = renderOptions(panel.webview, boundUri, vscodeDoc);
     const encoding =
-      doc &&
-      'encoding' in doc &&
-      typeof (doc as vscode.TextDocument & { encoding?: unknown }).encoding === 'string'
-        ? (doc as vscode.TextDocument & { encoding: string }).encoding.toLowerCase()
+      vscodeDoc &&
+      'encoding' in vscodeDoc &&
+      typeof (vscodeDoc as vscode.TextDocument & { encoding?: unknown }).encoding === 'string'
+        ? (vscodeDoc as vscode.TextDocument & { encoding: string }).encoding.toLowerCase()
         : 'utf8';
     const changes =
-      options.renderedDiff && doc?.isDirty && encoding === 'utf8'
-        ? (boundUri.scheme === 'file' ? readLineChanges(boundUri.fsPath, text) : undefined)
+      options.renderedDiff && vscodeDoc?.isDirty && encoding === 'utf8'
+        ? boundUri.scheme === 'file'
+          ? readLineChanges(boundUri.fsPath, text)
+          : undefined
         : undefined;
     post({
       type: 'render',
       text,
-      threads: wireFor(doc),
+      threads: wireFor(model),
       options,
       diff: changes ? { baseline: 'saved', changes } : undefined,
     });
@@ -906,26 +962,16 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     if (!text.trim()) {
       return;
     }
-    const doc = await getDoc(boundUri);
-    if (!doc) {
-      vscode.window.showWarningMessage('源 Markdown 文件无法读取（可能已删除或移动），无法创建评论');
+    const model = await getSourceModel(boundUri);
+    const sourceText = model?.getText() ?? '';
+    const result = createSelectionThreadFromText(sourceText, selection, text);
+    if (!result.ok) {
+      if (result.error !== 'empty') {
+        vscode.window.showWarningMessage(result.error);
+      }
       return;
     }
-    const range = mapRenderedSelectionToRange(doc, selection);
-    if (!range) {
-      vscode.window.showWarningMessage('无法把这段选区定位回源码');
-      return;
-    }
-    const anchor = buildAnchorFromRange(doc, range, 'selection');
-    // 存渲染态选区：即便源码锚点退回整块，webview 仍能精确高亮用户当时所选。
-    anchor.rendered = { quote: selection.quote, before: selection.before, after: selection.after };
-    const thread: StoredThread = {
-      id: randomUUID(),
-      anchor,
-      status: 'open',
-      comments: [{ id: randomUUID(), author: 'user', body: text, createdAt: new Date().toISOString() }],
-    };
-    mutate((d) => d.threads.push(thread));
+    mutate((d) => d.threads.push(result.thread));
   };
 
   const handleCreateBlock = async (
@@ -938,7 +984,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     if (!text.trim()) {
       return;
     }
-    const doc = await getDoc(boundUri);
+    const doc = await getSourceModel(boundUri);
     const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
     const range = doc ? doc.lineAt(safeStartLine).range : null;
     if (!doc || !range) {
@@ -962,7 +1008,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     if (!text.trim()) {
       return;
     }
-    const doc = await getDoc(boundUri);
+    const doc = await getSourceModel(boundUri);
     const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
     const range = doc ? doc.lineAt(safeStartLine).range : null;
     if (!doc || !range) {
@@ -1081,14 +1127,18 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
       return;
     }
-    const range =
-      relocate(doc, t.anchor) ??
-      (t.anchor.target?.kind === 'mermaid-node'
+    const located = relocate(doc, t.anchor);
+    const fallback =
+      t.anchor.target?.kind === 'mermaid-node'
         ? (() => {
             const block = mermaidBlockNear(doc, t.anchor.startLine);
-            return block ? doc.lineAt(block.startLine).range : new vscode.Range(0, 0, 0, 0);
+            return block
+              ? doc.lineAt(block.startLine).range
+              : { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
           })()
-        : new vscode.Range(0, 0, 0, 0));
+        : { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+    const hit = located ?? fallback;
+    const range = new vscode.Range(hit.start.line, hit.start.character, hit.end.line, hit.end.character);
     const shown = await vscode.window.showTextDocument(doc, {
       viewColumn: vscode.ViewColumn.One,
       preserveFocus: false,
@@ -1239,8 +1289,8 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
           ) {
             break;
           }
-          const editor = vscode.window.visibleTextEditors.find(
-            (candidate) => keyOf(candidate.document.uri) === keyOf(boundUri),
+          const editor = vscode.window.visibleTextEditors.find((candidate) =>
+            sameDocumentUri(candidate.document.uri, boundUri),
           );
           if (!editor) {
             break;
@@ -1260,12 +1310,12 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       }
     }),
     vscode.workspace.onDidChangeTextDocument((e) => {
-      if (keyOf(e.document.uri) === keyOf(boundUri)) {
+      if (sameDocumentUri(e.document.uri, boundUri)) {
         scheduleRender();
       }
     }),
     vscode.workspace.onDidSaveTextDocument((doc) => {
-      if (keyOf(doc.uri) === keyOf(boundUri)) {
+      if (sameDocumentUri(doc.uri, boundUri)) {
         void sendRender();
       }
     }),
@@ -1276,7 +1326,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     }),
     vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
       if (
-        keyOf(e.textEditor.document.uri) !== keyOf(boundUri) ||
+        !sameDocumentUri(e.textEditor.document.uri, boundUri) ||
         !renderOptions(panel.webview, boundUri).scrollPreviewWithEditor ||
         Date.now() < suppressPreviewScrollUntil
       ) {

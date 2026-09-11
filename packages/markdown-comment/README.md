@@ -10,7 +10,7 @@ Before changing this package, read `AGENTS.md` and `docs/architecture/markdown-c
 
 ## Comment preview
 
-Run **Markdown Comment：打开评论预览** from a Markdown editor. The preview opens beside the source file and supports:
+Run **Markdown Comment：打开评论预览** from a Markdown editor, including a saved `.md` opened with File → Open File when no folder is open. The preview supports:
 
 - rendered-text selection comments and whole-document comments;
 - Mermaid diagrams with whole-diagram comments, pan, zoom, reset, source copy, and optional explicit Flowchart-node comments;

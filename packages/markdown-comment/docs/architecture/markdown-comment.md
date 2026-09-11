@@ -63,6 +63,8 @@ Mermaid runtime object.
 
 The default storage location belongs to Markdown Comment itself, not to a host editor. It must be usable by the CLI before any editor extension has been launched, with `MARKDOWN_COMMENT_STORAGE_DIR` available as an explicit override.
 
+Saved `file:` documents are identified by absolute `fsPath`. Selection comments, preview rendering, and storage must work when VS Code has no workspace folder (single-file / empty window). Do not key those flows on `workspaceFolders`, relative workspace paths, or `workspaceFolders[0]`. Untitled documents keep `untitled:` / `u_*` identity.
+
 The existing VS Code global-storage JSON format is an import/compatibility source during migration. Migration must be explicit, idempotent, and non-destructive; users must not lose existing comment threads when they upgrade.
 
 For each write, read the latest document state, apply the smallest operation, then atomically replace the JSON file. This avoids partial files and reduces stale whole-document overwrites between adapters.

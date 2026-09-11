@@ -80,7 +80,9 @@ Skill 是给 Agent 看的操作指令，安装后 Agent 可以通过 CLI 读取�
 
 ### 创建评论
 
-在 VS Code 中打开 `.md` 文件，通过以下方式创建评论：
+在 VS Code 中打开 `.md` 文件即可评论，**不要求先打开文件夹 / workspace**。`File → Open File` 打开单个已保存 Markdown、空窗口里只开这一份文件时，预览划词评论与全文评论都可以用；存储键是该文件的绝对路径。
+
+通过以下方式创建评论：
 
 | 操作 | 方式 |
 |------|------|
@@ -122,7 +124,7 @@ Skill 是给 Agent 看的操作指令，安装后 Agent 可以通过 CLI 读取�
 
 也可在评论预览工具栏点「复制 Skill 提示」，把 `/markdown-comment <target>` 粘贴给 Agent：
 
-- **已落盘文件**：`<target>` 为该文件的**绝对路径**（不是 workspace 相对路径）
+- **已落盘文件**：`<target>` 为该文件的**绝对路径**（不是 workspace 相对路径；没有打开文件夹时也是绝对路径）
 - **Untitled**：`<target>` 为 CLI 短 id `u_<8hex>`（不是 `untitled:Untitled-1`）；该未保存文档至少有一条评论后才能复制。默认 `list`（当前目录）不会列出 untitled，Agent 需用 `list -g` 或你给出的 `u_*`
 
 Agent 会通过 CLI 自动读取评论、逐条回复并标记已解决，无需你手动操作。装过新版扩展后，若 Agent 仍按旧说明行事，请再跑一次命令面板 **Markdown Comment：安装 / 更新 Agent Skill**（激活时也会 reconcile 刷新真源）。

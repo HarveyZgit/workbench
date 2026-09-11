@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { writePointer, loadDoc, saveDoc, fileHash, storageKey, migrateDoc } from './storage';
+import { findMatchingDocument, sameDocumentUri } from './document-uri';
 import { isCommentableMarkdown } from './markdown-lang';
 import type { StoredAnchor, StoredComment, StoredThread } from './types';
 import { buildAnchorFromRange, relocate } from './anchor';
@@ -80,8 +81,7 @@ const recentSelfWrite = new Map<string, number>();
 
 /** Save As 前记住 untitled 键与正文，便于 didSave(file) 时迁移评论。 */
 let pendingUntitledSave:
-  | { untitledKey: string; untitledUriString: string; content: string; at: number }
-  | undefined;
+  { untitledKey: string; untitledUriString: string; content: string; at: number } | undefined;
 
 const keyOf = (uri: vscode.Uri) => uri.toString();
 
@@ -159,7 +159,7 @@ function labelFor(kind: 'selection' | 'document', quote: string, anchorFailed: b
 // ─── 划词高亮 ──────────────────────────────────────────────────────
 
 function updateDecorations(uri: vscode.Uri): void {
-  const editors = vscode.window.visibleTextEditors.filter((e) => keyOf(e.document.uri) === keyOf(uri));
+  const editors = vscode.window.visibleTextEditors.filter((e) => sameDocumentUri(e.document.uri, uri));
   if (editors.length === 0) {
     return;
   }
@@ -205,7 +205,9 @@ function loadForDocument(doc: vscode.TextDocument): void {
 
   for (const st of loadDoc(storageDir, storageKey(doc.uri)).threads) {
     const located = relocate(doc, st.anchor);
-    const range = located ?? new vscode.Range(0, 0, 0, 0);
+    const range = located
+      ? new vscode.Range(located.start.line, located.start.character, located.end.line, located.end.character)
+      : new vscode.Range(0, 0, 0, 0);
     const thread = controller.createCommentThread(doc.uri, range, []);
     const meta: ThreadMeta = {
       id: st.id,
@@ -255,7 +257,7 @@ function persistNow(uri: vscode.Uri): void {
   if (uri.scheme !== 'file' && uri.scheme !== 'untitled') {
     return;
   }
-  const doc = vscode.workspace.textDocuments.find((d) => keyOf(d.uri) === keyOf(uri));
+  const doc = findMatchingDocument(vscode.workspace.textDocuments, uri);
   if (!doc) {
     return;
   }
@@ -294,7 +296,7 @@ function schedulePersist(uri: vscode.Uri): void {
 // ─── 自动刷新（Agent 通过 CLI 改了存储 → 重新加载 UI）──────────────
 
 function reloadDocument(uri: vscode.Uri): void {
-  const doc = vscode.workspace.textDocuments.find((d) => keyOf(d.uri) === keyOf(uri));
+  const doc = findMatchingDocument(vscode.workspace.textDocuments, uri);
   if (!doc) {
     return;
   }
@@ -391,7 +393,7 @@ function addReply(reply: vscode.CommentReply): void {
     const meta: ThreadMeta = { id: randomUUID(), kind: 'selection', status: 'open' };
     threadMeta.set(thread, meta);
     applyThreadState(thread, meta);
-    const srcDoc = vscode.workspace.textDocuments.find((d) => keyOf(d.uri) === keyOf(thread.uri));
+    const srcDoc = findMatchingDocument(vscode.workspace.textDocuments, thread.uri);
     thread.label = labelFor('selection', srcDoc && thread.range ? srcDoc.getText(thread.range) : '', false);
     trackThread(thread.uri, thread);
   }
@@ -660,7 +662,7 @@ export function activate(context: vscode.ExtensionContext): void {
     flushPersist(doc.uri);
     const untitledKey = storageKey(doc.uri);
     const hasStored = loadDoc(storageDir, untitledKey).threads.length > 0;
-    if (!hasStored && !hasPreview(doc.uri) && !(docThreads.get(keyOf(doc.uri))?.size)) {
+    if (!hasStored && !hasPreview(doc.uri) && !docThreads.get(keyOf(doc.uri))?.size) {
       return;
     }
     pendingUntitledSave = {
