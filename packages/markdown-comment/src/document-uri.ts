@@ -36,6 +36,22 @@ export function pickSourceText(parts: {
   return parts.openText ?? parts.readText ?? parts.cachedText;
 }
 
+/**
+ * Source text available without awaiting openTextDocument / workspace.fs.
+ * When the preview replaces the only editor tab those APIs can hang or return
+ * empty stubs; callers with a nonempty open doc or cache must use this path
+ * so createThread / sendThreads never wait on I/O.
+ */
+export function immediateSourceText(parts: { openText?: string; cachedText?: string }): string | undefined {
+  if (parts.openText !== undefined && parts.openText.length > 0) {
+    return parts.openText;
+  }
+  if (parts.cachedText !== undefined && parts.cachedText.length > 0) {
+    return parts.cachedText;
+  }
+  return undefined;
+}
+
 /** Normalize a file fsPath for equality (path.normalize + Windows drive letter). */
 export function normalizeFileFsPath(fsPath: string): string {
   const normalized = path.normalize(fsPath);

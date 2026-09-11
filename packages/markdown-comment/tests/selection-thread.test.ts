@@ -3,13 +3,16 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
+import { withTimeout } from '../src/async-timeout.ts';
 import {
   documentStorageKey,
+  immediateSourceText,
   pickSourceText,
   readSavedMarkdownText,
   SOURCE_UNREADABLE_MESSAGE,
   STORAGE_WRITE_FAILED_MESSAGE,
 } from '../src/document-uri.ts';
+import { normalizeRenderedSelection } from '../src/preview/protocol.ts';
 import {
   createDocumentThread,
   createSelectionThreadFromText,
@@ -271,4 +274,138 @@ test('persistThread reports a clear error when storage is not writable', () => {
     assert.ok(result.error.startsWith(STORAGE_WRITE_FAILED_MESSAGE));
   }
   fs.rmSync(blocked, { recursive: true, force: true });
+});
+
+test('create/persist succeeds when open hangs, workspace.fs is empty, but cache is present', async () => {
+  const hangingOpen = new Promise<string>(() => {
+    /* openTextDocument never resolves after Active-column replace */
+  });
+  const emptyFsRead = Promise.resolve('');
+  const failedFsRead = Promise.reject(new Error('ENOENT'));
+  void failedFsRead.catch(() => undefined);
+
+  const cached = 'Keep this phrase after the tab closed.\nSecond line.\n';
+  // Mirror panel handleCreate: never await hanging I/O when cache is nonempty.
+  const sync = immediateSourceText({ openText: '', cachedText: cached });
+  assert.equal(sync, cached);
+  // Prove the I/O fallbacks are bounded even if someone awaited them anyway.
+  assert.equal(await withTimeout(emptyFsRead, 30), '');
+  assert.equal(await withTimeout(failedFsRead, 30), undefined);
+  assert.equal(await withTimeout(hangingOpen, 30), undefined);
+  const sourceText = sync ?? '';
+
+  assert.equal(sourceText, cached);
+  const created = createSelectionThreadFromText(
+    sourceText,
+    {
+      blockStartLine: 0,
+      blockEndLine: 1,
+      quote: 'Keep this phrase',
+      before: '',
+      after: ' after the tab closed.',
+      spansMultipleBlocks: false,
+    },
+    'survived hang + empty fs',
+  );
+  assert.equal(created.ok, true);
+  if (!created.ok) {
+    return;
+  }
+
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'mdc-hang-'));
+  const key = documentStorageKey({
+    scheme: 'vscode-local',
+    fsPath: '/Users/z/Notes/hang.md',
+    toString: () => 'vscode-local:/Users/z/Notes/hang.md',
+  });
+  assert.equal(persistThread(storage, key, created.thread).ok, true);
+  assert.equal(loadDoc(storage, key).threads[0].comments[0].body, 'survived hang + empty fs');
+  fs.rmSync(storage, { recursive: true, force: true });
+});
+
+test('sendThreads-style refresh prefers cache and does not await hanging I/O', async () => {
+  const hanging = new Promise<string>(() => {
+    /* would hang forever if awaited */
+  });
+  const started = Date.now();
+  const sync = immediateSourceText({
+    openText: undefined,
+    cachedText: '# snapshot before tab gone\n',
+  });
+  assert.equal(sync, '# snapshot before tab gone\n');
+  // Only fall through to bounded I/O when sync path is empty — must not race hang here.
+  assert.equal(immediateSourceText({ openText: '', cachedText: '' }), undefined);
+  const timed = await withTimeout(hanging, 35);
+  assert.equal(timed, undefined);
+  assert.ok(Date.now() - started < 400, 'refresh must not hang forever after source tab gone');
+});
+
+test('collapsed blockEndLine <= blockStartLine still creates a selection thread', () => {
+  const source = 'Only one block of text here.\n';
+  const collapsed = normalizeRenderedSelection({
+    blockStartLine: 0,
+    blockEndLine: 0,
+    quote: 'Only one block',
+    before: '',
+    after: ' of text here.',
+    spansMultipleBlocks: false,
+  });
+  assert.equal(collapsed.blockStartLine, 0);
+  assert.equal(collapsed.blockEndLine, 1);
+  const inverted = normalizeRenderedSelection({
+    blockStartLine: 0,
+    blockEndLine: -1,
+    quote: 'Only one block',
+    before: '',
+    after: ' of text here.',
+    spansMultipleBlocks: false,
+  });
+  assert.equal(inverted.blockEndLine, 1);
+  const created = createSelectionThreadFromText(source, collapsed, 'from collapsed data-end-line');
+  assert.equal(created.ok, true);
+  if (created.ok) {
+    assert.equal(created.thread.anchor.kind, 'selection');
+    assert.equal(created.thread.comments[0].body, 'from collapsed data-end-line');
+  }
+});
+
+test('vscode-local URI identity uses cache for create+persist after tab replace', () => {
+  const abs = '/Users/z/Notes/local-cache.md';
+  const cached = immediateSourceText({
+    openText: '',
+    cachedText: 'Local scheme phrase for cache.\n',
+  });
+  assert.ok(cached);
+  const created = createSelectionThreadFromText(
+    cached!,
+    {
+      blockStartLine: 0,
+      blockEndLine: 1,
+      quote: 'Local scheme phrase',
+      before: '',
+      after: ' for cache.',
+      spansMultipleBlocks: false,
+    },
+    'vscode-local + cache',
+  );
+  assert.equal(created.ok, true);
+  if (!created.ok) {
+    return;
+  }
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'mdc-vl-cache-'));
+  const localKey = documentStorageKey({
+    scheme: 'vscode-local',
+    fsPath: abs,
+    toString: () => `vscode-local:${abs}`,
+  });
+  const fileKey = documentStorageKey({
+    scheme: 'file',
+    fsPath: abs,
+    toString: () => `file://${abs}`,
+  });
+  assert.equal(localKey, fileKey);
+  assert.equal(persistThread(storage, localKey, created.thread).ok, true);
+  assert.equal(loadDoc(storage, fileKey).threads.length, 1);
+  assert.equal(loadDoc(storage, fileKey).threads[0].comments[0].body, 'vscode-local + cache');
+  fs.rmSync(storage, { recursive: true, force: true });
 });

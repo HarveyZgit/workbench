@@ -9,6 +9,7 @@ import {
   findMatchingDocument,
   implicitFileWorkspaceRoot,
   normalizeFileFsPath,
+  immediateSourceText,
   pickSourceText,
   readSavedMarkdownText,
   resolveLocalResourcePath,
@@ -190,4 +191,26 @@ test('Windows-style fsPath matches across file and vscode-local', () => {
   const asLocal = vscodeLocalUri(win, `vscode-local:/${win.replace(/\\/g, '/')}`);
   assert.equal(sameDocumentUri(asFile, asLocal), true);
   assert.equal(documentStorageKey(asFile), documentStorageKey(asLocal));
+});
+
+test('immediateSourceText skips I/O and prefers open then nonempty cache', () => {
+  assert.equal(immediateSourceText({ openText: 'live', cachedText: 'snap' }), 'live');
+  assert.equal(
+    immediateSourceText({ openText: '', cachedText: 'snap after tab gone' }),
+    'snap after tab gone',
+  );
+  assert.equal(immediateSourceText({ openText: undefined, cachedText: '# cached\n' }), '# cached\n');
+  assert.equal(immediateSourceText({ openText: '', cachedText: '' }), undefined);
+  assert.equal(immediateSourceText({}), undefined);
+});
+
+test('immediateSourceText + pickSourceText: hang-path uses cache before empty read', () => {
+  // Simulates: open gone, read returns empty stub, cache present → create must use cache.
+  const openText = '';
+  const readText = '';
+  const cachedText = 'Real body before preview replaced the tab.\n';
+  assert.equal(immediateSourceText({ openText, cachedText }), cachedText);
+  // pickSourceText treats empty read as empty and still falls through to cache.
+  assert.equal(pickSourceText({ openText, readText, cachedText }), cachedText);
+  assert.equal(pickSourceText({ openText: '', readText: undefined, cachedText }), cachedText);
 });

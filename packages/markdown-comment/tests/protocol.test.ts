@@ -79,3 +79,17 @@ test('normalizeRenderedSelection and normalizeLineSpan expand collapsed ranges',
   assert.deepEqual(normalizeLineSpan(2, 2), { startLine: 2, endLine: 3 });
   assert.deepEqual(normalizeLineSpan(2, 6), { startLine: 2, endLine: 6 });
 });
+
+test('normalizeRenderedSelection expands blockEndLine when end is less than start', () => {
+  const inverted = normalizeRenderedSelection({
+    blockStartLine: 7,
+    blockEndLine: 2,
+    quote: 'inverted',
+    before: '',
+    after: '',
+    spansMultipleBlocks: false,
+  });
+  assert.equal(inverted.blockStartLine, 7);
+  assert.equal(inverted.blockEndLine, 8);
+  assert.deepEqual(normalizeLineSpan(9, 1), { startLine: 9, endLine: 10 });
+});

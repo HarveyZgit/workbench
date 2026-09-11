@@ -16,6 +16,7 @@ import {
 import {
   documentContentAttempts,
   findMatchingDocument,
+  immediateSourceText,
   implicitFileWorkspaceRoot,
   normalizeFileFsPath,
   pickSourceText,
@@ -25,6 +26,7 @@ import {
   SOURCE_UNREADABLE_MESSAGE,
   unsupportedSchemeMessage,
 } from '../document-uri';
+import { withTimeout } from '../async-timeout';
 import { hasMarkdownExtension, isCommentableMarkdown, isMarkdownDocument } from '../markdown-lang';
 import { isSavedDocumentScheme, VSCODE_LOCAL_SCHEME } from '../uri-scheme';
 import { buildAnchorFromRange, relocate } from '../anchor';
@@ -361,29 +363,6 @@ function contentAttemptOptions(uri: vscode.Uri) {
     nodeCanReadFsPath: isSavedDocumentScheme(uri.scheme) && nodeCanReadFsPath(uri.fsPath),
     remoteName: vscode.env.remoteName,
   };
-}
-
-function settle<T>(promise: Promise<T>): Promise<T | undefined> {
-  return promise.then(
-    (value) => value,
-    () => undefined,
-  );
-}
-
-async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      settle(promise),
-      new Promise<undefined>((resolve) => {
-        timer = setTimeout(() => resolve(undefined), ms);
-      }),
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
 }
 
 function openVia(
@@ -988,14 +967,15 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
   }> => {
     const vscodeDoc = docFor(boundUri);
     const openText = vscodeDoc?.getText();
-    if (openText) {
-      rememberSource(openText);
-      return { vscodeDoc, model: vscodeDoc };
-    }
-    // Tab gone (preview replaced the only editor): use the snapshot immediately.
+    // Tab gone (preview replaced the only editor): use open/cache immediately.
     // Do not await workspace.fs / openTextDocument — those can hang on Trae Remote×local.
-    if (cachedSourceText !== undefined && cachedSourceText.length > 0) {
-      return { vscodeDoc, model: PlainTextDocument.fromString(cachedSourceText) };
+    const syncText = immediateSourceText({ openText, cachedText: cachedSourceText });
+    if (syncText !== undefined) {
+      rememberSource(syncText);
+      if (vscodeDoc && openText && openText.length > 0) {
+        return { vscodeDoc, model: vscodeDoc };
+      }
+      return { vscodeDoc, model: PlainTextDocument.fromString(syncText) };
     }
     const readText = await withTimeout(readSourceText(boundUri), OPEN_DOCUMENT_TIMEOUT_MS);
     const picked = pickSourceText({
@@ -1084,8 +1064,9 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       return;
     }
     const openText = docFor(boundUri)?.getText();
-    let sourceText = pickSourceText({ openText, cachedText: cachedSourceText });
-    if (sourceText === undefined || sourceText.length === 0) {
+    // Prefer cache/open without I/O — openTextDocument/workspace.fs can hang after tab replace.
+    let sourceText = immediateSourceText({ openText, cachedText: cachedSourceText });
+    if (sourceText === undefined) {
       const { model } = await resolvePreviewModel();
       sourceText = model?.getText() ?? '';
     }
