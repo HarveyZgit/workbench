@@ -1089,11 +1089,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
       const { model } = await resolvePreviewModel();
       sourceText = model?.getText() ?? '';
     }
-    const result = createSelectionThreadFromText(
-      sourceText,
-      normalizeRenderedSelection(selection),
-      text,
-    );
+    const result = createSelectionThreadFromText(sourceText, normalizeRenderedSelection(selection), text);
     if (!result.ok) {
       if (result.error !== 'empty') {
         vscode.window.showWarningMessage(result.error);

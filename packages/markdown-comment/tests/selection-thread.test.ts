@@ -156,7 +156,9 @@ test('vscode-remote selection persists under toString key not bare fsPath', () =
     'from remote host',
   );
   assert.equal(created.ok, true);
-  if (!created.ok) return;
+  if (!created.ok) {
+    return;
+  }
 
   const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'mdc-remote-'));
   saveDoc(storage, key, { version: 1, threads: [created.thread] });
@@ -185,7 +187,9 @@ test('file and vscode-local share store across write/load (remote×local mixed u
     'written as vscode-local',
   );
   assert.equal(created.ok, true);
-  if (!created.ok) return;
+  if (!created.ok) {
+    return;
+  }
 
   const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'mdc-mix-store-'));
   const localKey = documentStorageKey({

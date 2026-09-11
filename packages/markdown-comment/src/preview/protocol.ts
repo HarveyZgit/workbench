@@ -24,10 +24,10 @@ const CREATE_TYPES = new Set([
 export function isCreateIntent(value: unknown): boolean {
   return Boolean(
     value &&
-      typeof value === 'object' &&
-      'type' in value &&
-      typeof (value as { type: unknown }).type === 'string' &&
-      CREATE_TYPES.has((value as { type: string }).type),
+    typeof value === 'object' &&
+    'type' in value &&
+    typeof (value as { type: unknown }).type === 'string' &&
+    CREATE_TYPES.has((value as { type: string }).type),
   );
 }
 
@@ -48,7 +48,10 @@ export function normalizeRenderedSelection(selection: RenderedSelection): Render
   return { ...selection, blockStartLine, blockEndLine };
 }
 
-export function normalizeLineSpan(startLine: number, endLine: number): { startLine: number; endLine: number } {
+export function normalizeLineSpan(
+  startLine: number,
+  endLine: number,
+): { startLine: number; endLine: number } {
   const start = Number.isFinite(startLine) ? Math.max(0, Math.floor(startLine)) : 0;
   let end = Number.isFinite(endLine) ? Math.floor(endLine) : start + 1;
   if (end <= start) {
