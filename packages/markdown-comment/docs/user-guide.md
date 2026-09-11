@@ -82,7 +82,7 @@ Skill 是给 Agent 看的操作指令，安装后 Agent 可以通过 CLI 读取�
 
 在 VS Code / Trae 中打开 `.md` 文件即可评论，**不要求先打开文件夹 / workspace**。`File → Open File` 打开单个已保存 Markdown、空窗口里只开这一份文件时，预览划词评论与全文评论都可以用；存储键是该文件的绝对路径。
 
-也支持 **远程窗口打开本机 Markdown**（SSH Remote 里用「打开本地文件」、URI 可能是 `vscode-local:` 或其它非 `file` scheme）。扩展主机会走编辑器 / `workspace.fs`，而不是用远程机器上不存在的本机绝对路径去 `fs.readFileSync`。若仍读不到内容，会弹出明确错误，而不是静默失败。
+也支持 **远程窗口打开本机 Markdown**（SSH Remote 里用「打开本地文件」、URI 可能是 `vscode-local:` 或其它非 `file` scheme）。扩展主机会走编辑器 / `workspace.fs`，而不是用远程机器上不存在的本机绝对路径去 `fs.readFileSync`。预览若顶掉唯一的源标签，仍用打开预览时的正文快照创建划词 / 全文评论；读源失败或写盘失败会弹出明确错误，而不是静默失败。
 
 | 窗口 | 文件 | 预览 / 划词 / 存储 |
 |------|------|-------------------|

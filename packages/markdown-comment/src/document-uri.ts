@@ -10,8 +10,30 @@ import { isLocalPathScheme, isSavedDocumentScheme, isUntitledScheme } from './ur
 export const SOURCE_UNREADABLE_MESSAGE =
   '无法读取源 Markdown。若这是远程窗口中的本机文件，请保持源标签打开（扩展主机无法直接读本机路径）；文件也可能已删除或移动。';
 
+export const STORAGE_WRITE_FAILED_MESSAGE = '无法保存评论，请检查扩展存储目录是否可写。';
+
 export function unsupportedSchemeMessage(scheme: string): string {
   return `不支持在 ${scheme} 方案下评论此 Markdown。请在本地窗口打开本机文件，或在远程窗口打开远程文件。`;
+}
+
+/**
+ * Choose source text for preview render / 划词 create.
+ * Prefer a non-empty open document, then a successful read, then the last
+ * snapshot captured before the preview replaced the editor tab.
+ * An empty string is a real empty file; `undefined` means unreadable.
+ */
+export function pickSourceText(parts: {
+  openText?: string;
+  readText?: string;
+  cachedText?: string;
+}): string | undefined {
+  const nonempty = [parts.openText, parts.readText, parts.cachedText].find(
+    (text) => text !== undefined && text.length > 0,
+  );
+  if (nonempty !== undefined) {
+    return nonempty;
+  }
+  return parts.openText ?? parts.readText ?? parts.cachedText;
 }
 
 /** Normalize a file fsPath for equality (path.normalize + Windows drive letter). */
@@ -127,17 +149,12 @@ export function documentContentAttempts(
     return [{ type: 'open', via: 'original' }];
   }
 
-  const attempts: DocumentContentAttempt[] = [{ type: 'open', via: 'original' }];
-  if (uri.scheme === 'file' && uri.fsPath && options.nodeCanReadFsPath) {
-    attempts.push({ type: 'open', via: 'file-uri' }, { type: 'open', via: 'fsPath' });
-  }
-
+  // Reads first: openTextDocument can hang in Trae/Remote after the preview
+  // replaces the only editor tab. Callers already prefer an in-memory document.
   const rewriteToVscodeLocal =
     uri.scheme === 'file' && Boolean(options.remoteName) && Boolean(uri.fsPath) && !options.nodeCanReadFsPath;
-  if (rewriteToVscodeLocal) {
-    attempts.push({ type: 'open', via: 'vscode-local' });
-  }
 
+  const attempts: DocumentContentAttempt[] = [];
   if (isSavedDocumentScheme(uri.scheme)) {
     attempts.push({ type: 'read', via: 'workspace-fs' });
   }
@@ -146,6 +163,14 @@ export function documentContentAttempts(
   }
   if (isLocalPathScheme(uri.scheme) && uri.fsPath && options.nodeCanReadFsPath) {
     attempts.push({ type: 'read', via: 'node-fs' });
+  }
+
+  attempts.push({ type: 'open', via: 'original' });
+  if (uri.scheme === 'file' && uri.fsPath && options.nodeCanReadFsPath) {
+    attempts.push({ type: 'open', via: 'file-uri' }, { type: 'open', via: 'fsPath' });
+  }
+  if (rewriteToVscodeLocal) {
+    attempts.push({ type: 'open', via: 'vscode-local' });
   }
   return attempts;
 }

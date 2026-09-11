@@ -9,6 +9,7 @@ import {
   findMatchingDocument,
   implicitFileWorkspaceRoot,
   normalizeFileFsPath,
+  pickSourceText,
   readSavedMarkdownText,
   resolveLocalResourcePath,
   sameDocumentUri,
@@ -131,7 +132,7 @@ test('documentContentAttempts prefers original URI and workspace.fs when Node ca
   const steps = documentContentAttempts(local, { nodeCanReadFsPath: false, remoteName: 'ssh-remote' });
   assert.deepEqual(
     steps.map((step) => `${step.type}:${step.via}`),
-    ['open:original', 'read:workspace-fs'],
+    ['read:workspace-fs', 'open:original'],
   );
 });
 
@@ -140,7 +141,7 @@ test('documentContentAttempts rewrites file: to vscode-local when remote cannot 
   const steps = documentContentAttempts(uri, { nodeCanReadFsPath: false, remoteName: 'ssh-remote' });
   assert.deepEqual(
     steps.map((step) => `${step.type}:${step.via}`),
-    ['open:original', 'open:vscode-local', 'read:workspace-fs', 'read:workspace-fs-vscode-local'],
+    ['read:workspace-fs', 'read:workspace-fs-vscode-local', 'open:original', 'open:vscode-local'],
   );
 });
 
@@ -170,6 +171,17 @@ test('resolveLocalResourcePath works for vscode-local document without workspace
     resolveLocalResourcePath('/assets/x.png', fileFs, undefined),
     path.resolve('/Users/z/Notes', './assets/x.png'),
   );
+});
+
+test('pickSourceText prefers non-empty open text, then read, then cached snapshot', () => {
+  assert.equal(pickSourceText({ openText: 'from tab', readText: 'from fs', cachedText: 'snap' }), 'from tab');
+  assert.equal(pickSourceText({ openText: '', readText: 'from fs', cachedText: 'snap' }), 'from fs');
+  assert.equal(
+    pickSourceText({ openText: '', readText: undefined, cachedText: '# cached after tab closed\n' }),
+    '# cached after tab closed\n',
+  );
+  assert.equal(pickSourceText({}), undefined);
+  assert.equal(pickSourceText({ openText: '', cachedText: '' }), '');
 });
 
 test('Windows-style fsPath matches across file and vscode-local', () => {

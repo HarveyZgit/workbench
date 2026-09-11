@@ -3,8 +3,18 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
-import { documentStorageKey, readSavedMarkdownText, SOURCE_UNREADABLE_MESSAGE } from '../src/document-uri.ts';
-import { createSelectionThreadFromText } from '../src/preview/selection-thread.ts';
+import {
+  documentStorageKey,
+  pickSourceText,
+  readSavedMarkdownText,
+  SOURCE_UNREADABLE_MESSAGE,
+  STORAGE_WRITE_FAILED_MESSAGE,
+} from '../src/document-uri.ts';
+import {
+  createDocumentThread,
+  createSelectionThreadFromText,
+  persistThread,
+} from '../src/preview/selection-thread.ts';
 import { loadDoc, saveDoc } from '../src/storage.ts';
 
 test('createSelectionThreadFromText maps a rendered selection without vscode or a workspace', () => {
@@ -192,4 +202,69 @@ test('file and vscode-local share store across write/load (remote×local mixed u
   assert.equal(viaFile.threads[0].comments[0].body, 'written as vscode-local');
   fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(storage, { recursive: true, force: true });
+});
+
+test('create uses cached snapshot when open/read source is empty (preview replaced the tab)', () => {
+  const cached = pickSourceText({
+    openText: '',
+    readText: undefined,
+    cachedText: 'Keep this phrase after the tab closed.\n',
+  });
+  assert.ok(cached);
+  const created = createSelectionThreadFromText(
+    cached,
+    {
+      blockStartLine: 0,
+      blockEndLine: 0,
+      quote: 'Keep this phrase',
+      before: '',
+      after: ' after the tab closed.',
+      spansMultipleBlocks: false,
+    },
+    'from cache after Active column replace',
+  );
+  assert.equal(created.ok, true);
+  if (!created.ok) {
+    return;
+  }
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'mdc-cache-'));
+  const key = documentStorageKey({
+    scheme: 'vscode-local',
+    fsPath: '/Users/z/Notes/tab-closed.md',
+    toString: () => 'vscode-local:/Users/z/Notes/tab-closed.md',
+  });
+  const saved = persistThread(storage, key, created.thread);
+  assert.equal(saved.ok, true);
+  assert.equal(loadDoc(storage, key).threads[0].comments[0].body, 'from cache after Active column replace');
+  fs.rmSync(storage, { recursive: true, force: true });
+});
+
+test('document thread persists without source text (全文评论)', () => {
+  const created = createDocumentThread('whole-doc note');
+  assert.equal(created.ok, true);
+  if (!created.ok) {
+    return;
+  }
+  assert.equal(created.thread.anchor.kind, 'document');
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'mdc-doc-'));
+  const key = '/Users/z/Notes/doc.md';
+  assert.equal(persistThread(storage, key, created.thread).ok, true);
+  assert.equal(loadDoc(storage, key).threads.length, 1);
+  fs.rmSync(storage, { recursive: true, force: true });
+});
+
+test('persistThread reports a clear error when storage is not writable', () => {
+  const created = createDocumentThread('will fail');
+  assert.equal(created.ok, true);
+  if (!created.ok) {
+    return;
+  }
+  const blocked = fs.mkdtempSync(path.join(os.tmpdir(), 'mdc-ro-'));
+  fs.writeFileSync(path.join(blocked, 'docs'), 'not-a-directory', 'utf8');
+  const result = persistThread(blocked, '/tmp/a.md', created.thread);
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.ok(result.error.startsWith(STORAGE_WRITE_FAILED_MESSAGE));
+  }
+  fs.rmSync(blocked, { recursive: true, force: true });
 });

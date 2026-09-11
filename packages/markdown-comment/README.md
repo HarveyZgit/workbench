@@ -16,7 +16,7 @@ Run **Markdown Comment：打开评论预览** from a Markdown editor, including 
 | --- | --- | --- |
 | Local | Local `file:` | Yes |
 | Remote (SSH) | Remote `file:` | Yes |
-| Remote (SSH) | Local file (`vscode-local:` or mixed) | Yes — uses the editor / `workspace.fs`, not Node `fs` on a path the remote host cannot see |
+| Remote (SSH) | Local file (`vscode-local:` or mixed) | Yes — uses the editor / `workspace.fs` / a snapshot taken before the preview replaces the only tab, not Node `fs` on a path the remote host cannot see |
 | Any | Untitled (`untitled:` / `u_*`) | Yes |
 
 The preview supports:

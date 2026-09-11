@@ -18,6 +18,7 @@ import {
   findMatchingDocument,
   implicitFileWorkspaceRoot,
   normalizeFileFsPath,
+  pickSourceText,
   readSavedMarkdownText,
   resolveLocalResourcePath,
   sameDocumentUri,
@@ -27,7 +28,15 @@ import {
 import { hasMarkdownExtension, isCommentableMarkdown, isMarkdownDocument } from '../markdown-lang';
 import { isSavedDocumentScheme, VSCODE_LOCAL_SCHEME } from '../uri-scheme';
 import { buildAnchorFromRange, relocate } from '../anchor';
-import { createSelectionThreadFromText } from './selection-thread';
+import { createDocumentThread, createSelectionThreadFromText, persistThread } from './selection-thread';
+import {
+  CREATE_REJECTED_MESSAGE,
+  isCreateIntent,
+  isWebviewMessage,
+  MAX_LINK_LENGTH,
+  normalizeLineSpan,
+  normalizeRenderedSelection,
+} from './protocol';
 import { PlainTextDocument, type TextModel } from '../text-model';
 import type { StoredDocument, StoredThread } from '../types';
 import { computePreviewLineChanges } from './diff';
@@ -38,18 +47,11 @@ import type {
   PreviewRenderOptions,
   RenderedSelection,
   ResolvedPreviewResource,
-  WebviewToHost,
   WireThread,
 } from './messages';
 
 const RENDER_DEBOUNCE_MS = 150;
-const MAX_RESOURCE_REQUESTS = 100;
-const MAX_ID_LENGTH = 256;
-const MAX_COMMENT_LENGTH = 100_000;
-const MAX_SELECTION_QUOTE_LENGTH = 200_000;
-const MAX_SELECTION_CONTEXT_LENGTH = 1_000;
-const MAX_LABEL_LENGTH = 500;
-const MAX_LINK_LENGTH = 4_096;
+const OPEN_DOCUMENT_TIMEOUT_MS = 1_500;
 const MAX_STYLE_FILES = 10;
 const MAX_STYLE_FILE_SIZE = 1_000_000;
 const MAX_STYLE_TOTAL_SIZE = 2_000_000;
@@ -303,98 +305,6 @@ async function readLineChanges(uri: vscode.Uri, current: string): Promise<Previe
   return computePreviewLineChanges(baseline, current);
 }
 
-function isWebviewMessage(value: unknown): value is WebviewToHost {
-  if (!value || typeof value !== 'object' || !('type' in value) || typeof value.type !== 'string') {
-    return false;
-  }
-  const message = value as Record<string, unknown>;
-  const hasBoundedString = (key: string, maximum: number) =>
-    typeof message[key] === 'string' && (message[key] as string).length <= maximum;
-  const hasId = (key: string) => hasBoundedString(key, MAX_ID_LENGTH);
-  const hasComment = (key: string) => hasBoundedString(key, MAX_COMMENT_LENGTH);
-  const hasFiniteNumber = (key: string) => typeof message[key] === 'number' && Number.isFinite(message[key]);
-  const hasNonNegativeInteger = (key: string) =>
-    typeof message[key] === 'number' && Number.isInteger(message[key]) && (message[key] as number) >= 0;
-  switch (message.type) {
-    case 'ready':
-      return true;
-    case 'createThread':
-      if (!hasComment('text') || !message.selection || typeof message.selection !== 'object') {
-        return false;
-      }
-      {
-        const selection = message.selection as Record<string, unknown>;
-        return (
-          typeof selection.blockStartLine === 'number' &&
-          Number.isInteger(selection.blockStartLine) &&
-          selection.blockStartLine >= 0 &&
-          typeof selection.blockEndLine === 'number' &&
-          Number.isInteger(selection.blockEndLine) &&
-          selection.blockEndLine > selection.blockStartLine &&
-          typeof selection.quote === 'string' &&
-          selection.quote.length <= MAX_SELECTION_QUOTE_LENGTH &&
-          typeof selection.before === 'string' &&
-          selection.before.length <= MAX_SELECTION_CONTEXT_LENGTH &&
-          typeof selection.after === 'string' &&
-          selection.after.length <= MAX_SELECTION_CONTEXT_LENGTH &&
-          typeof selection.spansMultipleBlocks === 'boolean'
-        );
-      }
-    case 'createBlockThread':
-      return (
-        hasComment('text') &&
-        hasBoundedString('label', MAX_LABEL_LENGTH) &&
-        message.target === 'mermaid-diagram' &&
-        hasNonNegativeInteger('startLine') &&
-        hasNonNegativeInteger('endLine') &&
-        (message.endLine as number) > (message.startLine as number)
-      );
-    case 'createMermaidNodeThread':
-      return (
-        hasComment('text') &&
-        hasBoundedString('label', MAX_LABEL_LENGTH) &&
-        hasBoundedString('nodeId', MAX_ID_LENGTH) &&
-        /^[A-Za-z_][A-Za-z0-9_-]*$/.test(message.nodeId as string) &&
-        hasNonNegativeInteger('startLine') &&
-        hasNonNegativeInteger('endLine') &&
-        (message.endLine as number) > (message.startLine as number)
-      );
-    case 'createDocThread':
-      return hasComment('text');
-    case 'reply':
-      return hasId('threadId') && hasComment('text');
-    case 'resolve':
-      return hasId('threadId') && typeof message.resolved === 'boolean';
-    case 'deleteThread':
-    case 'revealSource':
-      return hasId('threadId');
-    case 'editComment':
-    case 'deleteComment':
-      return (
-        hasId('threadId') && hasId('commentId') && (message.type === 'deleteComment' || hasComment('text'))
-      );
-    case 'resolveResources':
-      return (
-        hasId('requestId') &&
-        Array.isArray(message.sources) &&
-        message.sources.length <= MAX_RESOURCE_REQUESTS &&
-        message.sources.every((source) => typeof source === 'string' && source.length <= MAX_LINK_LENGTH)
-      );
-    case 'openLink':
-      return hasBoundedString('href', MAX_LINK_LENGTH);
-    case 'copyImageFallback':
-    case 'openImage':
-      return hasBoundedString('source', MAX_LINK_LENGTH);
-    case 'revealSourceLine':
-    case 'previewScroll':
-      return hasFiniteNumber('line');
-    case 'copySkillPrompt':
-      return true;
-    default:
-      return false;
-  }
-}
-
 function lineForFragment(doc: TextModel, fragment: string): number | null {
   let decoded = fragment;
   try {
@@ -453,8 +363,52 @@ function contentAttemptOptions(uri: vscode.Uri) {
   };
 }
 
+function settle<T>(promise: Promise<T>): Promise<T | undefined> {
+  return promise.then(
+    (value) => value,
+    () => undefined,
+  );
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      settle(promise),
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+function openVia(
+  uri: vscode.Uri,
+  via: 'original' | 'file-uri' | 'fsPath' | 'vscode-local',
+): Promise<vscode.TextDocument> {
+  switch (via) {
+    case 'original':
+      return Promise.resolve(vscode.workspace.openTextDocument(uri));
+    case 'file-uri':
+      return Promise.resolve(vscode.workspace.openTextDocument(vscode.Uri.file(uri.fsPath)));
+    case 'fsPath':
+      return Promise.resolve(vscode.workspace.openTextDocument(uri.fsPath));
+    case 'vscode-local':
+      return Promise.resolve(vscode.workspace.openTextDocument(uri.with({ scheme: VSCODE_LOCAL_SCHEME })));
+    default: {
+      const unexpected: never = via;
+      return Promise.reject(new Error(`unexpected open via: ${String(unexpected)}`));
+    }
+  }
+}
+
 // 拿源文档：优先已打开的（file / vscode-local 按 fsPath 匹配），再按 URI 尝试打开。
 // 远程窗口的本机文件不要改写成 file: + Node 路径；必要时试 vscode-local。
+// openTextDocument 加超时：预览顶掉唯一标签后，部分宿主（Trae Remote）会挂起。
 async function getDoc(uri: vscode.Uri): Promise<vscode.TextDocument | undefined> {
   const open = docFor(uri);
   if (open) {
@@ -464,21 +418,9 @@ async function getDoc(uri: vscode.Uri): Promise<vscode.TextDocument | undefined>
     if (step.type !== 'open') {
       continue;
     }
-    try {
-      switch (step.via) {
-        case 'original':
-          return await vscode.workspace.openTextDocument(uri);
-        case 'file-uri':
-          return await vscode.workspace.openTextDocument(vscode.Uri.file(uri.fsPath));
-        case 'fsPath':
-          return await vscode.workspace.openTextDocument(uri.fsPath);
-        case 'vscode-local':
-          return await vscode.workspace.openTextDocument(uri.with({ scheme: VSCODE_LOCAL_SCHEME }));
-        default:
-          break;
-      }
-    } catch {
-      // 换下一种打开方式。
+    const doc = await withTimeout(openVia(uri, step.via), OPEN_DOCUMENT_TIMEOUT_MS);
+    if (doc) {
+      return doc;
     }
   }
   return undefined;
@@ -507,19 +449,6 @@ async function readSourceText(uri: vscode.Uri): Promise<string | undefined> {
     } catch {
       // 换下一种读取方式。
     }
-  }
-  return undefined;
-}
-
-/** vscode 文档优先（含未保存改动）；否则 workspace.fs / 可读时的 Node fs。 */
-async function getSourceModel(uri: vscode.Uri): Promise<TextModel | undefined> {
-  const doc = await getDoc(uri);
-  if (doc) {
-    return doc;
-  }
-  const text = await readSourceText(uri);
-  if (text !== undefined) {
-    return PlainTextDocument.fromString(text);
   }
   return undefined;
 }
@@ -1021,6 +950,10 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     return;
   }
 
+  // Capture before createWebviewPanel: ViewColumn.Active replaces the only tab
+  // in a folderless / Remote×local window, and the TextDocument may disappear.
+  let cachedSourceText: string | undefined = ed.document.getText();
+
   const storageDir = context.globalStorageUri.fsPath;
   const distUri = vscode.Uri.joinPath(context.extensionUri, 'dist');
   // 可变绑定：Save As 后 rebind 更新，闭包内读写均走 boundUri / docKey。
@@ -1044,21 +977,63 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
 
   const post = (msg: HostToWebview) => void panel.webview.postMessage(msg);
   const wireFor = (doc?: TextModel) => loadDoc(storageDir, docKey()).threads.map((t) => toWire(t, doc));
-  // 取当前文本来 relocate（源码 tab 没开则后台加载 / 无 folder 时读盘），保证回推 webview 的行号是最新的。
-  const sendThreads = async () => post({ type: 'threads', threads: wireFor(await getSourceModel(boundUri)) });
+  const rememberSource = (text: string | undefined) => {
+    if (text !== undefined) {
+      cachedSourceText = text;
+    }
+  };
+  const resolvePreviewModel = async (): Promise<{
+    vscodeDoc?: vscode.TextDocument;
+    model?: TextModel;
+  }> => {
+    const vscodeDoc = docFor(boundUri);
+    const openText = vscodeDoc?.getText();
+    if (openText) {
+      rememberSource(openText);
+      return { vscodeDoc, model: vscodeDoc };
+    }
+    // Tab gone (preview replaced the only editor): use the snapshot immediately.
+    // Do not await workspace.fs / openTextDocument — those can hang on Trae Remote×local.
+    if (cachedSourceText !== undefined && cachedSourceText.length > 0) {
+      return { vscodeDoc, model: PlainTextDocument.fromString(cachedSourceText) };
+    }
+    const readText = await withTimeout(readSourceText(boundUri), OPEN_DOCUMENT_TIMEOUT_MS);
+    const picked = pickSourceText({
+      openText,
+      readText,
+      cachedText: cachedSourceText,
+    });
+    if (picked !== undefined) {
+      rememberSource(picked);
+      if (vscodeDoc && (openText?.length || picked === openText)) {
+        return { vscodeDoc, model: vscodeDoc };
+      }
+      return { vscodeDoc, model: PlainTextDocument.fromString(picked) };
+    }
+    const opened = await getDoc(boundUri);
+    if (opened) {
+      rememberSource(opened.getText());
+      return { vscodeDoc: opened, model: opened };
+    }
+    return { vscodeDoc, model: undefined };
+  };
+  // 取当前文本来 relocate（源码 tab 没开则用缓存 / workspace.fs），保证回推 webview 的行号是最新的。
+  const sendThreads = async () => {
+    const { model } = await resolvePreviewModel();
+    post({ type: 'threads', threads: wireFor(model) });
+  };
   const sendSkillPromptTarget = () => {
     const state = skillPromptStateFor(storageDir, boundUri);
     post({ type: 'skillPromptTarget', enabled: state.enabled, tip: state.tip });
   };
   let reportedUnreadable = false;
   const sendRender = async () => {
-    const vscodeDoc = await getDoc(boundUri);
-    const model = vscodeDoc ?? (await getSourceModel(boundUri));
+    const { vscodeDoc, model } = await resolvePreviewModel();
     if (!model && !reportedUnreadable) {
       reportedUnreadable = true;
       vscode.window.showErrorMessage(SOURCE_UNREADABLE_MESSAGE);
     }
-    const text = model?.getText() ?? '';
+    const text = model?.getText() ?? cachedSourceText ?? '';
     const styleSources = vscode.workspace
       .getConfiguration('markdownComment.preview', boundUri)
       .get<string[]>('styles', []);
@@ -1091,9 +1066,15 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
 
   // 改 storage 后即时回推 webview（源码侧由 fs.watch 自行重载）。
   const mutate = (fn: (doc: StoredDocument) => void) => {
-    const stored = loadDoc(storageDir, docKey());
-    fn(stored);
-    saveDoc(storageDir, docKey(), stored);
+    try {
+      const stored = loadDoc(storageDir, docKey());
+      fn(stored);
+      saveDoc(storageDir, docKey(), stored);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`无法保存评论：${detail}`);
+      return;
+    }
     void sendThreads();
     sendSkillPromptTarget();
   };
@@ -1102,16 +1083,30 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     if (!text.trim()) {
       return;
     }
-    const model = await getSourceModel(boundUri);
-    const sourceText = model?.getText() ?? '';
-    const result = createSelectionThreadFromText(sourceText, selection, text);
+    const openText = docFor(boundUri)?.getText();
+    let sourceText = pickSourceText({ openText, cachedText: cachedSourceText });
+    if (sourceText === undefined || sourceText.length === 0) {
+      const { model } = await resolvePreviewModel();
+      sourceText = model?.getText() ?? '';
+    }
+    const result = createSelectionThreadFromText(
+      sourceText,
+      normalizeRenderedSelection(selection),
+      text,
+    );
     if (!result.ok) {
       if (result.error !== 'empty') {
         vscode.window.showWarningMessage(result.error);
       }
       return;
     }
-    mutate((d) => d.threads.push(result.thread));
+    const saved = persistThread(storageDir, docKey(), result.thread);
+    if (!saved.ok) {
+      vscode.window.showErrorMessage(saved.error);
+      return;
+    }
+    void sendThreads();
+    sendSkillPromptTarget();
   };
 
   const handleCreateBlock = async (
@@ -1124,8 +1119,10 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     if (!text.trim()) {
       return;
     }
-    const doc = await getSourceModel(boundUri);
-    const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
+    const { model } = await resolvePreviewModel();
+    const doc = model;
+    const span = normalizeLineSpan(startLine, endLine);
+    const safeStartLine = doc ? Math.min(Math.max(0, span.startLine), Math.max(0, doc.lineCount - 1)) : 0;
     const range = doc ? doc.lineAt(safeStartLine).range : null;
     if (!doc || !range) {
       vscode.window.showWarningMessage(SOURCE_UNREADABLE_MESSAGE);
@@ -1144,12 +1141,20 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     );
   };
 
-  const handleCreateNode = async (startLine: number, label: string, nodeId: string, text: string) => {
+  const handleCreateNode = async (
+    startLine: number,
+    endLine: number,
+    label: string,
+    nodeId: string,
+    text: string,
+  ) => {
     if (!text.trim()) {
       return;
     }
-    const doc = await getSourceModel(boundUri);
-    const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
+    const { model } = await resolvePreviewModel();
+    const doc = model;
+    const span = normalizeLineSpan(startLine, endLine);
+    const safeStartLine = doc ? Math.min(Math.max(0, span.startLine), Math.max(0, doc.lineCount - 1)) : 0;
     const range = doc ? doc.lineAt(safeStartLine).range : null;
     if (!doc || !range) {
       vscode.window.showWarningMessage(SOURCE_UNREADABLE_MESSAGE);
@@ -1311,6 +1316,9 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
   const subs: vscode.Disposable[] = [
     panel.webview.onDidReceiveMessage((value: unknown) => {
       if (!isWebviewMessage(value)) {
+        if (isCreateIntent(value)) {
+          vscode.window.showWarningMessage(CREATE_REJECTED_MESSAGE);
+        }
         return;
       }
       const msg = value;
@@ -1326,31 +1334,25 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
           void handleCreateBlock(msg.startLine, msg.endLine, msg.label, msg.target, msg.text);
           break;
         case 'createMermaidNodeThread':
-          void handleCreateNode(msg.startLine, msg.label, msg.nodeId, msg.text);
+          void handleCreateNode(msg.startLine, msg.endLine, msg.label, msg.nodeId, msg.text);
           break;
-        case 'createDocThread':
-          if (msg.text) {
-            mutate((d) =>
-              d.threads.push({
-                id: randomUUID(),
-                anchor: {
-                  kind: 'document',
-                  startLine: 0,
-                  startChar: 0,
-                  endLine: 0,
-                  endChar: 0,
-                  quote: '',
-                  before: '',
-                  after: '',
-                },
-                status: 'open',
-                comments: [
-                  { id: randomUUID(), author: 'user', body: msg.text, createdAt: new Date().toISOString() },
-                ],
-              }),
-            );
+        case 'createDocThread': {
+          const created = createDocumentThread(msg.text);
+          if (!created.ok) {
+            if (created.error !== 'empty') {
+              vscode.window.showWarningMessage(created.error);
+            }
+            break;
           }
+          const saved = persistThread(storageDir, docKey(), created.thread);
+          if (!saved.ok) {
+            vscode.window.showErrorMessage(saved.error);
+            break;
+          }
+          void sendThreads();
+          sendSkillPromptTarget();
           break;
+        }
         case 'reply':
           mutate((d) => {
             const t = d.threads.find((x) => x.id === msg.threadId);
@@ -1464,6 +1466,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     }),
     vscode.workspace.onDidChangeTextDocument((e) => {
       if (sameDocumentUri(e.document.uri, boundUri)) {
+        rememberSource(e.document.getText());
         scheduleRender();
       }
     }),
