@@ -14,13 +14,18 @@ import {
   skillPromptTargetState,
 } from '../storage';
 import {
+  documentContentAttempts,
   findMatchingDocument,
   implicitFileWorkspaceRoot,
+  normalizeFileFsPath,
   readSavedMarkdownText,
   resolveLocalResourcePath,
   sameDocumentUri,
+  SOURCE_UNREADABLE_MESSAGE,
+  unsupportedSchemeMessage,
 } from '../document-uri';
-import { isCommentableMarkdown, isMarkdownDocument } from '../markdown-lang';
+import { hasMarkdownExtension, isCommentableMarkdown, isMarkdownDocument } from '../markdown-lang';
+import { isSavedDocumentScheme, VSCODE_LOCAL_SCHEME } from '../uri-scheme';
 import { buildAnchorFromRange, relocate } from '../anchor';
 import { createSelectionThreadFromText } from './selection-thread';
 import { PlainTextDocument, type TextModel } from '../text-model';
@@ -71,11 +76,7 @@ function docFor(uri: vscode.Uri): vscode.TextDocument | undefined {
   return findMatchingDocument(vscode.workspace.textDocuments, uri);
 }
 
-function renderOptions(
-  webview: vscode.Webview,
-  uri: vscode.Uri,
-  _doc?: vscode.TextDocument,
-): PreviewRenderOptions {
+function renderOptions(webview: vscode.Webview, uri: vscode.Uri, styles: string[] = []): PreviewRenderOptions {
   const config = vscode.workspace.getConfiguration('markdownComment.preview', uri);
   const rawFontFamily = config.get<string>('fontFamily', '').trim();
   const fontSize = Math.min(40, Math.max(8, config.get<number>('fontSize', 14)));
@@ -86,7 +87,7 @@ function renderOptions(
     scrollPreviewWithEditor: config.get<boolean>('scrollPreviewWithEditor', true),
     scrollEditorWithPreview: config.get<boolean>('scrollEditorWithPreview', true),
     doubleClickToSwitchToEditor: config.get<boolean>('doubleClickToSwitchToEditor', false),
-    styles: resolvePreviewStyles(webview, uri, config.get<string[]>('styles', [])),
+    styles,
     fontFamily: rawFontFamily && rawFontFamily.length <= 500 ? rawFontFamily : undefined,
     fontSize,
     lineHeight,
@@ -98,11 +99,19 @@ function renderOptions(
   };
 }
 
+function documentDirUri(uri: vscode.Uri): vscode.Uri | undefined {
+  if (!isSavedDocumentScheme(uri.scheme)) {
+    return undefined;
+  }
+  return vscode.Uri.joinPath(uri, '..');
+}
+
 function localResourceRoots(context: vscode.ExtensionContext, uri: vscode.Uri): vscode.Uri[] {
+  const dir = documentDirUri(uri);
   const roots = [
     vscode.Uri.joinPath(context.extensionUri, 'dist'),
-    // untitled 无磁盘目录：跳过 dirname(fsPath)，相对本地图在未保存时不可解析。
-    ...(uri.scheme === 'file' ? [vscode.Uri.file(path.dirname(uri.fsPath))] : []),
+    // 保留原 scheme（vscode-local / vscode-remote），不要改写成 file:。
+    ...(dir ? [dir] : []),
     ...(vscode.workspace.workspaceFolders?.map((folder) => folder.uri) ?? []),
   ];
   return roots.filter(
@@ -126,13 +135,56 @@ function realPath(candidate: string): string | null {
   }
 }
 
-function allowedFileRoots(uri: vscode.Uri): string[] {
-  return [
-    ...(uri.scheme === 'file' ? [path.dirname(uri.fsPath)] : []),
-    ...(vscode.workspace.workspaceFolders
-      ?.filter((folder) => folder.uri.scheme === 'file')
-      .map((folder) => folder.uri.fsPath) ?? []),
-  ];
+function allowedRootUris(uri: vscode.Uri): vscode.Uri[] {
+  const roots: vscode.Uri[] = [];
+  const dir = documentDirUri(uri);
+  if (dir) {
+    roots.push(dir);
+  }
+  const folder = vscode.workspace.getWorkspaceFolder(uri);
+  if (folder) {
+    roots.push(folder.uri);
+  }
+  return roots.filter((root, index) => roots.findIndex((candidate) => keyOf(candidate) === keyOf(root)) === index);
+}
+
+/** file: 能 realpath 时做规范；远程看不见的本机路径则只比较规范化 fsPath。 */
+function canonicalizeFileUri(uri: vscode.Uri): vscode.Uri {
+  if (uri.scheme !== 'file') {
+    return uri;
+  }
+  const resolved = realPath(uri.fsPath);
+  return resolved ? vscode.Uri.file(resolved) : uri;
+}
+
+function uriInsideRoot(root: vscode.Uri, candidate: vscode.Uri): boolean {
+  if (root.scheme !== candidate.scheme || root.authority !== candidate.authority) {
+    return false;
+  }
+  const rootCanon = canonicalizeFileUri(root);
+  const candCanon = canonicalizeFileUri(candidate);
+  return isInside(
+    normalizeFileFsPath(rootCanon.fsPath || rootCanon.path),
+    normalizeFileFsPath(candCanon.fsPath || candCanon.path),
+  );
+}
+
+function withDocumentScheme(
+  base: vscode.Uri,
+  absolutePath: string,
+  query: string,
+  fragment: string,
+): vscode.Uri {
+  const fileUri = vscode.Uri.file(absolutePath);
+  if (base.scheme === 'file') {
+    return fileUri.with({ query, fragment });
+  }
+  return fileUri.with({
+    scheme: base.scheme,
+    authority: base.authority,
+    query,
+    fragment,
+  });
 }
 
 function splitResourceReference(source: string): { path: string; suffix: string } {
@@ -154,37 +206,36 @@ function resolveLocalReference(uri: vscode.Uri, source: string): vscode.Uri | nu
   } catch {
     return null;
   }
-  const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri) ?? vscode.workspace.workspaceFolders?.[0];
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
   // untitled：没有可靠的磁盘 dirname，相对路径本地资源直接放弃（https / data 仍由调用方放行）。
-  // 无 workspace folder 时：已落盘 file 用文件所在目录当作隐式根，不依赖 workspaceFolders[0]。
-  if (uri.scheme !== 'file' && !decodedPath.startsWith('/')) {
+  // 无 folder 包含该文档时：用文件所在目录当隐式根，不误用远程 workspaceFolders[0]。
+  if (!isSavedDocumentScheme(uri.scheme) && !decodedPath.startsWith('/')) {
     return null;
   }
   const absolutePath = resolveLocalResourcePath(
     decodedPath,
-    uri.scheme === 'file' ? uri.fsPath : undefined,
+    isSavedDocumentScheme(uri.scheme) ? uri.fsPath : undefined,
     workspaceFolder?.uri.fsPath ?? implicitFileWorkspaceRoot(uri),
   );
   if (!absolutePath) {
     return null;
   }
-  const resolvedRealPath = realPath(absolutePath);
-  if (
-    !resolvedRealPath ||
-    !allowedFileRoots(uri).some((root) => {
-      const rootRealPath = realPath(root);
-      return rootRealPath !== null && isInside(rootRealPath, resolvedRealPath);
-    })
-  ) {
+  const query = reference.suffix.startsWith('?') ? reference.suffix.slice(1).split('#')[0] : '';
+  const fragment = reference.suffix.includes('#')
+    ? reference.suffix.slice(reference.suffix.indexOf('#') + 1)
+    : '';
+  const resolved = withDocumentScheme(uri, absolutePath, query, fragment);
+  if (!allowedRootUris(uri).some((root) => uriInsideRoot(root, resolved))) {
     return null;
   }
-  return vscode.Uri.file(resolvedRealPath).with({
-    query: reference.suffix.startsWith('?') ? reference.suffix.slice(1).split('#')[0] : '',
-    fragment: reference.suffix.includes('#') ? reference.suffix.slice(reference.suffix.indexOf('#') + 1) : '',
-  });
+  return resolved;
 }
 
-function resolvePreviewStyles(webview: vscode.Webview, uri: vscode.Uri, sources: string[]): string[] {
+async function resolvePreviewStyles(
+  webview: vscode.Webview,
+  uri: vscode.Uri,
+  sources: string[],
+): Promise<string[]> {
   if (!vscode.workspace.isTrusted || !Array.isArray(sources)) {
     return [];
   }
@@ -203,7 +254,7 @@ function resolvePreviewStyles(webview: vscode.Webview, uri: vscode.Uri, sources:
       continue;
     }
     try {
-      const { size } = fs.statSync(resolved.fsPath);
+      const { size } = await vscode.workspace.fs.stat(resolved);
       if (size > MAX_STYLE_FILE_SIZE || totalSize + size > MAX_STYLE_TOTAL_SIZE) {
         continue;
       }
@@ -216,25 +267,34 @@ function resolvePreviewStyles(webview: vscode.Webview, uri: vscode.Uri, sources:
   return styles;
 }
 
-function readLineChanges(absPath: string, current: string): PreviewLineChanges | undefined {
+async function readLineChanges(uri: vscode.Uri, current: string): Promise<PreviewLineChanges | undefined> {
   if (
     current.length > MAX_DIFF_DOCUMENT_SIZE ||
     current.split(/\r?\n/, MAX_DIFF_DOCUMENT_LINES + 1).length > MAX_DIFF_DOCUMENT_LINES
   ) {
     return undefined;
   }
+  let baseline: string | undefined;
   try {
-    const baseline = fs.readFileSync(absPath, 'utf8');
-    if (
-      baseline.length > MAX_DIFF_DOCUMENT_SIZE ||
-      baseline.split(/\r?\n/, MAX_DIFF_DOCUMENT_LINES + 1).length > MAX_DIFF_DOCUMENT_LINES
-    ) {
+    baseline = new TextDecoder('utf8').decode(await vscode.workspace.fs.readFile(uri));
+  } catch {
+    if (uri.scheme === 'file') {
+      try {
+        baseline = fs.readFileSync(uri.fsPath, 'utf8');
+      } catch {
+        return undefined;
+      }
+    } else {
       return undefined;
     }
-    return computePreviewLineChanges(baseline, current);
-  } catch {
+  }
+  if (
+    baseline.length > MAX_DIFF_DOCUMENT_SIZE ||
+    baseline.split(/\r?\n/, MAX_DIFF_DOCUMENT_LINES + 1).length > MAX_DIFF_DOCUMENT_LINES
+  ) {
     return undefined;
   }
+  return computePreviewLineChanges(baseline, current);
 }
 
 function isWebviewMessage(value: unknown): value is WebviewToHost {
@@ -368,41 +428,96 @@ function mermaidBlockNear(doc: TextModel, line: number): { startLine: number; en
   return blocks.find((block) => block.startLine <= line && line < block.endLine) ?? null;
 }
 
-// 拿源文档：优先用已打开的（按绝对 fsPath 匹配，不要求 workspace folder），
-// 否则用 file URI / 绝对 fsPath 后台 openTextDocument。
-// 关掉源码标签后预览仍能建评论/重渲；文件已删/读失败返回 undefined。
+function nodeCanReadFsPath(fsPath: string): boolean {
+  if (!fsPath) {
+    return false;
+  }
+  try {
+    fs.accessSync(fsPath, fs.constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function contentAttemptOptions(uri: vscode.Uri) {
+  return {
+    nodeCanReadFsPath: isSavedDocumentScheme(uri.scheme) && nodeCanReadFsPath(uri.fsPath),
+    remoteName: vscode.env.remoteName,
+  };
+}
+
+// 拿源文档：优先已打开的（file / vscode-local 按 fsPath 匹配），再按 URI 尝试打开。
+// 远程窗口的本机文件不要改写成 file: + Node 路径；必要时试 vscode-local。
 async function getDoc(uri: vscode.Uri): Promise<vscode.TextDocument | undefined> {
   const open = docFor(uri);
   if (open) {
     return open;
   }
-  const attempts: Array<() => Thenable<vscode.TextDocument>> = [];
-  if (uri.scheme === 'file' && uri.fsPath) {
-    attempts.push(() => vscode.workspace.openTextDocument(vscode.Uri.file(uri.fsPath)));
-    attempts.push(() => vscode.workspace.openTextDocument(uri.fsPath));
-  }
-  attempts.push(() => vscode.workspace.openTextDocument(uri));
-  for (const attempt of attempts) {
+  for (const step of documentContentAttempts(uri, contentAttemptOptions(uri))) {
+    if (step.type !== 'open') {
+      continue;
+    }
     try {
-      return await attempt();
+      switch (step.via) {
+        case 'original':
+          return await vscode.workspace.openTextDocument(uri);
+        case 'file-uri':
+          return await vscode.workspace.openTextDocument(vscode.Uri.file(uri.fsPath));
+        case 'fsPath':
+          return await vscode.workspace.openTextDocument(uri.fsPath);
+        case 'vscode-local':
+          return await vscode.workspace.openTextDocument(uri.with({ scheme: VSCODE_LOCAL_SCHEME }));
+        default: {
+          const unexpected: never = step.via;
+          throw new Error(`unexpected open attempt: ${unexpected}`);
+        }
+      }
     } catch {
-      // 无 folder / 宿主拒绝对 URI 打开时换下一种键再试。
+      // 换下一种打开方式。
     }
   }
   return undefined;
 }
 
-/** vscode 文档优先（含未保存改动）；否则按绝对 fsPath 读盘成 TextModel。 */
+async function readSourceText(uri: vscode.Uri): Promise<string | undefined> {
+  for (const step of documentContentAttempts(uri, contentAttemptOptions(uri))) {
+    if (step.type !== 'read') {
+      continue;
+    }
+    try {
+      switch (step.via) {
+        case 'workspace-fs': {
+          const bytes = await vscode.workspace.fs.readFile(uri);
+          return new TextDecoder('utf8').decode(bytes);
+        }
+        case 'workspace-fs-vscode-local': {
+          const bytes = await vscode.workspace.fs.readFile(uri.with({ scheme: VSCODE_LOCAL_SCHEME }));
+          return new TextDecoder('utf8').decode(bytes);
+        }
+        case 'node-fs':
+          return readSavedMarkdownText(uri.fsPath);
+        default: {
+          const unexpected: never = step.via;
+          throw new Error(`unexpected read attempt: ${unexpected}`);
+        }
+      }
+    } catch {
+      // 换下一种读取方式。
+    }
+  }
+  return undefined;
+}
+
+/** vscode 文档优先（含未保存改动）；否则 workspace.fs / 可读时的 Node fs。 */
 async function getSourceModel(uri: vscode.Uri): Promise<TextModel | undefined> {
   const doc = await getDoc(uri);
   if (doc) {
     return doc;
   }
-  if (uri.scheme === 'file' && uri.fsPath) {
-    const text = readSavedMarkdownText(uri.fsPath);
-    if (text !== undefined) {
-      return PlainTextDocument.fromString(text);
-    }
+  const text = await readSourceText(uri);
+  if (text !== undefined) {
+    return PlainTextDocument.fromString(text);
   }
   return undefined;
 }
@@ -883,8 +998,18 @@ export function rebindPreview(fromUri: vscode.Uri, toUri: vscode.Uri): void {
 
 export function openPreview(context: vscode.ExtensionContext, editor?: vscode.TextEditor): void {
   const ed = editor ?? vscode.window.activeTextEditor;
-  if (!ed || !isCommentableMarkdown(ed.document.languageId, ed.document.uri)) {
+  if (!ed) {
     vscode.window.showInformationMessage('请在 Markdown 文件中打开评论预览');
+    return;
+  }
+  if (!isCommentableMarkdown(ed.document.languageId, ed.document.uri)) {
+    const looksMarkdown =
+      ed.document.languageId === 'markdown' || hasMarkdownExtension(ed.document.uri.fsPath);
+    if (looksMarkdown) {
+      vscode.window.showErrorMessage(unsupportedSchemeMessage(ed.document.uri.scheme));
+    } else {
+      vscode.window.showInformationMessage('请在 Markdown 文件中打开评论预览');
+    }
     return;
   }
   const { uri } = ed.document;
@@ -923,11 +1048,23 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     const state = skillPromptStateFor(storageDir, boundUri);
     post({ type: 'skillPromptTarget', enabled: state.enabled, tip: state.tip });
   };
+  let reportedUnreadable = false;
   const sendRender = async () => {
     const vscodeDoc = await getDoc(boundUri);
     const model = vscodeDoc ?? (await getSourceModel(boundUri));
+    if (!model && !reportedUnreadable) {
+      reportedUnreadable = true;
+      vscode.window.showErrorMessage(SOURCE_UNREADABLE_MESSAGE);
+    }
     const text = model?.getText() ?? '';
-    const options = renderOptions(panel.webview, boundUri, vscodeDoc);
+    const styleSources = vscode.workspace
+      .getConfiguration('markdownComment.preview', boundUri)
+      .get<string[]>('styles', []);
+    const options = renderOptions(
+      panel.webview,
+      boundUri,
+      await resolvePreviewStyles(panel.webview, boundUri, styleSources),
+    );
     const encoding =
       vscodeDoc &&
       'encoding' in vscodeDoc &&
@@ -935,10 +1072,11 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
         ? (vscodeDoc as vscode.TextDocument & { encoding: string }).encoding.toLowerCase()
         : 'utf8';
     const changes =
-      options.renderedDiff && vscodeDoc?.isDirty && encoding === 'utf8'
-        ? boundUri.scheme === 'file'
-          ? readLineChanges(boundUri.fsPath, text)
-          : undefined
+      options.renderedDiff &&
+      vscodeDoc?.isDirty &&
+      encoding === 'utf8' &&
+      isSavedDocumentScheme(boundUri.scheme)
+        ? await readLineChanges(boundUri, text)
         : undefined;
     post({
       type: 'render',
@@ -988,7 +1126,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
     const range = doc ? doc.lineAt(safeStartLine).range : null;
     if (!doc || !range) {
-      vscode.window.showWarningMessage('源 Markdown 文件无法读取，无法创建图表评论');
+      vscode.window.showWarningMessage(SOURCE_UNREADABLE_MESSAGE);
       return;
     }
     const anchor = buildAnchorFromRange(doc, range, 'selection');
@@ -1012,7 +1150,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
     const range = doc ? doc.lineAt(safeStartLine).range : null;
     if (!doc || !range) {
-      vscode.window.showWarningMessage('源 Markdown 文件无法读取，无法创建节点评论');
+      vscode.window.showWarningMessage(SOURCE_UNREADABLE_MESSAGE);
       return;
     }
     const anchor = buildAnchorFromRange(doc, range, 'selection');
@@ -1028,20 +1166,31 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     );
   };
 
-  const resolveResources = (sources: string[]): ResolvedPreviewResource[] =>
-    sources.map((source) => {
+  const resolveResources = async (sources: string[]): Promise<ResolvedPreviewResource[]> => {
+    const resources: ResolvedPreviewResource[] = [];
+    for (const source of sources) {
       if (/^https:/i.test(source) || /^data:image\//i.test(source)) {
-        return { source, uri: source };
+        resources.push({ source, uri: source });
+        continue;
       }
       const resolved = resolveLocalReference(boundUri, source);
       if (!resolved) {
-        return { source, error: '不允许读取该资源路径' };
+        resources.push({ source, error: '不允许读取该资源路径' });
+        continue;
       }
-      if (!fs.existsSync(resolved.fsPath)) {
-        return { source, error: '资源文件不存在' };
+      try {
+        await vscode.workspace.fs.stat(resolved);
+        resources.push({ source, uri: panel.webview.asWebviewUri(resolved).toString(true) });
+      } catch {
+        if (resolved.scheme === 'file' && fs.existsSync(resolved.fsPath)) {
+          resources.push({ source, uri: panel.webview.asWebviewUri(resolved).toString(true) });
+        } else {
+          resources.push({ source, error: '资源文件不存在' });
+        }
       }
-      return { source, uri: panel.webview.asWebviewUri(resolved).toString(true) };
-    });
+    }
+    return resources;
+  };
 
   const openLink = async (href: string) => {
     const trimmed = href.trim();
@@ -1119,7 +1268,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     }
     const doc = await getDoc(boundUri);
     if (!doc) {
-      vscode.window.showWarningMessage('源 Markdown 文件无法读取（可能已删除或移动）');
+      vscode.window.showWarningMessage(SOURCE_UNREADABLE_MESSAGE);
       return;
     }
     // 全文评论：只打开文档，不定位到某一行。
@@ -1252,10 +1401,12 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
           void revealSource(msg.threadId);
           break;
         case 'resolveResources':
-          post({
-            type: 'resolvedResources',
-            requestId: msg.requestId,
-            resources: resolveResources(msg.sources),
+          void resolveResources(msg.sources).then((resources) => {
+            post({
+              type: 'resolvedResources',
+              requestId: msg.requestId,
+              resources,
+            });
           });
           break;
         case 'openLink':
@@ -1372,6 +1523,7 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     rebind(next: vscode.Uri) {
       boundUri = next;
       myHash = fileHash(docKey());
+      reportedUnreadable = false;
       panel.title = previewTitle(next);
       void sendRender();
       sendSkillPromptTarget();

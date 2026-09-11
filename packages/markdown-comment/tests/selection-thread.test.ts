@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
-import { documentStorageKey, readSavedMarkdownText } from '../src/document-uri.ts';
+import { documentStorageKey, readSavedMarkdownText, SOURCE_UNREADABLE_MESSAGE } from '../src/document-uri.ts';
 import { createSelectionThreadFromText } from '../src/preview/selection-thread.ts';
 import { loadDoc, saveDoc } from '../src/storage.ts';
 
@@ -74,6 +74,22 @@ test('selection thread persists under the absolute file fsPath when no folder is
   fs.rmSync(storage, { recursive: true, force: true });
 });
 
+test('vscode-local storage key matches file fsPath so mixed-scheme comments share a store', () => {
+  const abs = '/Users/z/Notes/mixed.md';
+  const fileKey = documentStorageKey({
+    scheme: 'file',
+    fsPath: abs,
+    toString: () => `file://${abs}`,
+  });
+  const localKey = documentStorageKey({
+    scheme: 'vscode-local',
+    fsPath: abs,
+    toString: () => `vscode-local:${abs}`,
+  });
+  assert.equal(fileKey, abs);
+  assert.equal(localKey, fileKey);
+});
+
 test('createSelectionThreadFromText refuses empty source or empty body', () => {
   const emptySource = createSelectionThreadFromText(
     '',
@@ -88,6 +104,9 @@ test('createSelectionThreadFromText refuses empty source or empty body', () => {
     'note',
   );
   assert.equal(emptySource.ok, false);
+  if (!emptySource.ok) {
+    assert.equal(emptySource.error, SOURCE_UNREADABLE_MESSAGE);
+  }
 
   const emptyBody = createSelectionThreadFromText(
     'Hello',

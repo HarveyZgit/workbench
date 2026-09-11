@@ -10,7 +10,16 @@ Before changing this package, read `AGENTS.md` and `docs/architecture/markdown-c
 
 ## Comment preview
 
-Run **Markdown Comment：打开评论预览** from a Markdown editor, including a saved `.md` opened with File → Open File when no folder is open. The preview supports:
+Run **Markdown Comment：打开评论预览** from a Markdown editor, including a saved `.md` opened with File → Open File when no folder is open. Supported editor × file combinations:
+
+| Window | Markdown file | Preview / 划词 comments / storage |
+| --- | --- | --- |
+| Local | Local `file:` | Yes |
+| Remote (SSH) | Remote `file:` | Yes |
+| Remote (SSH) | Local file (`vscode-local:` or mixed) | Yes — uses the editor / `workspace.fs`, not Node `fs` on a path the remote host cannot see |
+| Any | Untitled (`untitled:` / `u_*`) | Yes |
+
+The preview supports:
 
 - rendered-text selection comments and whole-document comments;
 - Mermaid diagrams with whole-diagram comments, pan, zoom, reset, source copy, and optional explicit Flowchart-node comments;

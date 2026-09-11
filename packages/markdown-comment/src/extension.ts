@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { writePointer, loadDoc, saveDoc, fileHash, storageKey, migrateDoc } from './storage';
 import { findMatchingDocument, sameDocumentUri } from './document-uri';
 import { isCommentableMarkdown } from './markdown-lang';
+import { isCommentableScheme, isLocalPathScheme } from './uri-scheme';
 import type { StoredAnchor, StoredComment, StoredThread } from './types';
 import { buildAnchorFromRange, relocate } from './anchor';
 import { openPreview, hasPreview, rebindPreview } from './preview/panel';
@@ -254,7 +255,7 @@ function serialize(doc: vscode.TextDocument): StoredThread[] {
 }
 
 function persistNow(uri: vscode.Uri): void {
-  if (uri.scheme !== 'file' && uri.scheme !== 'untitled') {
+  if (!isCommentableScheme(uri.scheme)) {
     return;
   }
   const doc = findMatchingDocument(vscode.workspace.textDocuments, uri);
@@ -339,10 +340,7 @@ function startWatch(context: vscode.ExtensionContext): void {
         return; // 这是插件自己刚写的，跳过。
       }
       for (const d of vscode.workspace.textDocuments) {
-        if (
-          (d.uri.scheme === 'file' || d.uri.scheme === 'untitled') &&
-          fileHash(storageKey(d.uri)) === hash
-        ) {
+        if (isCommentableScheme(d.uri.scheme) && fileHash(storageKey(d.uri)) === hash) {
           reloadDocument(d.uri);
         }
       }
@@ -674,7 +672,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   const tryMigrateAfterFileSave = (doc: vscode.TextDocument): void => {
-    if (doc.uri.scheme !== 'file' || !pendingUntitledSave) {
+    if (!isLocalPathScheme(doc.uri.scheme) || !pendingUntitledSave) {
       return;
     }
     if (Date.now() - pendingUntitledSave.at > 10_000) {

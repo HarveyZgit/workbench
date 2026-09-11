@@ -3,6 +3,8 @@
 // （如把 SKILL.md / AGENTS.md 认成自定义语言）而导致预览/评论入口消失。
 // 纯常量与纯函数，不依赖 vscode，供插件与将来的 core 复用。
 
+import { isSavedDocumentScheme } from './uri-scheme';
+
 /** VS Code 官方 markdown-basics 注册给 markdown 语言的后缀家族（去掉 .litcoffee/.ron/.workbook 等非 Markdown 历史项）。 */
 export const MARKDOWN_EXTENSIONS = [
   '.md',
@@ -35,7 +37,7 @@ export function isMarkdownDocument(languageId: string, fsPath: string): boolean 
 
 /**
  * 预览 / 评论入口是否支持该文档：
- * - `file:` → languageId 或后缀兜底（与 isMarkdownDocument 一致）
+ * - `file:` / `vscode-local:` / `vscode-remote:` → languageId 或后缀兜底
  * - `untitled:` → 必须 languageId === 'markdown'（无可靠后缀；Save As 前用户手动设语言）
  */
 export function isCommentableMarkdown(
@@ -45,7 +47,7 @@ export function isCommentableMarkdown(
   if (uri.scheme === 'untitled') {
     return languageId === 'markdown';
   }
-  if (uri.scheme === 'file') {
+  if (isSavedDocumentScheme(uri.scheme)) {
     return isMarkdownDocument(languageId, uri.fsPath);
   }
   return false;

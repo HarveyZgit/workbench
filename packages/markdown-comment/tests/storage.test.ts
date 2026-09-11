@@ -55,6 +55,22 @@ test('fileHash is stable sha1 of the absolute path', () => {
 test('storageKey keeps file fsPath and stable untitled toString', () => {
   assert.equal(storageKey({ scheme: 'file', fsPath: '/tmp/a.md', toString: () => 'file:///tmp/a.md' }), '/tmp/a.md');
   assert.equal(
+    storageKey({
+      scheme: 'vscode-local',
+      fsPath: '/Users/z/Notes/a.md',
+      toString: () => 'vscode-local:/Users/z/Notes/a.md',
+    }),
+    '/Users/z/Notes/a.md',
+  );
+  assert.equal(
+    storageKey({
+      scheme: 'vscode-remote',
+      fsPath: '/home/z/a.md',
+      toString: () => 'vscode-remote://ssh-remote+dev/home/z/a.md',
+    }),
+    'vscode-remote://ssh-remote+dev/home/z/a.md',
+  );
+  assert.equal(
     storageKey({ scheme: 'untitled', fsPath: '', toString: () => 'untitled:Untitled-1' }),
     'untitled:Untitled-1',
   );
@@ -243,6 +259,13 @@ test('skillPromptTargetState disables untitled without cliId', () => {
     fsPath: '/path/with spaces.md',
   });
   assert.equal(spaced.prompt, '/markdown-comment "/path/with spaces.md"');
+
+  const vscodeLocal = skillPromptTargetState({
+    scheme: 'vscode-local',
+    fsPath: '/Users/z/Notes/a.md',
+  });
+  assert.equal(vscodeLocal.enabled, true);
+  assert.equal(vscodeLocal.prompt, '/markdown-comment /Users/z/Notes/a.md');
 });
 
 test('migrateDoc clears untitled cliId with source store', () => {

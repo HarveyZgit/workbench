@@ -81,6 +81,8 @@
 | 触发场景 | 当前文案 |
 |----------|----------|
 | 在非 Markdown 文件里点「添加评论」且 sourceComments 开启 | `请在 Markdown 文件中操作` |
+| 在不支持的 URI scheme（如 http）上打开评论预览 | `不支持在 {scheme} 方案下评论此 Markdown。请在本地窗口打开本机文件，或在远程窗口打开远程文件。` |
+| 预览/划词读不到源码（已删、已移，或远程窗口无法读本机路径） | `无法读取源 Markdown。若这是远程窗口中的本机文件，请保持源标签打开（扩展主机无法直接读本机路径）；文件也可能已删除或移动。` |
 | 点「添加评论」但源码内联评论开关没开 | `源码内联评论已关闭。可在设置中开启 markdownComment.sourceComments.enabled，或使用「Markdown Comment：打开评论预览」在渲染视图中评论。` |
 | 源码内联评论开关切换 | `Markdown Comment：源码内联评论设置已更改，重新加载窗口后生效。` （按钮：`重新加载窗口`） |
 | 安装 skill 异常捕获 | `Markdown Comment：安装失败：{error}` |

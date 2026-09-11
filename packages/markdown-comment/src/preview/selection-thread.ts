@@ -2,6 +2,7 @@
 // without vscode.TextDocument or a workspace folder.
 import { randomUUID } from 'node:crypto';
 import { buildAnchorFromRange, mapRenderedSelectionToRange } from '../anchor';
+import { SOURCE_UNREADABLE_MESSAGE } from '../document-uri';
 import { PlainTextDocument } from '../text-model';
 import type { StoredThread } from '../types';
 import type { RenderedSelection } from './messages';
@@ -22,7 +23,7 @@ export function createSelectionThreadFromText(
     return { ok: false, error: 'empty' };
   }
   if (!sourceText) {
-    return { ok: false, error: '源 Markdown 文件无法读取（可能已删除或移动），无法创建评论' };
+    return { ok: false, error: SOURCE_UNREADABLE_MESSAGE };
   }
   const model = PlainTextDocument.fromString(sourceText);
   const range = mapRenderedSelectionToRange(model, selection);

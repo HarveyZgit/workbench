@@ -30,3 +30,22 @@ test('isCommentableMarkdown allows untitled markdown and file md', () => {
   assert.equal(isCommentableMarkdown('typescript', { scheme: 'file', fsPath: '/tmp/a.ts' }), false);
   assert.equal(isCommentableMarkdown('markdown', { scheme: 'http', fsPath: '' }), false);
 });
+
+test('isCommentableMarkdown allows vscode-local and vscode-remote markdown', () => {
+  assert.equal(
+    isCommentableMarkdown('markdown', { scheme: 'vscode-local', fsPath: '/Users/z/Notes/a.md' }),
+    true,
+  );
+  assert.equal(
+    isCommentableMarkdown('plaintext', { scheme: 'vscode-local', fsPath: '/Users/z/Notes/a.md' }),
+    true,
+  );
+  assert.equal(
+    isCommentableMarkdown('typescript', { scheme: 'vscode-local', fsPath: '/Users/z/Notes/a.ts' }),
+    false,
+  );
+  assert.equal(
+    isCommentableMarkdown('markdown', { scheme: 'vscode-remote', fsPath: '/home/z/a.md' }),
+    true,
+  );
+});
