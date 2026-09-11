@@ -18,3 +18,9 @@ pnpm-lock.yaml
 dist/skill-hub/**
 .rush/**
 rush-logs/**
+zed/target/**
+zed/**/target/**
+dist/npm-stage/**
+dist/*.tgz
+dist/markdown-comment-*.tgz
+zed/**

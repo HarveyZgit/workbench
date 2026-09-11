@@ -159,3 +159,23 @@ test('untitled content attempts only open the original URI', () => {
   );
   assert.deepEqual(steps, [{ type: 'open', via: 'original' }]);
 });
+
+test('resolveLocalResourcePath works for vscode-local document without workspace folder', () => {
+  const fileFs = '/Users/z/Notes/doc.md';
+  assert.equal(
+    resolveLocalResourcePath('img/a.png', fileFs, undefined),
+    path.resolve('/Users/z/Notes', 'img/a.png'),
+  );
+  assert.equal(
+    resolveLocalResourcePath('/assets/x.png', fileFs, undefined),
+    path.resolve('/Users/z/Notes', './assets/x.png'),
+  );
+});
+
+test('Windows-style fsPath matches across file and vscode-local', () => {
+  const win = 'C:\\Users\\z\\a.md';
+  const asFile = fileUri(win, `file:///${win.replace(/\\/g, '/')}`);
+  const asLocal = vscodeLocalUri(win, `vscode-local:/${win.replace(/\\/g, '/')}`);
+  assert.equal(sameDocumentUri(asFile, asLocal), true);
+  assert.equal(documentStorageKey(asFile), documentStorageKey(asLocal));
+});

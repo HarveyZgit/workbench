@@ -122,3 +122,74 @@ test('createSelectionThreadFromText refuses empty source or empty body', () => {
   );
   assert.equal(emptyBody.ok, false);
 });
+
+test('vscode-remote selection persists under toString key not bare fsPath', () => {
+  const remoteUri = {
+    scheme: 'vscode-remote',
+    fsPath: '/home/z/proj/a.md',
+    toString: () => 'vscode-remote://ssh-remote+dev/home/z/proj/a.md',
+  };
+  const key = documentStorageKey(remoteUri);
+  assert.equal(key, remoteUri.toString());
+  assert.notEqual(key, remoteUri.fsPath);
+
+  const created = createSelectionThreadFromText(
+    'Remote file body for selection.\n',
+    {
+      blockStartLine: 0,
+      blockEndLine: 1,
+      quote: 'Remote file',
+      before: '',
+      after: ' body for selection.',
+      spansMultipleBlocks: false,
+    },
+    'from remote host',
+  );
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'mdc-remote-'));
+  saveDoc(storage, key, { version: 1, threads: [created.thread] });
+  const loaded = loadDoc(storage, key);
+  assert.equal(loaded.threads.length, 1);
+  // Must not collide with a bare-path key if someone mistakenly used fsPath
+  const wrong = loadDoc(storage, remoteUri.fsPath);
+  assert.equal(wrong.threads.length, 0);
+  fs.rmSync(storage, { recursive: true, force: true });
+});
+
+test('file and vscode-local share store across write/load (remote×local mixed use)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mdc-mix-'));
+  const abs = path.join(dir, 'local-in-remote.md');
+  fs.writeFileSync(abs, 'Shared store phrase here.\n', 'utf8');
+  const created = createSelectionThreadFromText(
+    fs.readFileSync(abs, 'utf8'),
+    {
+      blockStartLine: 0,
+      blockEndLine: 1,
+      quote: 'Shared store',
+      before: '',
+      after: ' phrase here.',
+      spansMultipleBlocks: false,
+    },
+    'written as vscode-local',
+  );
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'mdc-mix-store-'));
+  const localKey = documentStorageKey({
+    scheme: 'vscode-local',
+    fsPath: abs,
+    toString: () => `vscode-local:${abs}`,
+  });
+  saveDoc(storage, localKey, { version: 1, threads: [created.thread] });
+  const viaFile = loadDoc(
+    storage,
+    documentStorageKey({ scheme: 'file', fsPath: abs, toString: () => `file://${abs}` }),
+  );
+  assert.equal(viaFile.threads.length, 1);
+  assert.equal(viaFile.threads[0].comments[0].body, 'written as vscode-local');
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(storage, { recursive: true, force: true });
+});
