@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import type { StoredDocument, StoredThread } from './types';
+import { isLocalPathScheme, isUntitledScheme } from './uri-scheme';
 
 // 指针文件：固定在用户主目录，记录插件 globalStorage 的真实路径，
 // 让脱离 VS Code 的 CLI 也能找到评论数据。
@@ -37,21 +38,21 @@ export function fileHash(absPath: string): string {
 
 /**
  * 稳定的存储键：
- * - `file:` → 绝对 fsPath（与历史 hash 兼容）
+ * - `file:` / `vscode-local:` → 绝对 fsPath（与历史 hash 兼容；远程窗口本机文件与本地 file: 同键）
  * - `untitled:` → `uri.toString()`（含 Untitled-N id），避免空 fsPath 撞车
- * - 其它 scheme → 回退 toString()
+ * - 其它 scheme（含 `vscode-remote:`）→ 回退 toString()（带 authority）
  */
 export interface StorageUriLike {
   scheme: string;
   fsPath: string;
-  toString(): string;
+  toString: () => string;
 }
 
 export function storageKey(uri: StorageUriLike): string {
-  if (uri.scheme === 'file') {
+  if (isLocalPathScheme(uri.scheme) && uri.fsPath) {
     return uri.fsPath;
   }
-  if (uri.scheme === 'untitled') {
+  if (isUntitledScheme(uri.scheme)) {
     return uri.toString();
   }
   return uri.toString();
@@ -90,21 +91,22 @@ export interface SkillPromptTargetState {
 }
 
 /**
- * Host/webview 共用：file → 绝对路径；untitled → 有 cliId 才可复制。
+ * Host/webview 共用：file / vscode-local → 绝对路径；untitled → 有 cliId 才可复制。
+ * 远程窗口里的本机路径对远程 CLI 通常不可达，但仍给出路径供本机 Agent 使用。
  */
 export function skillPromptTargetState(input: {
   scheme: string;
   fsPath: string;
   cliId?: string | null;
 }): SkillPromptTargetState {
-  if (input.scheme === 'file') {
+  if (isLocalPathScheme(input.scheme) && input.fsPath) {
     return {
       enabled: true,
       tip: '复制 Skill 提示',
       prompt: formatSkillPrompt(input.fsPath),
     };
   }
-  if (input.scheme === 'untitled') {
+  if (isUntitledScheme(input.scheme)) {
     if (!input.cliId) {
       return { enabled: false, tip: '添加评论后可复制' };
     }

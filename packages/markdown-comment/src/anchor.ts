@@ -1,15 +1,16 @@
 // 锚点核心：源码 Range ↔ StoredAnchor 的序列化与重定位，源码侧（extension）与
 // webview 侧（panel）共用。webview 的渲染选区也在这里翻译回源码范围。
-import * as vscode from 'vscode';
+// TextModel 是 vscode.TextDocument 的子集，无 workspace 时可用 PlainTextDocument。
 import type { StoredAnchor } from './types';
 import type { RenderedSelection } from './preview/messages';
+import { Position, Range, type TextModel } from './text-model';
 
 export const CONTEXT_LEN = 40;
 
 /** 从一个源码 Range 构建锚点（document 类型锚到文件顶部）。 */
 export function buildAnchorFromRange(
-  doc: vscode.TextDocument,
-  range: vscode.Range,
+  doc: TextModel,
+  range: Range,
   kind: 'selection' | 'document',
 ): StoredAnchor {
   if (kind === 'document') {
@@ -33,22 +34,20 @@ export function buildAnchorFromRange(
     endLine: range.end.line,
     endChar: range.end.character,
     quote: doc.getText(range),
-    before: doc.getText(
-      new vscode.Range(doc.positionAt(Math.max(0, startOffset - CONTEXT_LEN)), range.start),
-    ),
-    after: doc.getText(new vscode.Range(range.end, doc.positionAt(endOffset + CONTEXT_LEN))),
+    before: doc.getText(new Range(doc.positionAt(Math.max(0, startOffset - CONTEXT_LEN)), range.start)),
+    after: doc.getText(new Range(range.end, doc.positionAt(endOffset + CONTEXT_LEN))),
   };
 }
 
 /** 把存储锚点重新映射到当前文档；返回 null 表示原文已删除、锚点失效。 */
-export function relocate(doc: vscode.TextDocument, a: StoredAnchor): vscode.Range | null {
+export function relocate(doc: TextModel, a: StoredAnchor): Range | null {
   if (a.kind === 'document') {
-    return new vscode.Range(0, 0, 0, 0);
+    return new Range(0, 0, 0, 0);
   }
   const text = doc.getText();
   const lastLine = Math.max(0, doc.lineCount - 1);
   if (a.startLine <= lastLine && a.endLine <= lastLine) {
-    const orig = new vscode.Range(a.startLine, a.startChar, a.endLine, a.endChar);
+    const orig = new Range(a.startLine, a.startChar, a.endLine, a.endChar);
     if (a.quote.length > 0 && doc.getText(orig) === a.quote) {
       const offset = doc.offsetAt(orig.start);
       const before = text.slice(Math.max(0, offset - a.before.length), offset);
@@ -61,7 +60,7 @@ export function relocate(doc: vscode.TextDocument, a: StoredAnchor): vscode.Rang
     }
   }
   if (a.quote.length === 0) {
-    return new vscode.Range(Math.min(a.startLine, lastLine), 0, Math.min(a.startLine, lastLine), 0);
+    return new Range(Math.min(a.startLine, lastLine), 0, Math.min(a.startLine, lastLine), 0);
   }
   let best = -1;
   let bestScore = -1;
@@ -87,7 +86,7 @@ export function relocate(doc: vscode.TextDocument, a: StoredAnchor): vscode.Rang
   if (best < 0) {
     return null;
   }
-  return new vscode.Range(doc.positionAt(best), doc.positionAt(best + a.quote.length));
+  return new Range(doc.positionAt(best), doc.positionAt(best + a.quote.length));
 }
 
 /** 在 hay 里找 needle，多处命中时用渲染态前后文消歧；返回字符下标或 -1。 */
@@ -123,7 +122,7 @@ function locate(hay: string, needle: string, before: string, after: string): num
 }
 
 /** 去掉 Range 首尾纯空白后的实体范围（整块退回时用，避免锚到行尾换行）。 */
-function trimmedRange(doc: vscode.TextDocument, range: vscode.Range): vscode.Range {
+function trimmedRange(doc: TextModel, range: Range): Range {
   const text = doc.getText(range);
   const lead = text.length - text.trimStart().length;
   const trail = text.length - text.trimEnd().length;
@@ -132,27 +131,23 @@ function trimmedRange(doc: vscode.TextDocument, range: vscode.Range): vscode.Ran
   }
   const startOffset = doc.offsetAt(range.start) + lead;
   const endOffset = doc.offsetAt(range.end) - trail;
-  return new vscode.Range(doc.positionAt(startOffset), doc.positionAt(endOffset));
+  return new Range(doc.positionAt(startOffset), doc.positionAt(endOffset));
 }
 
 /** 把渲染块的源码行范围转换成实体 Range。endLineExclusive 为排他行号。 */
-export function blockLinesToRange(
-  doc: vscode.TextDocument,
-  startLine: number,
-  endLineExclusive: number,
-): vscode.Range | null {
+export function blockLinesToRange(doc: TextModel, startLine: number, endLineExclusive: number): Range | null {
   if (doc.lineCount === 0) {
     return null;
   }
   const lastLine = doc.lineCount - 1;
   const safeStartLine = Math.min(Math.max(0, startLine), lastLine);
   const safeEndLineExclusive = Math.min(Math.max(endLineExclusive, safeStartLine + 1), doc.lineCount);
-  const start = new vscode.Position(safeStartLine, 0);
+  const start = new Position(safeStartLine, 0);
   const end =
     safeEndLineExclusive >= doc.lineCount
       ? doc.lineAt(lastLine).range.end
-      : new vscode.Position(safeEndLineExclusive, 0);
-  return trimmedRange(doc, new vscode.Range(start, end));
+      : new Position(safeEndLineExclusive, 0);
+  return trimmedRange(doc, new Range(start, end));
 }
 
 /**
@@ -160,10 +155,7 @@ export function blockLinesToRange(
  * 单块内且块源码能原样搜到 renderedQuote → 精确锚（选词级）；
  * 跨块 / 子串夹了 **、链接符号搜不到 → 退回整块范围。
  */
-export function mapRenderedSelectionToRange(
-  doc: vscode.TextDocument,
-  sel: RenderedSelection,
-): vscode.Range | null {
+export function mapRenderedSelectionToRange(doc: TextModel, sel: RenderedSelection): Range | null {
   const blockRange = blockLinesToRange(doc, sel.blockStartLine, sel.blockEndLine);
   if (!blockRange) {
     return null;
@@ -174,7 +166,7 @@ export function mapRenderedSelectionToRange(
     const idx = locate(blockText, sel.quote, sel.before, sel.after);
     if (idx >= 0) {
       const startOffset = doc.offsetAt(blockRange.start) + idx;
-      return new vscode.Range(doc.positionAt(startOffset), doc.positionAt(startOffset + sel.quote.length));
+      return new Range(doc.positionAt(startOffset), doc.positionAt(startOffset + sel.quote.length));
     }
   }
   return blockRange;

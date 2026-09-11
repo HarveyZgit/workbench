@@ -1072,7 +1072,14 @@ function onSelect(): void {
     startBlock.classList.contains('mdc-safe-html-block') ||
     endBlock.classList.contains('mdc-safe-html-block');
   const blockStartLine = Number(startBlock.getAttribute('data-line'));
-  const blockEndLine = Number((spansMultipleBlocks ? endBlock : startBlock).getAttribute('data-end-line'));
+  if (!Number.isFinite(blockStartLine)) {
+    hideButton();
+    return;
+  }
+  let blockEndLine = Number((spansMultipleBlocks ? endBlock : startBlock).getAttribute('data-end-line'));
+  if (!Number.isFinite(blockEndLine) || blockEndLine <= blockStartLine) {
+    blockEndLine = blockStartLine + 1;
+  }
 
   let before = '';
   let after = '';
