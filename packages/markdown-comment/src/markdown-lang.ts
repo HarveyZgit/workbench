@@ -40,10 +40,7 @@ export function isMarkdownDocument(languageId: string, fsPath: string): boolean 
  * - `file:` / `vscode-local:` / `vscode-remote:` → languageId 或后缀兜底
  * - `untitled:` → 必须 languageId === 'markdown'（无可靠后缀；Save As 前用户手动设语言）
  */
-export function isCommentableMarkdown(
-  languageId: string,
-  uri: { scheme: string; fsPath: string },
-): boolean {
+export function isCommentableMarkdown(languageId: string, uri: { scheme: string; fsPath: string }): boolean {
   if (uri.scheme === 'untitled') {
     return languageId === 'markdown';
   }

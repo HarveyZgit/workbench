@@ -140,12 +140,7 @@ test('documentContentAttempts rewrites file: to vscode-local when remote cannot 
   const steps = documentContentAttempts(uri, { nodeCanReadFsPath: false, remoteName: 'ssh-remote' });
   assert.deepEqual(
     steps.map((step) => `${step.type}:${step.via}`),
-    [
-      'open:original',
-      'open:vscode-local',
-      'read:workspace-fs',
-      'read:workspace-fs-vscode-local',
-    ],
+    ['open:original', 'open:vscode-local', 'read:workspace-fs', 'read:workspace-fs-vscode-local'],
   );
 });
 

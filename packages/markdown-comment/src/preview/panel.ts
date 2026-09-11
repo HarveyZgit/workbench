@@ -76,7 +76,11 @@ function docFor(uri: vscode.Uri): vscode.TextDocument | undefined {
   return findMatchingDocument(vscode.workspace.textDocuments, uri);
 }
 
-function renderOptions(webview: vscode.Webview, uri: vscode.Uri, styles: string[] = []): PreviewRenderOptions {
+function renderOptions(
+  webview: vscode.Webview,
+  uri: vscode.Uri,
+  styles: string[] = [],
+): PreviewRenderOptions {
   const config = vscode.workspace.getConfiguration('markdownComment.preview', uri);
   const rawFontFamily = config.get<string>('fontFamily', '').trim();
   const fontSize = Math.min(40, Math.max(8, config.get<number>('fontSize', 14)));
@@ -145,7 +149,9 @@ function allowedRootUris(uri: vscode.Uri): vscode.Uri[] {
   if (folder) {
     roots.push(folder.uri);
   }
-  return roots.filter((root, index) => roots.findIndex((candidate) => keyOf(candidate) === keyOf(root)) === index);
+  return roots.filter(
+    (root, index) => roots.findIndex((candidate) => keyOf(candidate) === keyOf(root)) === index,
+  );
 }
 
 /** file: 能 realpath 时做规范；远程看不见的本机路径则只比较规范化 fsPath。 */
@@ -468,10 +474,8 @@ async function getDoc(uri: vscode.Uri): Promise<vscode.TextDocument | undefined>
           return await vscode.workspace.openTextDocument(uri.fsPath);
         case 'vscode-local':
           return await vscode.workspace.openTextDocument(uri.with({ scheme: VSCODE_LOCAL_SCHEME }));
-        default: {
-          const unexpected: never = step.via;
-          throw new Error(`unexpected open attempt: ${unexpected}`);
-        }
+        default:
+          break;
       }
     } catch {
       // 换下一种打开方式。
@@ -497,10 +501,8 @@ async function readSourceText(uri: vscode.Uri): Promise<string | undefined> {
         }
         case 'node-fs':
           return readSavedMarkdownText(uri.fsPath);
-        default: {
-          const unexpected: never = step.via;
-          throw new Error(`unexpected read attempt: ${unexpected}`);
-        }
+        default:
+          break;
       }
     } catch {
       // 换下一种读取方式。

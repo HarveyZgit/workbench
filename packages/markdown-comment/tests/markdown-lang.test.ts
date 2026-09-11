@@ -44,8 +44,5 @@ test('isCommentableMarkdown allows vscode-local and vscode-remote markdown', () 
     isCommentableMarkdown('typescript', { scheme: 'vscode-local', fsPath: '/Users/z/Notes/a.ts' }),
     false,
   );
-  assert.equal(
-    isCommentableMarkdown('markdown', { scheme: 'vscode-remote', fsPath: '/home/z/a.md' }),
-    true,
-  );
+  assert.equal(isCommentableMarkdown('markdown', { scheme: 'vscode-remote', fsPath: '/home/z/a.md' }), true);
 });

@@ -53,7 +53,10 @@ test('fileHash is stable sha1 of the absolute path', () => {
 });
 
 test('storageKey keeps file fsPath and stable untitled toString', () => {
-  assert.equal(storageKey({ scheme: 'file', fsPath: '/tmp/a.md', toString: () => 'file:///tmp/a.md' }), '/tmp/a.md');
+  assert.equal(
+    storageKey({ scheme: 'file', fsPath: '/tmp/a.md', toString: () => 'file:///tmp/a.md' }),
+    '/tmp/a.md',
+  );
   assert.equal(
     storageKey({
       scheme: 'vscode-local',
@@ -79,10 +82,7 @@ test('storageKey keeps file fsPath and stable untitled toString', () => {
     storageKey({ scheme: 'untitled', fsPath: '', toString: () => 'untitled:Untitled-2' }),
   );
   // 空 fsPath 绝不能作为 untitled 键（会互相撞车）。
-  assert.notEqual(
-    storageKey({ scheme: 'untitled', fsPath: '', toString: () => 'untitled:Untitled-1' }),
-    '',
-  );
+  assert.notEqual(storageKey({ scheme: 'untitled', fsPath: '', toString: () => 'untitled:Untitled-1' }), '');
 });
 
 test('loadDoc returns empty document when missing or invalid', () => {
@@ -116,7 +116,12 @@ test('migrateDoc moves untitled threads to file key and clears source', () => {
   assert.equal(loadDoc(dir, from).threads.length, 0);
   assert.equal(fs.existsSync(docFile(dir, from)), false);
   assert.equal(loadDoc(dir, to).threads[0].id, id);
-  assert.equal(listAll(dir).map((x) => x.path).join(','), to);
+  assert.equal(
+    listAll(dir)
+      .map((x) => x.path)
+      .join(','),
+    to,
+  );
   // 幂等：源已空时再迁返回 false。
   assert.equal(migrateDoc(dir, from, to), false);
   assert.equal(loadDoc(dir, to).threads.length, 1);
@@ -135,11 +140,10 @@ test('migrateDoc merges with existing target threads by id', () => {
     ],
   });
   assert.equal(migrateDoc(dir, from, to), true);
-  const ids = loadDoc(dir, to).threads.map((t) => t.id).sort();
-  assert.deepEqual(ids, [
-    'cccccccc-3333-4333-8333-cccccccccccc',
-    'dddddddd-4444-4444-8444-dddddddddddd',
-  ]);
+  const ids = loadDoc(dir, to)
+    .threads.map((t) => t.id)
+    .sort();
+  assert.deepEqual(ids, ['cccccccc-3333-4333-8333-cccccccccccc', 'dddddddd-4444-4444-8444-dddddddddddd']);
   assert.equal(loadDoc(dir, to).threads.find((t) => t.id.startsWith('cccccccc'))?.anchor.quote, 'newer');
 });
 
@@ -149,7 +153,10 @@ test('findThread prefers exact id and rejects ambiguous prefixes', () => {
     version: 1,
     threads: [thread('aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'), thread('aaaaaaab-1111-4111-8111-bbbbbbbbbbbb')],
   });
-  assert.equal(findThread(dir, 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa')?.thread.id.startsWith('aaaaaaaa'), true);
+  assert.equal(
+    findThread(dir, 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa')?.thread.id.startsWith('aaaaaaaa'),
+    true,
+  );
   assert.equal(findThread(dir, 'aaaaaaa'), null);
   assert.equal(findThread(dir, 'aaaaaaab')?.thread.id.startsWith('aaaaaaab'), true);
   assert.equal(findThread(dir, 'nope'), null);
@@ -190,13 +197,9 @@ test('untitled key round-trips via saveDoc/loadDoc and resolveDocKey', () => {
   assert.equal(listAll(dir)[0].path, key);
 });
 
-
 test('formatSkillPrompt uses absolute path and quotes spaces', () => {
   assert.equal(formatSkillPrompt('/Users/x/proj/docs/a.md'), '/markdown-comment /Users/x/proj/docs/a.md');
-  assert.equal(
-    formatSkillPrompt('/path/with spaces.md'),
-    '/markdown-comment "/path/with spaces.md"',
-  );
+  assert.equal(formatSkillPrompt('/path/with spaces.md'), '/markdown-comment "/path/with spaces.md"');
   assert.equal(formatSkillPrompt('u_deadbeef'), '/markdown-comment u_deadbeef');
 });
 
@@ -215,7 +218,10 @@ test('saveDoc assigns stable untitled cliId only when threads exist', () => {
   assert.equal(listAll(dir)[0].cliId, expected);
 
   // 再次保存保持同一 cliId
-  saveDoc(dir, key, { version: 1, threads: [thread(id, 'first'), thread('aaaaaaaa-8888-4888-8888-aaaaaaaaaaaa')] });
+  saveDoc(dir, key, {
+    version: 1,
+    threads: [thread(id, 'first'), thread('aaaaaaaa-8888-4888-8888-aaaaaaaaaaaa')],
+  });
   assert.equal(getCliId(dir, key), expected);
 
   // 清空后 cliId 随 index 条目清除

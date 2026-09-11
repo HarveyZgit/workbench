@@ -45,7 +45,7 @@ export function fileHash(absPath: string): string {
 export interface StorageUriLike {
   scheme: string;
   fsPath: string;
-  toString(): string;
+  toString: () => string;
 }
 
 export function storageKey(uri: StorageUriLike): string {
