@@ -24,7 +24,8 @@ function resolveTsxLoader(): string {
 const TSX_LOADER = resolveTsxLoader();
 
 function tmp(prefix: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  // macOS 的 os.tmpdir() 经 /var → /private/var 软链；子进程 process.cwd() 返回真实路径，必须用 realpath 才能与存储键对齐。
+  return fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), prefix));
 }
 
 function thread(
