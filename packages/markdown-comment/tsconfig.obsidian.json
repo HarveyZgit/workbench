@@ -1,5 +1,5 @@
 {
-  // Webview 跑在浏览器沙箱里，用 DOM lib、不用 node types。
+  // Obsidian 适配器跑在 Electron 渲染进程：既要 DOM（obsidian.d.ts 引用），又要 node（storage.ts 用 fs）。
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "Bundler",
@@ -10,16 +10,14 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": []
+    "types": ["node"]
   },
   "include": [
-    "src/preview/webview.ts",
-    "src/preview/heading.ts",
-    "src/preview/markdown.ts",
-    "src/preview/mermaid.ts",
-    "src/preview/navigation.ts",
+    "src/adapters/obsidian",
+    "src/core",
+    "src/storage.ts",
+    "src/types.ts",
     "src/preview/messages.ts",
-    "src/preview/card-ui.ts",
-    "src/preview/shims.d.ts"
+    "src/preview/card-ui.ts"
   ]
 }

@@ -1,6 +1,15 @@
 // 跑在 webview iframe 里：markdown-it 渲染 + data-line 标注 + 划词建评论 +
 // 高亮 + 右侧边栏评论 UI + 正文↔边栏联动。host 独占数据，这里只发意图、画视图。
 import './webview.css';
+import {
+  ICON_DELETE,
+  ICON_EDIT,
+  ICON_RESOLVE,
+  ICON_SEND,
+  ICON_SOURCE,
+  authorName,
+  relativeTime,
+} from './card-ui';
 import { createMarkdownRenderer } from './markdown';
 import { createOutlineUi } from './outline-ui';
 import { createMermaidRuntime, type MermaidCommentIntent, type MermaidViewStates } from './mermaid';
@@ -106,42 +115,7 @@ function clip(s: string, n: number): string {
   const t = s.replace(/\s+/g, ' ').trim();
   return t.length > n ? `${t.slice(0, n)}…` : t;
 }
-function authorName(author: string): string {
-  return author === 'agent' ? '🤖 Agent' : '你';
-}
-const pad = (n: number) => String(n).padStart(2, '0');
-/** 友好相对时间：<1分→1分钟内；<1时→x分钟前；<1天→x小时前；<1年→MM月DD日 HH:mm；否则带年份。 */
-function relativeTime(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) {
-    return '';
-  }
-  const d = new Date(t);
-  const diffMin = (Date.now() - t) / 60000;
-  if (diffMin < 1) {
-    return '1 分钟内';
-  }
-  if (diffMin < 60) {
-    return `${Math.floor(diffMin)} 分钟前`;
-  }
-  if (diffMin < 60 * 24) {
-    return `${Math.floor(diffMin / 60)} 小时前`;
-  }
-  const md = `${pad(d.getMonth() + 1)}月${pad(d.getDate())}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  return diffMin < 60 * 24 * 365 ? md : `${d.getFullYear()}年${md}`;
-}
 
-// 内联 SVG 图标（currentColor，随主题）。
-const ICON_SOURCE =
-  '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4L2.5 8 6 12"/><path d="M10 4l3.5 4-3.5 4"/></svg>';
-const ICON_RESOLVE =
-  '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.2"/><path d="M5.2 8.2l1.9 1.9 3.7-4"/></svg>';
-const ICON_DELETE =
-  '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5v-1h3v1M5 4.5l.5 8h5l.5-8"/></svg>';
-const ICON_SEND =
-  '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 4v2.2a2 2 0 0 1-2 2H4"/><path d="M6.3 6.3L4 8.2l2.3 1.9"/></svg>';
-const ICON_EDIT =
-  '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2.5l2.5 2.5L6 12.5 3 13l.5-3z"/><path d="M9.5 4l2.5 2.5"/></svg>';
 const ICON_SIDEBAR_COLLAPSE =
   '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>';
 

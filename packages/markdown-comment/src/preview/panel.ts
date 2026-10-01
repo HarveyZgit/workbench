@@ -5,10 +5,18 @@ import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { loadDoc, saveDoc, fileHash, storageKey, ensureUntitledCliId, skillPromptTargetState } from '../storage';
+import {
+  loadDoc,
+  saveDoc,
+  fileHash,
+  storageKey,
+  ensureUntitledCliId,
+  skillPromptTargetState,
+} from '../storage';
 import { isCommentableMarkdown, isMarkdownDocument } from '../markdown-lang';
 import { buildAnchorFromRange, mapRenderedSelectionToRange, relocate } from '../anchor';
 import type { StoredDocument, StoredThread } from '../types';
+import { ICON_ADD_DOC, ICON_COPY_SKILL } from './card-ui';
 import { computePreviewLineChanges } from './diff';
 import { findHeadingLine } from './heading';
 import type {
@@ -772,8 +780,8 @@ function buildHtml(
         <button class="mdc-tab" data-tab="all">全部<span class="mdc-tab-n"></span></button>
       </div>
       <div id="mdc-head-actions">
-        <button type="button" id="mdc-add-doc" class="mdc-icon mdc-tip" data-tip="全文评论" aria-label="全文评论" title="全文评论"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2.5h5.5L12.5 5.5V13.5H4z"/><path d="M9.5 2.5V5.5h3"/><path d="M6 8h4.5M6 10.5h3"/><circle cx="11.2" cy="11.2" r="2.3"/><path d="M11.2 10.2v2M10.2 11.2h2"/></svg></button>
-        <button type="button" id="mdc-copy-skill" class="mdc-icon mdc-tip" data-tip="复制 Skill 提示" aria-label="复制 Skill 提示" title="复制 Skill 提示"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="3" width="7" height="9" rx="1.2"/><path d="M4 5.5H3.5A1.5 1.5 0 0 0 2 7v5.5A1.5 1.5 0 0 0 3.5 14H9"/><path d="M7.5 6.5h3M7.5 9h3"/></svg></button>
+        <button type="button" id="mdc-add-doc" class="mdc-icon mdc-tip" data-tip="全文评论" aria-label="全文评论" title="全文评论">${ICON_ADD_DOC}</button>
+        <button type="button" id="mdc-copy-skill" class="mdc-icon mdc-tip" data-tip="复制 Skill 提示" aria-label="复制 Skill 提示" title="复制 Skill 提示">${ICON_COPY_SKILL}</button>
         <button id="mdc-toggle-sidebar" class="mdc-icon mdc-tip" data-tip="收起评论" aria-label="收起评论" aria-expanded="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg></button>
       </div>
     </div>
@@ -789,8 +797,7 @@ function buildHtml(
 /** 当前绑定文档的 Skill 提示目标（file=绝对路径；untitled=cliId 或禁用）。 */
 function skillPromptStateFor(storageDir: string, uri: vscode.Uri) {
   // 存量 untitled：有评论但缺 cliId 时 ensure 回填，无需再发一条评论。
-  const cliId =
-    uri.scheme === 'untitled' ? ensureUntitledCliId(storageDir, storageKey(uri)) : undefined;
+  const cliId = uri.scheme === 'untitled' ? ensureUntitledCliId(storageDir, storageKey(uri)) : undefined;
   return skillPromptTargetState({ scheme: uri.scheme, fsPath: uri.fsPath, cliId });
 }
 
@@ -882,7 +889,9 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
         : 'utf8';
     const changes =
       options.renderedDiff && doc?.isDirty && encoding === 'utf8'
-        ? (boundUri.scheme === 'file' ? readLineChanges(boundUri.fsPath, text) : undefined)
+        ? boundUri.scheme === 'file'
+          ? readLineChanges(boundUri.fsPath, text)
+          : undefined
         : undefined;
     post({
       type: 'render',

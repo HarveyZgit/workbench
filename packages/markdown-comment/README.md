@@ -1,8 +1,8 @@
 # Markdown Comment
 
-`markdown-comment` is the Markdown-commenting capability in AI Workbench. It provides Markdown comment threads, a VS Code extension, a CLI for Agent use (`list`/`reply`/`resolve`), and an Agent Skill.
+`markdown-comment` is the Markdown-commenting capability in AI Workbench. It provides Markdown comment threads, a VS Code extension, an Obsidian plugin, a CLI for Agent use (`list`/`reply`/`resolve`), and an Agent Skill.
 
-The migrated implementation keeps the existing VS Code rendered-preview workflow and global-storage compatibility. Its next refactoring phase will extract an editor-neutral core so CLI, Skills, VS Code, and future IDE or local-web adapters share one domain and storage contract.
+The migrated implementation keeps the existing VS Code rendered-preview workflow and global-storage compatibility. Anchoring already lives in an editor-neutral core (`src/core/anchor.ts`, plain text + offsets); the VS Code extension and the Obsidian plugin are adapters over it, and the next refactoring phase moves the remaining domain and storage code behind the same boundary.
 
 The Skill source is kept with the package at `resources/skills/markdown-comment/SKILL.md`. The build copies it into `dist/resources/` for the VSIX (plugin install rewrites `{{CLI}}` to an absolute path) and also emits a portable copy at `dist/skill-hub/markdown-comment/` for Skill Hub / manual install.
 
@@ -30,6 +30,32 @@ Preview settings:
 - `markdownComment.preview.renderedDiff`;
 - `markdownComment.preview.mermaidNodeComments`.
 
+## Obsidian
+
+The Obsidian plugin is a fourth client of the same threads: it reads and writes the same store as the CLI and the VS Code extension (`docs/<sha1(absolute path)>.json` + `index.json`, schema unchanged), so a note opened in VS Code and in Obsidian shows one set of threads, and an Agent that runs `markdown-comment list --open` in the vault sees comments left in Obsidian. Desktop only (it uses Node `fs`).
+
+Features:
+
+- reading view: select text and click the floating **💬 评论** button, or hover a block (image, table, callout, …) and click the **💬** button at its top-right to comment on the whole block;
+- highlights in both reading view and editing view (CodeMirror decorations); selecting a card keeps its highlight emphasized and scrolls the note to it;
+- editing view / source mode: a mouse selection shows the same floating **💬 评论** button; commands **添加划词评论** and **添加整块评论** use the editor selection or the block at the cursor;
+- command **添加全文评论**, **打开评论侧栏**, **复制 Skill 提示** (copies `/markdown-comment <absolute path>`);
+- right sidebar (same card layout as the VS Code preview): 未解决 / 已解决 / 全部 tabs, reply, edit / delete a single comment (deleting the last one removes the thread), resolve / reopen, delete thread, label chips, `失联` marker for threads whose quote no longer exists; replies written by the CLI or an Agent show up in the sidebar without a reload (`fs.watch` on the store);
+- labels (`不清楚` / `有误` / `删` / `其他`) are stored as a `[label] ` prefix of the first comment body, so the CLI shows them without any schema change.
+
+Storage directory resolution: `MARKDOWN_COMMENT_STORAGE_DIR` → `~/.markdown-comment/pointer.json` → the plugin setting **存储目录**. The plugin never writes `pointer.json`; if you only use Obsidian, point the CLI at the same directory with `MARKDOWN_COMMENT_STORAGE_DIR`.
+
+Build and install:
+
+```sh
+rush build --to vscode-markdown-comment   # emits dist/obsidian/{main.js,manifest.json,styles.css}
+ln -s <repo>/packages/markdown-comment/dist/obsidian "<vault>/.obsidian/plugins/markdown-comment"
+```
+
+Then enable **Markdown Comment** under Settings → Community plugins. The Obsidian output is excluded from the VSIX (`.vscodeignore`). During development `rushx watch` rebuilds it; the Hot-Reload community plugin is optional.
+
+Source lives in `src/adapters/obsidian/` (type-checked by `tsconfig.obsidian.json`, which adds the DOM lib that the VS Code config deliberately lacks). Pure logic (labels, orphan check, `getSectionInfo` line validation) is in `model.ts` and covered by `tests/obsidian-model.test.ts`; the Obsidian-API code has no automated tests and must be checked by hand in Obsidian.
+
 ## Install
 
 Install the VSIX first (it ships the CLI). Then register the Skill in either way:
@@ -51,6 +77,8 @@ From the repository root:
 rush typecheck --to vscode-markdown-comment
 rush build --to vscode-markdown-comment
 ```
+
+Run the package tests from the package directory with `rushx test`.
 
 Pack the VSIX from the package directory:
 

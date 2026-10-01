@@ -1,0 +1,9 @@
+{
+  "id": "markdown-comment",
+  "name": "Markdown Comment",
+  "version": "1.4.0",
+  "minAppVersion": "1.7.2",
+  "description": "为 Markdown 笔记添加可重定位的评论线程，与 markdown-comment CLI / Agent Skill 共用同一份数据。",
+  "author": "harveyz",
+  "isDesktopOnly": true
+}

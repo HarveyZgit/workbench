@@ -1,0 +1,421 @@
+/* 阅读视图：高亮 / 整块按钮 / 浮出按钮 */
+.mdc-section {
+  position: relative;
+}
+
+/* 高亮配色同 VS Code 预览（panel.ts 的 mark.mdc-hl / .mdc-block-hl）；active = 侧栏选中的线程 */
+.mdc-mark {
+  background-color: rgba(255, 209, 102, 0.28);
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.mdc-mark.resolved {
+  background-color: rgba(140, 140, 140, 0.2);
+}
+
+.mdc-mark.active {
+  background-color: rgba(255, 167, 38, 0.5);
+  box-shadow: 0 0 0 1px rgba(255, 167, 38, 0.55);
+}
+
+.mdc-section-marked {
+  background-color: rgba(255, 209, 102, 0.12);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.mdc-section-marked.resolved {
+  background-color: rgba(140, 140, 140, 0.1);
+}
+
+.mdc-section-marked.active {
+  background-color: rgba(255, 167, 38, 0.2);
+}
+
+.mdc-block-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  box-shadow: var(--shadow-s);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.mdc-block-btn::before {
+  content: '💬';
+  font-size: 13px;
+}
+
+.mdc-section:hover > .mdc-block-btn {
+  display: flex;
+}
+
+.mdc-float-btn {
+  position: fixed;
+  z-index: var(--layer-popover);
+  display: none;
+  padding: 4px 10px;
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  box-shadow: var(--shadow-s);
+}
+
+/* 侧栏：结构与尺寸对齐 VS Code 预览侧栏（panel.ts），颜色换成 Obsidian 主题变量 */
+.mdc-view {
+  padding: 0;
+  overflow-y: auto;
+  font-size: var(--font-ui-small);
+}
+
+.mdc-view button {
+  box-shadow: none;
+}
+
+.mdc-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 8px 6px;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.mdc-view .mdc-tabs {
+  display: flex;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.mdc-view .mdc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  height: auto;
+  white-space: nowrap;
+  font-size: 0.92em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-normal);
+  opacity: 0.65;
+}
+
+.mdc-view .mdc-tab:hover {
+  opacity: 1;
+  background: var(--background-modifier-hover);
+}
+
+.mdc-view .mdc-tab.is-active {
+  opacity: 1;
+  font-weight: var(--font-semibold);
+  background: var(--background-modifier-active-hover);
+}
+
+.mdc-view .mdc-tab-n {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 0.88em;
+  line-height: 16px;
+  text-align: center;
+  font-weight: var(--font-semibold);
+  background: var(--background-modifier-border);
+}
+
+.mdc-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.mdc-view .mdc-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-normal);
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.mdc-view .mdc-head-actions .mdc-icon {
+  opacity: 0.72;
+}
+
+.mdc-view .mdc-icon:hover {
+  opacity: 1;
+  background: var(--background-modifier-hover);
+}
+
+.mdc-view .mdc-icon svg {
+  display: block;
+}
+
+.mdc-view .mdc-icon.resolve.on {
+  color: var(--color-green);
+  opacity: 0.95;
+}
+
+.mdc-view .mdc-icon.delete.confirm {
+  color: var(--text-error);
+  opacity: 1;
+}
+
+.mdc-empty {
+  color: var(--text-muted);
+  padding: 16px 6px;
+}
+
+.mdc-list {
+  padding: 12px;
+}
+
+.mdc-card,
+.mdc-draft {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--background-primary);
+}
+
+.mdc-card {
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.mdc-card.resolved {
+  opacity: 0.6;
+}
+
+.mdc-card.orphaned {
+  opacity: 0.7;
+}
+
+.mdc-card.active {
+  opacity: 1;
+  border-color: var(--interactive-accent);
+  box-shadow: inset 3px 0 0 var(--interactive-accent);
+}
+
+.mdc-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.mdc-card-quote {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9em;
+  color: var(--text-muted);
+  padding-left: 6px;
+  line-height: 22px;
+  border-left: 2px solid var(--background-modifier-border-hover);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mdc-card-tools {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+
+.mdc-orphaned-tag,
+.mdc-chip {
+  display: inline-block;
+  font-size: 0.85em;
+  line-height: 1.5;
+  padding: 0 6px;
+  border-radius: 3px;
+  margin-right: 4px;
+  vertical-align: 1px;
+}
+
+.mdc-orphaned-tag {
+  background: rgba(var(--color-yellow-rgb), 0.15);
+  color: var(--color-yellow);
+}
+
+.mdc-chip {
+  background: rgba(var(--color-accent-rgb, 124, 92, 255), 0.15);
+  color: var(--text-accent);
+}
+
+.mdc-cmt {
+  margin: 8px 0;
+  word-break: break-word;
+}
+
+.mdc-cmt-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.mdc-author {
+  font-weight: var(--font-semibold);
+}
+
+.mdc-author.agent {
+  color: var(--color-green);
+}
+
+.mdc-time {
+  font-size: 0.85em;
+  color: var(--text-faint);
+}
+
+.mdc-cmt-tools {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+
+.mdc-view .mdc-cmt-tools .mdc-icon {
+  width: 20px;
+  height: 20px;
+  opacity: 0;
+}
+
+.mdc-view .mdc-cmt:hover .mdc-cmt-tools .mdc-icon {
+  opacity: 0.5;
+}
+
+.mdc-view .mdc-cmt-tools .mdc-icon:hover {
+  opacity: 1;
+}
+
+.mdc-body {
+  white-space: pre-wrap;
+}
+
+.mdc-edit {
+  margin: 4px 0 2px;
+}
+
+.mdc-view textarea.mdc-edit-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 56px;
+  margin-bottom: 6px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 1em;
+  line-height: 1.5;
+  padding: 6px;
+  border-radius: 4px;
+}
+
+.mdc-card-reply {
+  position: relative;
+  margin-top: 8px;
+}
+
+.mdc-view textarea.mdc-reply,
+.mdc-view textarea.mdc-draft-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 1em;
+  line-height: 1.5;
+  padding: 6px;
+  border-radius: 4px;
+}
+
+.mdc-view textarea.mdc-reply {
+  height: 34px;
+  min-height: 34px;
+  padding-right: 36px;
+}
+
+/* 发送按钮：输入框有内容（非 placeholder 态）才显示 */
+.mdc-view .mdc-icon.mdc-send {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 26px;
+  height: 26px;
+  display: none;
+  opacity: 0.95;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.mdc-view .mdc-icon.mdc-send:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.mdc-view .mdc-reply:not(:placeholder-shown) ~ .mdc-icon.mdc-send {
+  display: inline-flex;
+}
+
+.mdc-draft {
+  margin: 12px 12px 0;
+  border-color: var(--interactive-accent);
+}
+
+.mdc-view textarea.mdc-draft-input {
+  min-height: 76px;
+  margin: 8px 0;
+}
+
+.mdc-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.mdc-view .mdc-card-actions button {
+  font-size: 0.95em;
+  padding: 3px 12px;
+  height: auto;
+}
+
+.mdc-view .mdc-label-select {
+  margin-right: auto;
+  font-size: 0.95em;
+  height: auto;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}

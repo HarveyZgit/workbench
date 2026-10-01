@@ -1,6 +1,6 @@
 # Markdown Comment architecture
 
-> Status: the existing VS Code implementation has been migrated into `packages/markdown-comment`. This is the target architecture for its next refactoring phase; the current implementation remains VS Code-centred until the core is extracted.
+> Status: the existing VS Code implementation has been migrated into `packages/markdown-comment`. Anchor logic is already extracted into `src/core/anchor.ts` and shared by the VS Code and Obsidian adapters; the domain model, operations, and storage are still being moved behind the core boundary, so the rest of the source layout remains VS Code-centred. Treat the layout below as the destination.
 
 ## Product definition
 
@@ -47,6 +47,7 @@ Adapters translate a client interaction into a core operation and display the re
 | --- | --- | --- |
 | CLI | Stable automation interface for people and Agents | its own data format or anchor algorithm |
 | VS Code extension | editor commands, rendered preview, source navigation, UI state | the only writable comment store |
+| Obsidian plugin | reading/editing-view selection and block capture, sidebar, highlights, store watching | its own anchor algorithm, a second data format, a fork of the thread model |
 | Skill | tells an Agent how to use the public CLI/API | direct JSON mutation |
 | Local web / agent view | browser UI and local transport | a forked thread model |
 | Future IDE adapter | IDE-specific selection and navigation conversion | core business rules |
@@ -77,6 +78,7 @@ packages/markdown-comment/
   src/storage/       # portable store and migrations
   src/cli/           # public command-line adapter
   src/adapters/vscode/
+  src/adapters/obsidian/  # Obsidian desktop plugin (built to dist/obsidian/)
   src/adapters/web/  # optional local browser/agent adapter
   resources/skills/markdown-comment/
     SKILL.md         # package-managed Agent instructions using the public CLI
@@ -88,10 +90,11 @@ Split these into published packages only when separate release cadence or reuse 
 ## Migration sequence
 
 1. ✅ Move the existing extension, CLI, build configuration, and Skill into this package without dropping the existing user workflow.
-2. Extract editor-neutral types, anchors, operations, and storage from the VS Code extension into the core.
+2. Extract editor-neutral types, anchors, operations, and storage from the VS Code extension into the core. *(Anchors done: `src/core/anchor.ts` takes plain text + offsets, and `src/anchor.ts` is a thin VS Code wrapper. Operations and storage remain.)*
 3. Make the CLI use the portable store directly; retain a one-time, safe import path for existing VS Code data.
 4. Convert the VS Code extension into an adapter over the core, preserving the rendered-preview experience.
-5. Add a local web/agent adapter only after the core and storage boundaries are exercised by CLI and VS Code.
+5. First additional adapter: Obsidian (`src/adapters/obsidian/`), built on the core anchors and the shared store without changing the schema, CLI, or Skill. Its Obsidian-API code is verified by hand in Obsidian; only its pure helpers have automated tests.
+6. Add a local web/agent adapter only after the core and storage boundaries are exercised by CLI and VS Code.
 
 Each step must leave a working tool. Avoid a flag-day rewrite or a storage-format break.
 

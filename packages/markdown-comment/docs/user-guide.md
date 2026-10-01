@@ -2,7 +2,7 @@
 
 ## 功能概览
 
-Markdown Comment 为 Markdown 文档提供可重定位的评论线程，支持四种评论类型：
+Markdown Comment 为 Markdown 文档提供可重定位的评论线程，可在 VS Code 与 Obsidian（桌面版）中使用，评论数据与 CLI 共用，支持四种评论类型：
 
 | 类型 | 说明 |
 |------|------|
@@ -141,6 +141,57 @@ Agent 会通过 CLI 自动读取评论、逐条回复并标记已解决，无需
 | `markdownComment.preview.styles` | `[]` | 加载 workspace 内的本地 CSS 文件 |
 | `markdownComment.preview.renderedDiff` | `true` | 在预览中标记未保存的改动 |
 | `markdownComment.preview.mermaidNodeComments` | `false` | 实验：Mermaid Flowchart 节点评论 |
+
+---
+
+## 在 Obsidian 中使用
+
+Obsidian 插件与 VS Code 扩展、CLI 读写同一份评论数据：同一篇笔记在两边看到的是同一组线程；Agent 在 vault 目录下执行 `markdown-comment list --open`，就能看到你在 Obsidian 里留的评论，`reply` / `resolve` 后侧栏会自动刷新。仅支持桌面版。
+
+### 安装
+
+```bash
+rush build --to vscode-markdown-comment
+ln -s <repo>/packages/markdown-comment/dist/obsidian "<vault>/.obsidian/plugins/markdown-comment"
+```
+
+然后在 Obsidian「设置 → 第三方插件」中启用 **Markdown Comment**。
+
+### 存储目录
+
+按以下顺序解析：环境变量 `MARKDOWN_COMMENT_STORAGE_DIR` → `~/.markdown-comment/pointer.json`（VS Code 扩展启动时写入）→ 插件设置里的「存储目录」。三者都没有时，创建评论会提示去设置里填写。插件不会写 `pointer.json`；只用 Obsidian 时，请让 CLI 通过 `MARKDOWN_COMMENT_STORAGE_DIR` 指向同一目录。
+
+### 创建评论
+
+| 场景 | 操作 |
+|------|------|
+| 阅读视图 · 划词 | 选中文字 → 点浮出的「💬 评论」，或运行命令 **添加划词评论** |
+| 阅读视图 · 整块（图、表、callout） | 鼠标移到块上 → 点块右上角的「💬」 |
+| 编辑视图 / 源码模式 · 划词 | 用鼠标选中文字 → 点浮出的「💬 评论」，或运行命令 **添加划词评论** |
+| 编辑视图 / 源码模式 · 整块 | 光标放在块内 → 命令 **添加整块评论** |
+| 全文评论 | 命令 **添加全文评论**，或侧栏顶部「全文评论」按钮 |
+
+侧栏会出现草稿：可选标签（不清楚 / 有误 / 删 / 其他），写好正文后 `⌘/Ctrl+Enter` 提交，`Esc` 取消。标签作为正文前缀 `[标签] ` 写进第一条评论，CLI 输出里会直接带出。
+
+阅读视图里，选词级的评论只在块源码能原样搜到所选文字时才精确锚定；选区包含粗体、`[[链接|别名]]` 等标记、或跨块时，会退回整块锚定，高亮仍按你当时选中的渲染文字绘制。
+
+### 侧栏
+
+- 「未解决 / 已解决 / 全部」三个标签页，带计数；
+- 卡片显示标签、引用原文、评论列表（你与 Agent 的回复分开着色）、回复框；
+- 卡片支持回复、标记为已解决 / 重新打开、删除整条线程（点两次确认）；
+- 鼠标移到单条评论上会出现编辑、删除图标：编辑时 `⌘/Ctrl+Enter` 保存、`Esc` 取消，第一条评论的标签保持不变；删掉最后一条评论时整条线程一并移除；
+- 原文被改动到找不到引用时，卡片标「失联」且不画高亮，与 CLI `list` 的 `[失联]` 判定一致；
+- 阅读视图和编辑视图（Live Preview / 源码模式）都会高亮被评论的文字，整块评论在阅读视图里以淡色底标出；
+- 点高亮定位到侧栏卡片；点卡片则选中该评论，正文滚到对应位置，并保持加深高亮直到选中别的评论；
+- 命令 **复制 Skill 提示** 会复制 `/markdown-comment <笔记绝对路径>`，可直接交给 Agent。
+
+### 已知限制
+
+- 重命名 / 移动笔记后，评论不会跟着迁移（与 CLI、VS Code 行为一致，按绝对路径存储）；
+- 多个 Obsidian 窗口或同时在 VS Code 里改评论时，最后写入者生效；
+- 不渲染 Mermaid 节点评论（带 Mermaid target 的线程只由 VS Code / CLI 处理），也不做移动端；
+- 浮动的「💬 评论」按钮只在主窗口生效，弹出窗口里请用命令。
 
 ---
 

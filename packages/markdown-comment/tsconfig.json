@@ -21,6 +21,7 @@
     "src/preview/markdown.ts",
     "src/preview/heading.ts",
     "src/preview/mermaid.ts",
-    "src/preview/navigation.ts"
+    "src/preview/navigation.ts",
+    "src/adapters/obsidian"
   ]
 }
