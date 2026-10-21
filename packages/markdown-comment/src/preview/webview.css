@@ -292,10 +292,22 @@ body.vscode-high-contrast {
   background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.12));
 }
 .mdc-code-toolbar {
+  user-select: none;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   padding: 4px 6px;
   min-height: 24px;
+}
+.mdc-code-language {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  opacity: 0.7;
 }
 .mdc-code-block > pre {
   margin: 0;
@@ -303,6 +315,7 @@ body.vscode-high-contrast {
   background: transparent;
 }
 .mdc-code-toolbar .mdc-code-copy {
+  flex-shrink: 0;
   position: static;
   display: inline-flex;
   align-items: center;

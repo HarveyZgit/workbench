@@ -108,13 +108,20 @@ try {
   assert.ok(
     await code.evaluate((element) => element.matches('.mdc-source-block.mdc-diff-modified[data-line="2"]')),
   );
+  assert.equal(await code.locator('.mdc-code-language').textContent(), 'txt');
+  assert.equal(await page.locator('.mdc-body .mdc-code-language').first().textContent(), 'txt');
+  const labelBefore = await code.locator('.mdc-code-language').boundingBox();
   const before = await code.locator('button').boundingBox();
+  assert.ok(labelBefore.x + labelBefore.width < before.x);
   await code.locator('pre').evaluate((element) => {
     element.scrollLeft = 300;
   });
   assert.ok(await code.locator('pre').evaluate((element) => element.scrollLeft > 0));
   const after = await code.locator('button').boundingBox();
   assert.equal(before.x, after.x);
+  const labelAfter = await code.locator('.mdc-code-language').boundingBox();
+  assert.equal(labelBefore.x, labelAfter.x);
+  assert.ok(labelAfter.y + labelAfter.height <= (await code.locator('pre').boundingBox()).y);
   assert.ok(after.y + after.height <= (await code.locator('pre').boundingBox()).y);
   await code.locator('button').click();
   assert.equal(await page.evaluate(() => window.copied), `${'long code '.repeat(100)}\n`);
@@ -167,6 +174,37 @@ try {
   await page.locator('#sidebar-draft [data-act="cancel"]').click();
   assert.equal(await page.locator('#sidebar-draft .mdc-attachment-tile').count(), 0);
   assert.equal(await page.evaluate(() => window.sent.length), sentBeforeCancel);
+  // A label equal to a stored quote must never steal its highlight or anchor context.
+  const codeThread = {
+    ...threads[0],
+    id: 'code-anchor',
+    kind: 'selection',
+    blockStartLine: 0,
+    blockEndLine: 3,
+    quote: 'txt',
+    rendered: { quote: 'txt', before: '', after: '' },
+  };
+  await host({ type: 'render', text: '```\ntxt\n```', threads: [codeThread], options });
+  await page.waitForSelector('#content pre code mark');
+  assert.equal(await page.locator('#content .mdc-code-toolbar mark').count(), 0);
+  assert.equal(await page.locator('#content pre code mark').textContent(), 'txt');
+  await page.evaluate(() => {
+    const range = document.createRange();
+    range.selectNodeContents(document.querySelector('#content pre code'));
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+  await page.getByRole('button', { name: '💬 评论', exact: true }).click();
+  await page.locator('.mdc-draft-input').fill('code selection');
+  await page.locator('#sidebar-draft [data-act="submit"]').click();
+  const codeSelection = await page.evaluate(() =>
+    window.sent.findLast((message) => message.type === 'createThread'),
+  );
+  assert.equal(codeSelection.selection.quote, 'txt');
+  assert.equal(codeSelection.selection.before, '');
+  assert.equal(codeSelection.selection.after, '\n');
   assert.deepEqual(errors, []);
   if (process.env.SCREENSHOT_PATH) {
     await page.screenshot({ path: process.env.SCREENSHOT_PATH, fullPage: true });

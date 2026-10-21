@@ -26,6 +26,9 @@ export function addCodeCopyButtons(root: ParentNode): void {
     }
     const toolbar = document.createElement('div');
     toolbar.className = 'mdc-code-toolbar';
+    const label = document.createElement('span');
+    label.className = 'mdc-code-language';
+    label.textContent = code.dataset.codeLanguage || 'txt';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'mdc-code-copy';
@@ -68,7 +71,7 @@ export function addCodeCopyButtons(root: ParentNode): void {
         button.title = '复制代码块';
       }, 1600);
     });
-    toolbar.append(button);
+    toolbar.append(label, button);
     pre.before(block);
     block.append(toolbar, pre);
   });
