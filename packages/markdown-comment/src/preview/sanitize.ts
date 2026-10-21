@@ -112,7 +112,7 @@ function isRelativeUri(value: string): boolean {
   return !value.startsWith('//') && !value.startsWith('\\\\') && !URI_SCHEME.test(value);
 }
 
-function isSafeHref(value: string): boolean {
+export function isSafeHref(value: string): boolean {
   const uri = normalizedUri(value);
   if (isRelativeUri(uri)) {
     return true;
@@ -168,7 +168,6 @@ const SANITIZE_OPTIONS = {
   SANITIZE_DOM: true,
 };
 
-
 const TASK_LIST_CHECKBOX_TAG = /^<\s*input\b([^>]*)\/?\s*>$/i;
 
 /** Allow only read-only GFM task-list checkboxes through sanitize. */
@@ -184,13 +183,17 @@ export function sanitizeTaskListCheckbox(input: string): string {
   if (!/\btype\s*=\s*(["']?)checkbox\1/i.test(attrs)) {
     return '';
   }
-  const classMatch = /\bclass\s*=\s*(["'])([^"']*)\1/i.exec(attrs) ?? /\bclass\s*=\s*([^\s"'=<>`]+)/i.exec(attrs);
+  const classMatch =
+    /\bclass\s*=\s*(["'])([^"']*)\1/i.exec(attrs) ?? /\bclass\s*=\s*([^\s"'=<>`]+)/i.exec(attrs);
   const classValue = classMatch?.[2] ?? classMatch?.[1] ?? '';
   if (!/\btask-list-item-checkbox\b/.test(classValue)) {
     return '';
   }
   // Reject unexpected attributes beyond the allowlist.
-  const cleaned = attrs.replace(/\b(?:type|class|checked|disabled)\s*(?:=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/gi, '');
+  const cleaned = attrs.replace(
+    /\b(?:type|class|checked|disabled)\s*(?:=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/gi,
+    '',
+  );
   if (/[a-zA-Z_:]/.test(cleaned)) {
     return '';
   }

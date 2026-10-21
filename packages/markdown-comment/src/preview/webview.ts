@@ -2,6 +2,9 @@
 // 高亮 + 右侧边栏评论 UI + 正文↔边栏联动。host 独占数据，这里只发意图、画视图。
 import './webview.css';
 import { createMarkdownRenderer } from './markdown';
+import { renderCommentMarkdown } from './comment-rendering';
+import { addCodeCopyButtons } from './code-copy';
+import { createAttachmentComposer, type AttachmentComposer } from './attachment-composer';
 import { createOutlineUi } from './outline-ui';
 import { createMermaidRuntime, type MermaidCommentIntent, type MermaidViewStates } from './mermaid';
 import type {
@@ -60,6 +63,9 @@ let pendingMermaidComment: MermaidCommentIntent | undefined;
 
 const mermaidRuntime = createMermaidRuntime({
   onComment(intent) {
+    if (draftSubmissionPending()) {
+      return;
+    }
     pendingMermaidComment = intent;
     renderBlockDraft(intent.label);
   },
@@ -413,7 +419,7 @@ function cardHtml(t: WireThread): string {
   const comments = t.comments
     .map(
       (c) =>
-        `<div class="mdc-cmt" data-comment-id="${c.id}">
+        `<div class="mdc-cmt" data-comment-id="${esc(c.id)}">
     <div class="mdc-cmt-head">
       <span class="mdc-author ${c.author === 'agent' ? 'agent' : ''}">${esc(authorName(c.author))}</span>
       <span class="mdc-time">${esc(relativeTime(c.createdAt))}</span>
@@ -422,13 +428,13 @@ function cardHtml(t: WireThread): string {
         <button class="mdc-icon mdc-tip" data-act="delComment" data-tip="删除这条评论">${ICON_DELETE}</button>
       </span>
     </div>
-    <div class="mdc-body">${esc(c.body)}</div>
+    <div class="mdc-body">${renderCommentMarkdown(c.body, renderOptions, `comment-${c.id}`)}${(c.attachments ?? []).map((image) => `<figure class="mdc-comment-image">${image.uri ? `<img src="${esc(image.uri)}" alt="${esc(image.name)}" loading="lazy">` : '<span>图片不可用</span>'}<figcaption>${esc(image.name)}</figcaption></figure>`).join('')}</div>
   </div>`,
     )
     .join('');
   const resolved = t.status === 'resolved';
   const orphaned = t.orphaned === true;
-  return `<div class="mdc-card ${resolved ? 'resolved' : ''} ${orphaned ? 'orphaned' : ''}" data-thread-id="${t.id}" data-status="${t.status}">
+  return `<div class="mdc-card ${resolved ? 'resolved' : ''} ${orphaned ? 'orphaned' : ''}" data-thread-id="${esc(t.id)}" data-status="${t.status}">
   <div class="mdc-card-head">
     <div class="mdc-card-quote">${orphaned ? '<span class="mdc-orphaned-tag">原文已删除</span> ' : ''}${label}</div>
     <div class="mdc-card-tools">
@@ -448,6 +454,37 @@ function cardHtml(t: WireThread): string {
 </div>`;
 }
 
+const replyDrafts = new Map<string, HTMLElement>();
+const editDrafts = new Map<string, HTMLElement>();
+const composers = new WeakMap<HTMLElement, AttachmentComposer>();
+function composer(element: HTMLElement): AttachmentComposer {
+  let instance = composers.get(element);
+  if (!instance) {
+    instance = createAttachmentComposer(element);
+    composers.set(element, instance);
+  }
+  return instance;
+}
+let commentRequest = 0;
+const pendingComments = new Map<string, { element: HTMLElement; done: () => void }>();
+function sendComment(
+  message: Extract<WebviewToHost, { text: string }>,
+  element: HTMLElement,
+  done: () => void,
+): void {
+  const images = composer(element);
+  if (images.isBusy()) {
+    return;
+  }
+  const requestId = `comment-${++commentRequest}`;
+  images.error('');
+  images.setBusy(true);
+  element.querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea, button').forEach((input) => {
+    input.disabled = true;
+  });
+  pendingComments.set(requestId, { element, done });
+  post({ ...message, attachments: images.inputs(), requestId });
+}
 function renderSidebar(threads: WireThread[]): void {
   if (!sidebar) {
     return;
@@ -464,17 +501,43 @@ function renderSidebar(threads: WireThread[]): void {
   }
   const sorted = [...threads].sort((a, b) => a.blockStartLine - b.blockStartLine);
   sidebar.innerHTML = sorted.map(cardHtml).join('');
+  for (const card of sidebar.querySelectorAll<HTMLElement>('.mdc-card')) {
+    const id = card.dataset.threadId!;
+    const placeholder = card.querySelector<HTMLElement>('.mdc-card-reply')!;
+    const reply = replyDrafts.get(id) ?? placeholder;
+    if (reply !== placeholder) {
+      placeholder.replaceWith(reply);
+    }
+    replyDrafts.set(id, reply);
+    composer(reply);
+    for (const cmt of card.querySelectorAll<HTMLElement>('.mdc-cmt')) {
+      const form = editDrafts.get(cmt.dataset.commentId!);
+      if (form) {
+        cmt.querySelector<HTMLElement>('.mdc-body')!.style.display = 'none';
+        cmt.append(form);
+      }
+    }
+  }
+  addCodeCopyButtons(sidebar);
+  sidebar.querySelectorAll<HTMLImageElement>('.mdc-body img:not([data-src])').forEach((image) => {
+    if (!image.closest('.mdc-comment-image')) {
+      image.dataset.src = image.getAttribute('src') ?? '';
+    }
+  });
+  requestLocalResources();
 }
 
 // ─── 新建评论草稿（webview 内多行编辑器，替代 showInputBox）─────────
 // 三种模式：划词（带 selection）/ Mermaid 整图 / 全文。
 let draftSelection: RenderedSelection | null = null;
 let draftIsDoc = false;
+let draftAnchorStale = false;
 
 function renderDraft(labelHtml: string): void {
   if (!draftEl) {
     return;
   }
+  draftAnchorStale = false;
   expandSidebar();
   draftEl.innerHTML = `<div class="mdc-draft">
   <div class="mdc-card-quote">${labelHtml}</div>
@@ -484,6 +547,7 @@ function renderDraft(labelHtml: string): void {
     <button data-act="submit">评论</button>
   </div>
 </div>`;
+  composer(draftEl.querySelector<HTMLElement>('.mdc-draft')!);
   const ta = draftEl.querySelector<HTMLTextAreaElement>('.mdc-draft-input');
   // 紧跟划词点击时 webview 里同步 focus 偶发不生效：先把 iframe 窗口拿到焦点，再多打几拍补焦。
   const focus = (): void => {
@@ -497,6 +561,9 @@ function renderDraft(labelHtml: string): void {
 }
 
 function openSelDraft(sel: RenderedSelection): void {
+  if (draftSubmissionPending()) {
+    return;
+  }
   draftIsDoc = false;
   draftSelection = sel;
   pendingMermaidComment = undefined;
@@ -504,6 +571,9 @@ function openSelDraft(sel: RenderedSelection): void {
 }
 
 function openDocDraft(): void {
+  if (draftSubmissionPending()) {
+    return;
+  }
   draftIsDoc = true;
   draftSelection = null;
   pendingMermaidComment = undefined;
@@ -511,12 +581,24 @@ function openDocDraft(): void {
 }
 
 function renderBlockDraft(label: string): void {
+  if (draftSubmissionPending()) {
+    return;
+  }
   draftIsDoc = false;
   draftSelection = null;
   renderDraft(esc(label));
 }
 
+function draftSubmissionPending(): boolean {
+  const element = draftEl?.querySelector<HTMLElement>('.mdc-draft');
+  return !!element && [...pendingComments.values()].some((pending) => pending.element === element);
+}
+
 function closeDraft(): void {
+  const element = draftEl?.querySelector<HTMLElement>('.mdc-draft');
+  if (element && [...pendingComments.values()].some((pending) => pending.element === element)) {
+    return;
+  }
   draftSelection = null;
   draftIsDoc = false;
   pendingMermaidComment = undefined;
@@ -529,40 +611,67 @@ function submitDraft(): void {
   if (!draftEl) {
     return;
   }
+  if (draftAnchorStale) {
+    return;
+  }
   const ta = draftEl.querySelector<HTMLTextAreaElement>('.mdc-draft-input');
-  const text = ta?.value.trim() ?? '';
-  if (!text) {
+  const text = ta?.value ?? '';
+  const element = draftEl.querySelector<HTMLElement>('.mdc-draft')!;
+  if (!text.trim() && !composer(element).count()) {
     ta?.focus();
     return; // 空评论不提交
   }
   if (draftIsDoc) {
-    post({ type: 'createDocThread', text });
+    sendComment({ type: 'createDocThread', text }, element, () => {
+      if (element.isConnected) {
+        closeDraft();
+      }
+    });
   } else if (pendingMermaidComment) {
     if (pendingMermaidComment.target === 'mermaid-node') {
-      post({
-        type: 'createMermaidNodeThread',
-        startLine: pendingMermaidComment.startLine,
-        endLine: pendingMermaidComment.endLine,
-        label: pendingMermaidComment.label,
-        nodeId: pendingMermaidComment.nodeId,
-        text,
-      });
+      sendComment(
+        {
+          type: 'createMermaidNodeThread',
+          startLine: pendingMermaidComment.startLine,
+          endLine: pendingMermaidComment.endLine,
+          label: pendingMermaidComment.label,
+          nodeId: pendingMermaidComment.nodeId,
+          text,
+        },
+        element,
+        () => {
+          if (element.isConnected) {
+            closeDraft();
+          }
+        },
+      );
     } else {
-      post({
-        type: 'createBlockThread',
-        startLine: pendingMermaidComment.startLine,
-        endLine: pendingMermaidComment.endLine,
-        label: pendingMermaidComment.label,
-        target: pendingMermaidComment.target,
-        text,
-      });
+      sendComment(
+        {
+          type: 'createBlockThread',
+          startLine: pendingMermaidComment.startLine,
+          endLine: pendingMermaidComment.endLine,
+          label: pendingMermaidComment.label,
+          target: pendingMermaidComment.target,
+          text,
+        },
+        element,
+        () => {
+          if (element.isConnected) {
+            closeDraft();
+          }
+        },
+      );
     }
   } else if (draftSelection) {
-    post({ type: 'createThread', selection: draftSelection, text });
+    sendComment({ type: 'createThread', selection: draftSelection, text }, element, () => {
+      if (element.isConnected) {
+        closeDraft();
+      }
+    });
   } else {
     return;
   }
-  closeDraft();
 }
 
 document.getElementById('mdc-add-doc')?.addEventListener('click', openDocDraft);
@@ -625,6 +734,20 @@ draftEl?.addEventListener('click', (e) => {
   const act = (e.target as HTMLElement).getAttribute('data-act');
   if (act === 'submit') {
     submitDraft();
+  } else if (act === 'convertDoc') {
+    if (draftSubmissionPending()) {
+      return;
+    }
+    draftIsDoc = true;
+    draftSelection = null;
+    pendingMermaidComment = undefined;
+    draftAnchorStale = false;
+    const draft = draftEl.querySelector<HTMLElement>('.mdc-draft');
+    if (draft) {
+      composer(draft).error('');
+    }
+    draftEl.querySelector('.mdc-card-quote')!.textContent = '📄 全文评论';
+    (e.target as HTMLElement).remove();
   } else if (act === 'cancel') {
     closeDraft();
   }
@@ -724,6 +847,18 @@ document.getElementById('mdc-tabs')?.addEventListener('click', (e) => {
 
 // ─── 渲染入口 ───────────────────────────────────────────────────────
 function refreshThreads(threads: WireThread[]): void {
+  const threadIds = new Set(threads.map((thread) => thread.id));
+  const commentIds = new Set(threads.flatMap((thread) => thread.comments.map((comment) => comment.id)));
+  for (const id of replyDrafts.keys()) {
+    if (!threadIds.has(id)) {
+      replyDrafts.delete(id);
+    }
+  }
+  for (const id of editDrafts.keys()) {
+    if (!commentIds.has(id)) {
+      editDrafts.delete(id);
+    }
+  }
   lastThreads = threads;
   updateTabs(threads);
   const shown = filterByTab(threads);
@@ -733,56 +868,22 @@ function refreshThreads(threads: WireThread[]): void {
   applySelected();
 }
 
-function addCodeCopyButtons(): void {
-  content?.querySelectorAll<HTMLElement>('pre > code').forEach((code) => {
-    const block = code.parentElement;
-    if (!block || block.querySelector(':scope > .mdc-code-copy')) {
-      return;
-    }
-    block.classList.add('mdc-code-block');
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'mdc-code-copy';
-    button.textContent = '复制';
-    button.setAttribute('aria-label', '复制代码块');
-    button.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(code.textContent ?? '');
-        button.textContent = '已复制';
-        window.setTimeout(() => {
-          button.textContent = '复制';
-        }, 1600);
-      } catch {
-        const selection = window.getSelection();
-        if (!selection) {
-          return;
-        }
-        const range = document.createRange();
-        range.selectNodeContents(code);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        document.execCommand('copy');
-        selection.removeAllRanges();
-      }
-    });
-    block.append(button);
-  });
-}
-
 function requestLocalResources(): void {
   if (!content) {
     return;
   }
   const sources = new Set<string>();
-  content.querySelectorAll<HTMLImageElement>('img[data-src]').forEach((image) => {
-    const source = image.dataset.src?.trim();
-    if (!source || /^https:/i.test(source) || /^data:image\//i.test(source)) {
-      return;
-    }
-    image.classList.add('mdc-image-pending');
-    image.classList.remove('mdc-image-error');
-    sources.add(source);
-  });
+  document
+    .querySelectorAll<HTMLImageElement>('#content img[data-src], .mdc-body img[data-src]')
+    .forEach((image) => {
+      const source = image.dataset.src?.trim();
+      if (!source || /^https:/i.test(source) || /^data:image\//i.test(source)) {
+        return;
+      }
+      image.classList.add('mdc-image-pending');
+      image.classList.remove('mdc-image-error');
+      sources.add(source);
+    });
   if (sources.size === 0) {
     pendingResourceRequests.clear();
     return;
@@ -810,59 +911,61 @@ function imageActionButton(action: string, label: string): HTMLButtonElement {
 }
 
 function addImageTools(): void {
-  content?.querySelectorAll<HTMLImageElement>('img[data-src]').forEach((image) => {
-    if (image.closest('.mdc-image-wrap')) {
-      return;
-    }
-    const source = image.dataset.src ?? '';
-    const wrapper = document.createElement('span');
-    wrapper.className = 'mdc-image-wrap';
-    image.replaceWith(wrapper);
-    wrapper.append(image);
-    const toolbar = document.createElement('span');
-    toolbar.className = 'mdc-image-tools';
-    toolbar.append(imageActionButton('copy', '复制图片'));
-    if (!/^(?:data:|http:)/i.test(source)) {
-      toolbar.append(imageActionButton('open', '打开源文件'));
-    }
-    toolbar.addEventListener('click', async (event) => {
-      const action = (event.target as HTMLElement).closest<HTMLElement>('[data-image-action]')?.dataset
-        .imageAction;
-      if (action === 'open') {
-        post({ type: 'openImage', source });
+  document
+    .querySelectorAll<HTMLImageElement>('#content img[data-src], .mdc-body img[data-src]')
+    .forEach((image) => {
+      if (image.closest('.mdc-image-wrap')) {
         return;
       }
-      if (action !== 'copy') {
-        return;
+      const source = image.dataset.src ?? '';
+      const wrapper = document.createElement('span');
+      wrapper.className = 'mdc-image-wrap';
+      image.replaceWith(wrapper);
+      wrapper.append(image);
+      const toolbar = document.createElement('span');
+      toolbar.className = 'mdc-image-tools';
+      toolbar.append(imageActionButton('copy', '复制图片'));
+      if (!/^(?:data:|http:)/i.test(source)) {
+        toolbar.append(imageActionButton('open', '打开源文件'));
       }
-      try {
-        const response = await fetch(image.src);
-        const blob = await response.blob();
-        const png =
-          blob.type === 'image/png'
-            ? blob
-            : await new Promise<Blob>((resolve, reject) => {
-                const canvas = document.createElement('canvas');
-                canvas.width = image.naturalWidth;
-                canvas.height = image.naturalHeight;
-                const context = canvas.getContext('2d');
-                if (!context) {
-                  reject(new Error('Canvas is unavailable'));
-                  return;
-                }
-                context.drawImage(image, 0, 0);
-                canvas.toBlob(
-                  (value) => (value ? resolve(value) : reject(new Error('Image conversion failed'))),
-                  'image/png',
-                );
-              });
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
-      } catch {
-        post({ type: 'copyImageFallback', source });
-      }
+      toolbar.addEventListener('click', async (event) => {
+        const action = (event.target as HTMLElement).closest<HTMLElement>('[data-image-action]')?.dataset
+          .imageAction;
+        if (action === 'open') {
+          post({ type: 'openImage', source });
+          return;
+        }
+        if (action !== 'copy') {
+          return;
+        }
+        try {
+          const response = await fetch(image.src);
+          const blob = await response.blob();
+          const png =
+            blob.type === 'image/png'
+              ? blob
+              : await new Promise<Blob>((resolve, reject) => {
+                  const canvas = document.createElement('canvas');
+                  canvas.width = image.naturalWidth;
+                  canvas.height = image.naturalHeight;
+                  const context = canvas.getContext('2d');
+                  if (!context) {
+                    reject(new Error('Canvas is unavailable'));
+                    return;
+                  }
+                  context.drawImage(image, 0, 0);
+                  canvas.toBlob(
+                    (value) => (value ? resolve(value) : reject(new Error('Image conversion failed'))),
+                    'image/png',
+                  );
+                });
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+        } catch {
+          post({ type: 'copyImageFallback', source });
+        }
+      });
+      wrapper.append(toolbar);
     });
-    wrapper.append(toolbar);
-  });
 }
 
 function normalizeRenderedResources(): void {
@@ -971,8 +1074,17 @@ function render(
   const navigationState = navigation?.captureState();
   const mermaidStates: MermaidViewStates = mermaidRuntime.captureViewState(content ?? document);
   const generation = ++renderGeneration;
-  if (lastText && text !== lastText) {
-    closeDraft();
+  if (lastText && text !== lastText && !draftIsDoc) {
+    const draft = draftEl?.querySelector<HTMLElement>('.mdc-draft');
+    if (draft && !draftAnchorStale) {
+      draftAnchorStale = true;
+      composer(draft).error('原文已变化。草稿已保留，可改为全文评论，或取消后重新选择原文。');
+      const button = document.createElement('button');
+      button.disabled = draftSubmissionPending();
+      button.dataset.act = 'convertDoc';
+      button.textContent = '改为全文评论';
+      draft.querySelector('.mdc-card-actions')?.prepend(button);
+    }
   }
   lastText = text;
   renderOptions = options;
@@ -986,7 +1098,9 @@ function render(
     });
   }
   setupNavigation(navigationState);
-  addCodeCopyButtons();
+  if (content) {
+    addCodeCopyButtons(content);
+  }
   normalizeRenderedResources();
   addImageTools();
   requestLocalResources();
@@ -1123,10 +1237,12 @@ content?.addEventListener('click', (e) => {
 });
 
 function submitReply(input: HTMLTextAreaElement, id: string): void {
-  const v = input.value.trim();
-  if (v) {
-    post({ type: 'reply', threadId: id, text: v });
-    input.value = '';
+  const element = input.closest<HTMLElement>('.mdc-card-reply')!;
+  if (input.value.trim() || composer(element).count()) {
+    sendComment({ type: 'reply', threadId: id, text: input.value }, element, () => {
+      input.value = '';
+      composer(element).clear();
+    });
   }
 }
 
@@ -1147,9 +1263,18 @@ function enterEdit(cmt: HTMLElement): void {
       <button data-act="editSave">保存</button>
     </div>`;
   const ta = form.querySelector<HTMLTextAreaElement>('.mdc-edit-input');
-  if (ta) {
-    ta.value = body.textContent ?? ''; // .mdc-body 的 textContent 即原始正文（esc 仅影响 HTML，textContent 已解码）。
+  const threadId = cmt.closest<HTMLElement>('.mdc-card')?.dataset.threadId;
+  const original = lastThreads
+    .find((thread) => thread.id === threadId)
+    ?.comments.find((comment) => comment.id === cmt.dataset.commentId);
+  if (!original) {
+    return;
   }
+  if (ta) {
+    ta.value = original.body;
+  }
+  composers.set(form, createAttachmentComposer(form, original.attachments ?? []));
+  editDrafts.set(original.id, form);
   body.style.display = 'none';
   body.insertAdjacentElement('afterend', form);
   if (ta) {
@@ -1159,6 +1284,11 @@ function enterEdit(cmt: HTMLElement): void {
 }
 
 function exitEdit(cmt: HTMLElement): void {
+  const form = cmt.querySelector<HTMLElement>('.mdc-edit');
+  if (form && [...pendingComments.values()].some((pending) => pending.element === form)) {
+    return;
+  }
+  editDrafts.delete(cmt.dataset.commentId!);
   cmt.querySelector('.mdc-edit')?.remove();
   const body = cmt.querySelector<HTMLElement>('.mdc-body');
   if (body) {
@@ -1168,17 +1298,37 @@ function exitEdit(cmt: HTMLElement): void {
 
 function saveEdit(cmt: HTMLElement, threadId: string): void {
   const ta = cmt.querySelector<HTMLTextAreaElement>('.mdc-edit-input');
-  const text = ta?.value.trim() ?? '';
-  if (!text) {
+  const element = cmt.querySelector<HTMLElement>('.mdc-edit')!;
+  const text = ta?.value ?? '';
+  if (!text.trim() && !composer(element).count()) {
     ta?.focus();
-    return; // 空内容不保存
+    return;
   }
-  post({ type: 'editComment', threadId, commentId: cmt.getAttribute('data-comment-id') ?? '', text });
-  exitEdit(cmt); // host 写盘后会回推刷新；本地先退出编辑态，避免等待回推时闪烁。
+  const commentId = cmt.dataset.commentId!;
+  sendComment({ type: 'editComment', threadId, commentId, text }, element, () => {
+    if (editDrafts.get(commentId) === element) {
+      editDrafts.delete(commentId);
+    }
+    refreshThreads(lastThreads);
+  });
 }
 
 sidebar?.addEventListener('click', (e) => {
   const target = e.target as HTMLElement;
+  const link = target.closest<HTMLAnchorElement>('.mdc-body a');
+  if (link) {
+    e.preventDefault();
+    const href = link.dataset.href ?? link.getAttribute('href') ?? '';
+    if (href.startsWith('#')) {
+      document.getElementById(href.slice(1))?.scrollIntoView({ block: 'nearest' });
+    } else {
+      post({ type: 'openLink', href });
+    }
+    return;
+  }
+  if (target.closest('.mdc-code-copy')) {
+    return;
+  }
   const card = target.closest<HTMLElement>('.mdc-card');
   if (!card) {
     return;
@@ -1242,7 +1392,30 @@ sidebar?.addEventListener('keydown', (e) => {
 // ─── 与 host 通信 ───────────────────────────────────────────────────
 window.addEventListener('message', (e: MessageEvent) => {
   const msg = e.data as HostToWebview;
-  if (msg.type === 'render') {
+  if (msg.type === 'commentResult') {
+    const pending = pendingComments.get(msg.requestId);
+    if (!pending) {
+      return;
+    }
+    pendingComments.delete(msg.requestId);
+    composer(pending.element).setBusy(false);
+    pending.element
+      .querySelectorAll<HTMLTextAreaElement | HTMLButtonElement>('textarea, button')
+      .forEach((input) => {
+        input.disabled = false;
+      });
+    composer(pending.element).setBusy(false);
+    if (msg.ok) {
+      pending.done();
+    } else {
+      composer(pending.element).error(
+        (msg.error ?? '保存失败，请重试。') +
+          (pending.element.classList.contains('mdc-draft') && draftAnchorStale
+            ? ' 原文已变化，请改为全文评论，或取消后重新选择原文。'
+            : ''),
+      );
+    }
+  } else if (msg.type === 'render') {
     render(msg.text, msg.threads, msg.options, msg.diff?.changes);
   } else if (msg.type === 'threads') {
     refreshThreads(msg.threads);
@@ -1258,23 +1431,25 @@ window.addEventListener('message', (e: MessageEvent) => {
     applySkillPromptTarget(msg.enabled, msg.tip);
   } else if (msg.type === 'resolvedResources' && pendingResourceRequests.delete(msg.requestId)) {
     const resources = new Map(msg.resources.map((resource) => [resource.source, resource]));
-    content?.querySelectorAll<HTMLImageElement>('img[data-src]').forEach((image) => {
-      const source = image.dataset.src;
-      const resolved = source ? resources.get(source) : undefined;
-      if (resolved?.uri) {
-        image.src = resolved.uri;
-        image.classList.remove('mdc-image-pending', 'mdc-image-error');
-        image.removeAttribute('title');
-      } else if (resolved?.error) {
-        image.removeAttribute('src');
-        image.classList.remove('mdc-image-pending');
-        image.classList.add('mdc-image-error');
-        image.title = resolved.error;
-        if (!image.alt) {
-          image.alt = resolved.error;
+    document
+      .querySelectorAll<HTMLImageElement>('#content img[data-src], .mdc-body img[data-src]')
+      .forEach((image) => {
+        const source = image.dataset.src;
+        const resolved = source ? resources.get(source) : undefined;
+        if (resolved?.uri) {
+          image.src = resolved.uri;
+          image.classList.remove('mdc-image-pending', 'mdc-image-error');
+          image.removeAttribute('title');
+        } else if (resolved?.error) {
+          image.removeAttribute('src');
+          image.classList.remove('mdc-image-pending');
+          image.classList.add('mdc-image-error');
+          image.title = resolved.error;
+          if (!image.alt) {
+            image.alt = resolved.error;
+          }
         }
-      }
-    });
+      });
   }
 });
 

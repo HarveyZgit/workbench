@@ -17,7 +17,10 @@ Run **Markdown Comment：打开评论预览** from a Markdown editor. The previe
 - YAML front matter, syntax-highlighted code blocks, local images, links, and KaTeX formulas;
 - editor/preview scroll synchronization and double-click source navigation;
 - optional sanitized HTML, local custom CSS, image copy/open actions, and unsaved rendered-diff markers;
-- comment threads shared with the CLI.
+- comment threads shared with the CLI;
+- Markdown comment bodies with raw-source editing and sanitized rendering;
+- multiple local image attachments, with removal and ordering before submission;
+- code-copy icons in a fixed toolbar outside horizontally scrolling code.
 
 Preview settings:
 
@@ -29,6 +32,14 @@ Preview settings:
 - `markdownComment.preview.breaks`, `typographer`, and `html`;
 - `markdownComment.preview.renderedDiff`;
 - `markdownComment.preview.mermaidNodeComments`.
+
+## 评论正文和图片
+
+评论提交后使用与预览区共用的 Markdown 引擎渲染，编辑时仍是原始 Markdown。评论不执行原始 HTML，并经过清洗；即使文件只在本地使用，也不会信任粘贴内容或 Agent 回复里的 HTML。评论内容不会参与文档大纲、划词锚点或源码定位。
+
+预览侧栏的创建、回复和编辑框支持一次选择多张图片，也支持纯图片评论。提交前可删除图片或调整顺序；取消不会保存新图片。支持 PNG、JPEG、GIF、WebP，每条评论最多 10 张、每张最多 10 MiB、合计最多 30 MiB，服务端同时检查文件内容与类型。
+
+图片保存在当前评论存储目录的 `attachments/` 下，不写进 Markdown 文档或项目目录，也不会上传到外部服务。文件名由系统生成，评论只保存有序的附件元数据；文档另存为或迁移存储键时不需要搬动图片。当前实现仍沿用 VS Code 全局存储及 CLI 指针兼容层，不引入新的默认存储位置。备份评论时应备份整个存储目录，包括附件。
 
 ## Install
 

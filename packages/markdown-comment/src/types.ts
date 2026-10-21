@@ -21,11 +21,22 @@ export interface StoredAnchor {
   target?: { kind: 'mermaid-diagram' } | { kind: 'mermaid-node'; nodeId: string };
 }
 
+export type AttachmentInput = { id: string } | { name: string; mime: string; data: string };
+
+export interface StoredAttachment {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+}
+
 export interface StoredComment {
   id: string;
   /** 'user' | 'agent'（agent 预留给后续 Agent 自动回复闭环）。 */
   author: string;
   body: string;
+  /** Ordered local image attachments; omitted by legacy comments. */
+  attachments?: StoredAttachment[];
   createdAt: string;
 }
 

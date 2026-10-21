@@ -24,7 +24,7 @@ import texmath from 'markdown-it-texmath';
 import { parseDocument } from 'yaml';
 import { gfmAlertsPlugin } from './gfm-alerts';
 import { headingSlug, headingTextFromInline } from './heading';
-import { isSafeImageSource, sanitizeHtml, sanitizeInlineHtmlToken } from './sanitize';
+import { isSafeHref, isSafeImageSource, sanitizeHtml, sanitizeInlineHtmlToken } from './sanitize';
 
 export type FrontMatterMode = 'table' | 'codeBlock' | 'hide';
 
@@ -85,7 +85,6 @@ function escapeHtml(value: string): string {
   );
 }
 
-
 /** Strip HTML comments outside fenced code so strict mode does not show escaped leftovers. */
 function stripHtmlCommentsOutsideFences(source: string): string {
   let result = '';
@@ -102,7 +101,7 @@ function stripHtmlCommentsOutsideFences(source: string): string {
       const fence = /^(```+|~~~+)/.exec(line);
       if (fence) {
         const marker = fence[1][0];
-        const length = fence[1].length;
+        const { length } = fence[1];
         if (!inFence) {
           inFence = true;
           fenceChar = marker;
@@ -228,7 +227,7 @@ function hashSource(source: string): string {
 
 type MarkdownToken = ReturnType<MarkdownIt['parse']>[number];
 
-function createMarkdownIt(): MarkdownIt {
+function createMarkdownIt(context: 'document' | 'comment'): MarkdownIt {
   const markdown = new MarkdownIt({
     breaks: false,
     html: false,
@@ -364,6 +363,9 @@ function createMarkdownIt(): MarkdownIt {
   });
 
   markdown.core.ruler.push('source_map', (state) => {
+    if (context === 'comment') {
+      return;
+    }
     for (let index = 0; index < state.tokens.length; index++) {
       const token = state.tokens[index];
       if (!token.map || token.nesting === -1) {
@@ -435,7 +437,7 @@ function createMarkdownIt(): MarkdownIt {
     const token = tokens[index];
     const language = languageFromInfo(token.info);
 
-    if (language === 'mermaid') {
+    if (language === 'mermaid' && context === 'document') {
       const startLine = token.map?.[0] ?? 0;
       token.attrJoin('class', 'mdc-mermaid');
       token.attrSet('data-diagram-key', `${startLine}:${hashSource(token.content)}`);
@@ -480,8 +482,10 @@ function createMarkdownIt(): MarkdownIt {
   markdown.renderer.rules.link_open = (tokens, index, options, _environment, renderer) => {
     const token = tokens[index];
     const href = token.attrGet('href');
-    if (href !== null) {
+    if (href !== null && isSafeHref(href)) {
       token.attrSet('data-href', href);
+    } else {
+      token.attrs = token.attrs?.filter(([name]) => name !== 'href' && name !== 'data-href') ?? null;
     }
     return renderer.renderToken(tokens, index, options);
   };
@@ -510,8 +514,11 @@ function createMarkdownIt(): MarkdownIt {
   return markdown;
 }
 
-export function createMarkdownRenderer(defaultOptions: MarkdownRenderOptions = {}): MarkdownRenderer {
-  const markdown = createMarkdownIt();
+export function createMarkdownRenderer(
+  defaultOptions: MarkdownRenderOptions = {},
+  context: 'document' | 'comment' = 'document',
+): MarkdownRenderer {
+  const markdown = createMarkdownIt(context);
   const resolvedDefaults = {
     ...DEFAULT_RENDER_OPTIONS,
     ...defaultOptions,

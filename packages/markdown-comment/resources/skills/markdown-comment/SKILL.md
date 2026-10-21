@@ -2,7 +2,7 @@
 name: markdown-comment
 description: 读取并回复 Markdown Comment 里的划词、全文、Mermaid 整图或节点评论。当用户说”看看我在文档里的评论/批注”、”逐条回复我标注的问题”，粘贴 `/markdown-comment <target>`，或要求处理 Markdown / Mermaid 上的人工评论时使用。通过 markdown-comment CLI 的 list、reply、resolve 命令操作评论，输出精简、省 token。
 metadata:
-  version: 1.2.0
+  version: 1.3.0
 ---
 
 # markdown-comment
@@ -77,6 +77,8 @@ u_f7309791
 ## 注意
 
 - `threadId` 全局唯一，`reply`/`resolve` 不需要再传文档 target。
-- 回复正文支持 Markdown。含空格的正文要用引号包起来。
+- 尽量用 Markdown 回复：用短段落、列表、行内代码和带语言名的代码块组织内容，按需添加链接；简短回复不必硬加标题。
+- 向 `reply` 传入原始 Markdown，不要先转成 HTML，也不要为了展示而给整段回复套代码围栏。评论提交后会渲染，编辑时保留原文。
+- 把回复正文作为单个 CLI 参数安全传入，保留换行；使用 shell 时注意引号、反引号和 `$`，避免正文被当作命令展开。
 - 不要直接手改全局存储里的 JSON——用 CLI，保证 index 同步、避免与插件写入冲突。
 - 不要把 `untitled:Untitled-N` 当 CLI target；只用 `u_<8hex>` 或 `list -g`。
