@@ -2,7 +2,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { StoredDocument, StoredThread } from './types';
 
 // 指针文件：固定在用户主目录，记录插件 globalStorage 的真实路径，
@@ -44,7 +44,7 @@ export function fileHash(absPath: string): string {
 export interface StorageUriLike {
   scheme: string;
   fsPath: string;
-  toString(): string;
+  toString: () => string;
 }
 
 export function storageKey(uri: StorageUriLike): string {
@@ -221,9 +221,23 @@ function readIndex(storageDir: string): Index {
   }
 }
 
+function atomicWrite(file: string, text: string): void {
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    fs.writeFileSync(temporary, text, { flag: 'wx', mode: 0o600 });
+    fs.renameSync(temporary, file);
+  } finally {
+    try {
+      fs.unlinkSync(temporary);
+    } catch {
+      /* Already renamed or not created. */
+    }
+  }
+}
+
 function writeIndex(storageDir: string, idx: Index): void {
   fs.mkdirSync(storageDir, { recursive: true });
-  fs.writeFileSync(indexFile(storageDir), `${JSON.stringify(idx, null, 2)}\n`, 'utf8');
+  atomicWrite(indexFile(storageDir), `${JSON.stringify(idx, null, 2)}\n`);
 }
 
 export function loadDoc(storageDir: string, absPath: string): StoredDocument {
@@ -253,14 +267,15 @@ export function saveDoc(storageDir: string, absPath: string, data: StoredDocumen
     return;
   }
   fs.mkdirSync(docsDir(storageDir), { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
   const entry: IndexEntry = { path: absPath, updatedAt: new Date().toISOString() };
   if (isUntitledStorageKey(absPath)) {
     // 首次有评论时写入；之后保持稳定（同 URI → 同 cliId）。
     entry.cliId = idx[h]?.cliId ?? untitledCliId(absPath);
   }
   idx[h] = entry;
+  // Commit the document last: an index failure must not leave new attachment references.
   writeIndex(storageDir, idx);
+  atomicWrite(file, `${JSON.stringify(data, null, 2)}\n`);
 }
 
 /**

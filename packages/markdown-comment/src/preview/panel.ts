@@ -5,17 +5,24 @@ import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { loadDoc, saveDoc, fileHash, storageKey, ensureUntitledCliId, skillPromptTargetState } from '../storage';
+import {
+  loadDoc,
+  saveDoc,
+  fileHash,
+  storageKey,
+  ensureUntitledCliId,
+  skillPromptTargetState,
+} from '../storage';
 import { isCommentableMarkdown, isMarkdownDocument } from '../markdown-lang';
 import { buildAnchorFromRange, mapRenderedSelectionToRange, relocate } from '../anchor';
-import type { StoredDocument, StoredThread } from '../types';
+import type { StoredComment, StoredDocument, StoredThread } from '../types';
+import { attachmentDirectory, attachmentPath, prepareAttachments } from '../attachments';
 import { computePreviewLineChanges } from './diff';
 import { findHeadingLine } from './heading';
 import type {
   HostToWebview,
   PreviewLineChanges,
   PreviewRenderOptions,
-  RenderedSelection,
   ResolvedPreviewResource,
   WebviewToHost,
   WireThread,
@@ -85,6 +92,7 @@ function renderOptions(
 function localResourceRoots(context: vscode.ExtensionContext, uri: vscode.Uri): vscode.Uri[] {
   const roots = [
     vscode.Uri.joinPath(context.extensionUri, 'dist'),
+    vscode.Uri.file(attachmentDirectory(context.globalStorageUri.fsPath)),
     // untitled 无磁盘目录：跳过 dirname(fsPath)，相对本地图在未保存时不可解析。
     ...(uri.scheme === 'file' ? [vscode.Uri.file(path.dirname(uri.fsPath))] : []),
     ...(vscode.workspace.workspaceFolders?.map((folder) => folder.uri) ?? []),
@@ -222,6 +230,12 @@ function isWebviewMessage(value: unknown): value is WebviewToHost {
     return false;
   }
   const message = value as Record<string, unknown>;
+  if (
+    message.requestId !== undefined &&
+    (typeof message.requestId !== 'string' || message.requestId.length > MAX_ID_LENGTH)
+  ) {
+    return false;
+  }
   const hasBoundedString = (key: string, maximum: number) =>
     typeof message[key] === 'string' && (message[key] as string).length <= maximum;
   const hasId = (key: string) => hasBoundedString(key, MAX_ID_LENGTH);
@@ -693,7 +707,7 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 .mdc-cmt-tools .mdc-icon { width: 20px; height: 20px; opacity: 0; }
 .mdc-cmt:hover .mdc-cmt-tools .mdc-icon { opacity: 0.5; }
 .mdc-cmt-tools .mdc-icon:hover { opacity: 1 !important; }
-.mdc-body { white-space: pre-wrap; }
+.mdc-body { white-space: normal; }
 .mdc-edit { margin: 4px 0 2px; }
 .mdc-edit .mdc-card-actions { margin-top: 6px; }
 
@@ -789,8 +803,7 @@ function buildHtml(
 /** 当前绑定文档的 Skill 提示目标（file=绝对路径；untitled=cliId 或禁用）。 */
 function skillPromptStateFor(storageDir: string, uri: vscode.Uri) {
   // 存量 untitled：有评论但缺 cliId 时 ensure 回填，无需再发一条评论。
-  const cliId =
-    uri.scheme === 'untitled' ? ensureUntitledCliId(storageDir, storageKey(uri)) : undefined;
+  const cliId = uri.scheme === 'untitled' ? ensureUntitledCliId(storageDir, storageKey(uri)) : undefined;
   return skillPromptTargetState({ scheme: uri.scheme, fsPath: uri.fsPath, cliId });
 }
 
@@ -863,7 +876,25 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
 
   const post = (msg: HostToWebview) => void panel.webview.postMessage(msg);
   const wireFor = (doc?: vscode.TextDocument) =>
-    loadDoc(storageDir, docKey()).threads.map((t) => toWire(t, doc));
+    loadDoc(storageDir, docKey()).threads.map((t) => {
+      const wire = toWire(t, doc);
+      wire.comments = wire.comments.map((comment, index) => ({
+        ...comment,
+        attachments: t.comments[index].attachments?.map((attachment) => {
+          try {
+            return {
+              ...attachment,
+              uri: panel.webview
+                .asWebviewUri(vscode.Uri.file(attachmentPath(storageDir, attachment.id)))
+                .toString(true),
+            };
+          } catch {
+            return { ...attachment, uri: undefined };
+          }
+        }),
+      }));
+      return wire;
+    });
   // 取当前文本来 relocate（源码 tab 没开则后台加载），保证回推 webview 的行号是最新的。
   const sendThreads = async () => post({ type: 'threads', threads: wireFor(await getDoc(boundUri)) });
   const sendSkillPromptTarget = () => {
@@ -882,7 +913,9 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
         : 'utf8';
     const changes =
       options.renderedDiff && doc?.isDirty && encoding === 'utf8'
-        ? (boundUri.scheme === 'file' ? readLineChanges(boundUri.fsPath, text) : undefined)
+        ? boundUri.scheme === 'file'
+          ? readLineChanges(boundUri.fsPath, text)
+          : undefined
         : undefined;
     post({
       type: 'render',
@@ -902,84 +935,120 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     sendSkillPromptTarget();
   };
 
-  const handleCreate = async (selection: RenderedSelection, text: string) => {
-    if (!text.trim()) {
-      return;
-    }
-    const doc = await getDoc(boundUri);
-    if (!doc) {
-      vscode.window.showWarningMessage('源 Markdown 文件无法读取（可能已删除或移动），无法创建评论');
-      return;
-    }
-    const range = mapRenderedSelectionToRange(doc, selection);
-    if (!range) {
-      vscode.window.showWarningMessage('无法把这段选区定位回源码');
-      return;
-    }
-    const anchor = buildAnchorFromRange(doc, range, 'selection');
-    // 存渲染态选区：即便源码锚点退回整块，webview 仍能精确高亮用户当时所选。
-    anchor.rendered = { quote: selection.quote, before: selection.before, after: selection.after };
-    const thread: StoredThread = {
-      id: randomUUID(),
-      anchor,
-      status: 'open',
-      comments: [{ id: randomUUID(), author: 'user', body: text, createdAt: new Date().toISOString() }],
-    };
-    mutate((d) => d.threads.push(thread));
-  };
-
-  const handleCreateBlock = async (
-    startLine: number,
-    endLine: number,
-    label: string,
-    target: 'mermaid-diagram',
-    text: string,
+  // All comment writes share one validated transaction. No attachment bytes are persisted
+  // until the anchor and destination have been checked; errors leave the draft intact.
+  const submitComment = async (
+    msg: Extract<
+      WebviewToHost,
+      {
+        type:
+          | 'createThread'
+          | 'createBlockThread'
+          | 'createMermaidNodeThread'
+          | 'createDocThread'
+          | 'reply'
+          | 'editComment';
+      }
+    >,
   ) => {
-    if (!text.trim()) {
-      return;
+    let prepared: ReturnType<typeof prepareAttachments> | undefined;
+    let committed = false;
+    try {
+      const key = docKey();
+      const source = ['createThread', 'createBlockThread', 'createMermaidNodeThread'].includes(msg.type)
+        ? await getDoc(boundUri)
+        : undefined;
+      if (key !== docKey()) {
+        throw new Error('文档位置已更改，请重新提交');
+      }
+      const stored = loadDoc(storageDir, key);
+      let thread: StoredThread | undefined;
+      let comment: StoredComment | undefined;
+      if (msg.type === 'reply' || msg.type === 'editComment') {
+        thread = stored.threads.find((item) => item.id === msg.threadId);
+        if (!thread) {
+          throw new Error('评论线程已不存在，请刷新后重试');
+        }
+        if (msg.type === 'editComment') {
+          comment = thread.comments.find((item) => item.id === msg.commentId);
+          if (!comment) {
+            throw new Error('评论已不存在，请刷新后重试');
+          }
+        }
+      } else {
+        let anchor: StoredThread['anchor'] = {
+          kind: 'document',
+          startLine: 0,
+          startChar: 0,
+          endLine: 0,
+          endChar: 0,
+          quote: '',
+          before: '',
+          after: '',
+        };
+        if (msg.type !== 'createDocThread') {
+          if (!source) {
+            throw new Error('源 Markdown 文件无法读取，无法创建评论');
+          }
+          if (msg.type === 'createThread') {
+            const range = mapRenderedSelectionToRange(source, msg.selection);
+            if (!range) {
+              throw new Error('无法把这段选区定位回源码');
+            }
+            anchor = buildAnchorFromRange(source, range, 'selection');
+            anchor.rendered = {
+              quote: msg.selection.quote,
+              before: msg.selection.before,
+              after: msg.selection.after,
+            };
+          } else {
+            const line = Math.min(msg.startLine, Math.max(0, source.lineCount - 1));
+            anchor = buildAnchorFromRange(source, source.lineAt(line).range, 'selection');
+            anchor.rendered = { quote: msg.label, before: '', after: '' };
+            anchor.target =
+              msg.type === 'createBlockThread'
+                ? { kind: 'mermaid-diagram' }
+                : { kind: 'mermaid-node', nodeId: msg.nodeId };
+          }
+        }
+        thread = { id: randomUUID(), anchor, status: 'open', comments: [] };
+        stored.threads.push(thread);
+      }
+      prepared = prepareAttachments(storageDir, msg.attachments, comment?.attachments);
+      if (!msg.text.trim() && prepared.attachments.length === 0) {
+        throw new Error('请输入评论或添加图片');
+      }
+      if (comment) {
+        comment.body = msg.text;
+        comment.attachments = prepared.attachments;
+      } else {
+        thread.comments.push({
+          id: randomUUID(),
+          author: 'user',
+          body: msg.text,
+          createdAt: new Date().toISOString(),
+          attachments: prepared.attachments,
+        });
+      }
+      saveDoc(storageDir, key, stored);
+      committed = true;
+      if (msg.requestId) {
+        post({ type: 'commentResult', requestId: msg.requestId, ok: true });
+      }
+      void sendThreads();
+      sendSkillPromptTarget();
+    } catch (error) {
+      if (committed) {
+        return;
+      }
+      prepared?.rollback();
+      const message = error instanceof Error ? error.message : '保存评论失败';
+      if (msg.requestId) {
+        post({ type: 'commentResult', requestId: msg.requestId, ok: false, error: message });
+      } else {
+        void vscode.window.showWarningMessage(message);
+      }
     }
-    const doc = await getDoc(boundUri);
-    const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
-    const range = doc ? doc.lineAt(safeStartLine).range : null;
-    if (!doc || !range) {
-      vscode.window.showWarningMessage('源 Markdown 文件无法读取，无法创建图表评论');
-      return;
-    }
-    const anchor = buildAnchorFromRange(doc, range, 'selection');
-    anchor.rendered = { quote: label, before: '', after: '' };
-    anchor.target = { kind: target };
-    mutate((stored) =>
-      stored.threads.push({
-        id: randomUUID(),
-        anchor,
-        status: 'open',
-        comments: [{ id: randomUUID(), author: 'user', body: text, createdAt: new Date().toISOString() }],
-      }),
-    );
-  };
-
-  const handleCreateNode = async (startLine: number, label: string, nodeId: string, text: string) => {
-    if (!text.trim()) {
-      return;
-    }
-    const doc = await getDoc(boundUri);
-    const safeStartLine = doc ? Math.min(Math.max(0, startLine), Math.max(0, doc.lineCount - 1)) : 0;
-    const range = doc ? doc.lineAt(safeStartLine).range : null;
-    if (!doc || !range) {
-      vscode.window.showWarningMessage('源 Markdown 文件无法读取，无法创建节点评论');
-      return;
-    }
-    const anchor = buildAnchorFromRange(doc, range, 'selection');
-    anchor.rendered = { quote: label, before: '', after: '' };
-    anchor.target = { kind: 'mermaid-node', nodeId };
-    mutate((stored) =>
-      stored.threads.push({
-        id: randomUUID(),
-        anchor,
-        status: 'open',
-        comments: [{ id: randomUUID(), author: 'user', body: text, createdAt: new Date().toISOString() }],
-      }),
-    );
   };
 
   const resolveResources = (sources: string[]): ResolvedPreviewResource[] =>
@@ -1110,6 +1179,20 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
   const subs: vscode.Disposable[] = [
     panel.webview.onDidReceiveMessage((value: unknown) => {
       if (!isWebviewMessage(value)) {
+        if (
+          value &&
+          typeof value === 'object' &&
+          'requestId' in value &&
+          typeof value.requestId === 'string' &&
+          value.requestId.length <= MAX_ID_LENGTH
+        ) {
+          post({
+            type: 'commentResult',
+            requestId: value.requestId,
+            ok: false,
+            error: '评论请求无效或内容过长',
+          });
+        }
         return;
       }
       const msg = value;
@@ -1119,61 +1202,12 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
           sendSkillPromptTarget();
           break;
         case 'createThread':
-          void handleCreate(msg.selection, msg.text);
-          break;
         case 'createBlockThread':
-          void handleCreateBlock(msg.startLine, msg.endLine, msg.label, msg.target, msg.text);
-          break;
         case 'createMermaidNodeThread':
-          void handleCreateNode(msg.startLine, msg.label, msg.nodeId, msg.text);
-          break;
         case 'createDocThread':
-          if (msg.text) {
-            mutate((d) =>
-              d.threads.push({
-                id: randomUUID(),
-                anchor: {
-                  kind: 'document',
-                  startLine: 0,
-                  startChar: 0,
-                  endLine: 0,
-                  endChar: 0,
-                  quote: '',
-                  before: '',
-                  after: '',
-                },
-                status: 'open',
-                comments: [
-                  { id: randomUUID(), author: 'user', body: msg.text, createdAt: new Date().toISOString() },
-                ],
-              }),
-            );
-          }
-          break;
         case 'reply':
-          mutate((d) => {
-            const t = d.threads.find((x) => x.id === msg.threadId);
-            if (t) {
-              t.comments.push({
-                id: randomUUID(),
-                author: 'user',
-                body: msg.text,
-                createdAt: new Date().toISOString(),
-              });
-            }
-          });
-          break;
         case 'editComment':
-          if (msg.text.trim()) {
-            mutate((d) => {
-              const c = d.threads
-                .find((x) => x.id === msg.threadId)
-                ?.comments.find((y) => y.id === msg.commentId);
-              if (c) {
-                c.body = msg.text;
-              }
-            });
-          }
+          void submitComment(msg);
           break;
         case 'resolve':
           mutate((d) => {
@@ -1321,6 +1355,10 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
     },
     rebind(next: vscode.Uri) {
       boundUri = next;
+      panel.webview.options = {
+        ...panel.webview.options,
+        localResourceRoots: localResourceRoots(context, next),
+      };
       myHash = fileHash(docKey());
       panel.title = previewTitle(next);
       void sendRender();

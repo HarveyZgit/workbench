@@ -1,3 +1,10 @@
+import type { AttachmentInput, StoredAttachment } from '../types';
+
+export interface CommentSubmission {
+  attachments?: AttachmentInput[];
+  requestId?: string;
+}
+
 // Webview ↔ extension host 的 postMessage 协议（纯类型，host 与 webview 共用）。
 
 /** 评论在 wire 上的精简表示（host 从 StoredThread 投影出来发给 webview）。 */
@@ -16,7 +23,13 @@ export interface WireThread {
   rendered?: { quote: string; before: string; after: string };
   /** 原文已删除、锚点失联，预览中不画高亮仅展示评论卡片。 */
   orphaned?: boolean;
-  comments: { id: string; author: string; body: string; createdAt: string }[];
+  comments: {
+    id: string;
+    author: string;
+    body: string;
+    createdAt: string;
+    attachments?: (StoredAttachment & { uri?: string })[];
+  }[];
 }
 
 /** webview 捕获的渲染选区，上报给 host 翻译成源码范围。 */
@@ -72,6 +85,7 @@ export interface ResolvedPreviewResource {
 }
 
 export type HostToWebview =
+  | { type: 'commentResult'; requestId: string; ok: boolean; error?: string }
   | { type: 'render'; text: string; threads: WireThread[]; options: PreviewRenderOptions; diff?: PreviewDiff }
   | { type: 'threads'; threads: WireThread[] }
   | { type: 'revealThread'; threadId: string }
@@ -80,7 +94,7 @@ export type HostToWebview =
   | { type: 'skillPromptCopied' }
   | { type: 'skillPromptTarget'; enabled: boolean; tip: string };
 
-export type WebviewToHost =
+export type WebviewToHost = (
   | { type: 'ready' }
   | { type: 'createThread'; selection: RenderedSelection; text: string }
   | {
@@ -112,4 +126,6 @@ export type WebviewToHost =
   | { type: 'openImage'; source: string }
   | { type: 'revealSourceLine'; line: number }
   | { type: 'previewScroll'; line: number }
-  | { type: 'copySkillPrompt' };
+  | { type: 'copySkillPrompt' }
+) &
+  CommentSubmission;

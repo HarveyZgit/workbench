@@ -13,6 +13,7 @@ import {
   isUntitledStorageKey,
 } from './storage';
 import type { StoredComment, StoredThread } from './types';
+import { attachmentPath } from './attachments';
 
 function fail(msg: string): never {
   process.stderr.write(`${msg}\n`);
@@ -171,7 +172,17 @@ function cmdList(): void {
           renderedQuote: t.anchor.rendered?.quote,
           target: t.anchor.target,
           diagramFallback: state.diagramFallback,
-          comments: t.comments.map((c) => ({ author: c.author, body: c.body })),
+          comments: t.comments.map((c) => ({
+            author: c.author,
+            body: c.body,
+            attachments: c.attachments?.map((attachment) => {
+              try {
+                return { ...attachment, path: attachmentPath(storageDir, attachment.id) };
+              } catch {
+                return { ...attachment, unavailable: true };
+              }
+            }),
+          })),
         });
       }
     }
@@ -202,6 +213,17 @@ function cmdList(): void {
       lines.push(`${headOf(p, t)}  #${shortId(t.id)}${status}${anchorStatus}`);
       for (const c of t.comments) {
         lines.push(`    - ${c.author}: ${oneLine(c.body)}`);
+        for (const attachment of c.attachments ?? []) {
+          let location: string;
+          try {
+            location = attachmentPath(storageDir, attachment.id);
+          } catch {
+            location = '文件不可用';
+          }
+          lines.push(
+            `      图片：${oneLine(attachment.name)} (${attachment.mime}, ${attachment.size} bytes) ${location}`,
+          );
+        }
       }
     }
     blocks.push(lines.join('\n'));
