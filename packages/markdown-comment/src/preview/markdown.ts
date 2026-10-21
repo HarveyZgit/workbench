@@ -152,25 +152,56 @@ function languageFromInfo(info: string): string {
   return info.trim().split(/\s+/, 1)[0]?.toLowerCase() ?? '';
 }
 
-function highlightCode(source: string, language: string): { html: string; language: string | null } {
-  if (!language || !hljs.getLanguage(language)) {
-    return { html: escapeHtml(source), language: null };
+// Detection is deliberately conservative: short, ambiguous, or large blocks stay txt.
+// highlight.js relevance is a heuristic, not a probability of correctness.
+function highlightCode(
+  source: string,
+  language: string,
+): { html: string; language: string; highlighted: boolean } {
+  const plain = { html: escapeHtml(source), language: 'txt', highlighted: false };
+  if (language) {
+    if (['txt', 'text', 'plaintext', 'plain', 'none', 'nohighlight'].includes(language)) {
+      return plain;
+    }
+    // Keep explicitly named, unsupported languages visible, but never inject fence info into markup.
+    const label = /^[a-z0-9][a-z0-9_+#.-]{0,49}$/.test(language) ? language : 'txt';
+    if (!hljs.getLanguage(language)) {
+      return { ...plain, language: label };
+    }
+    try {
+      return {
+        html: hljs.highlight(source, { language, ignoreIllegals: true }).value,
+        language: label,
+        highlighted: true,
+      };
+    } catch {
+      return { ...plain, language: label };
+    }
   }
-
+  if (source.trim().length < 20 || source.length > 10_000) {
+    return plain;
+  }
   try {
-    return {
-      html: hljs.highlight(source, { language, ignoreIllegals: true }).value,
-      language,
-    };
+    const result = hljs.highlightAuto(source);
+    if (
+      result.language &&
+      result.relevance >= 5 &&
+      result.relevance - (result.secondBest?.relevance ?? 0) >= 2
+    ) {
+      return { html: result.value, language: result.language, highlighted: true };
+    }
   } catch {
-    return { html: escapeHtml(source), language: null };
+    // A failing grammar must not prevent the rest of the document from rendering.
   }
+  return plain;
 }
 
 function renderCode(source: string, language: string): string {
   const highlighted = highlightCode(source, language);
-  const className = highlighted.language ? ` class="hljs language-${escapeHtml(highlighted.language)}"` : '';
-  return `<code${className}>${highlighted.html}</code>`;
+  const className = highlighted.highlighted
+    ? ` class="hljs language-${escapeHtml(highlighted.language)}"`
+    : '';
+  return `<code${className} data-code-language="${escapeHtml(highlighted.language)}">${highlighted.html}</code>`;
 }
 
 function renderYamlValue(value: unknown, ancestors: WeakSet<object>): string {
@@ -454,7 +485,7 @@ function createMarkdownIt(context: 'document' | 'comment'): MarkdownIt {
   markdown.renderer.rules.fence = renderFence;
   markdown.renderer.rules.code_block = (tokens, index, _options, _environment, renderer) => {
     const token = tokens[index];
-    return `<pre${renderer.renderAttrs(token)}><code>${escapeHtml(token.content)}</code></pre>\n`;
+    return `<pre${renderer.renderAttrs(token)}>${renderCode(token.content, '')}</pre>\n`;
   };
 
   for (const ruleName of ['math_block', 'math_block_eqno'] as const) {

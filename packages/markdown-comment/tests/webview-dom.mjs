@@ -140,6 +140,8 @@ try {
   assert.equal(window.xss, undefined);
   assert.ok(query('#content .mdc-code-block').matches('.mdc-source-block.mdc-diff-modified[data-line="2"]'));
   assert.equal(document.querySelector('#content pre button'), null);
+  assert.equal(query('#content .mdc-code-language').textContent, 'txt');
+  assert.equal(query('.mdc-body .mdc-code-language').textContent, 'txt');
   click('#content .mdc-code-copy');
   await tick();
   assert.equal(copied, 'long code\n');
@@ -304,6 +306,34 @@ try {
   host({ type: 'commentResult', requestId: reply.requestId, ok: true });
   assert.equal(query('.mdc-reply').value, '');
   assert.equal(document.querySelectorAll('.mdc-card-reply .mdc-attachment-tile').length, 0);
+  const codeThread = {
+    ...threads[0],
+    id: 'code-anchor',
+    kind: 'selection',
+    blockStartLine: 0,
+    blockEndLine: 3,
+    quote: 'txt',
+    rendered: { quote: 'txt', before: '', after: '' },
+  };
+  host({ type: 'render', text: '```\ntxt\n```', threads: [codeThread], options });
+  await tick();
+  assert.equal(document.querySelector('#content .mdc-code-toolbar mark'), null);
+  assert.equal(query('#content pre code mark').textContent, 'txt');
+  const codeRange = document.createRange();
+  codeRange.selectNodeContents(query('#content pre code'));
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(codeRange);
+  document.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true }));
+  await tick();
+  Array.from(document.querySelectorAll('body > button'))
+    .find((button) => button.textContent === '💬 评论')
+    .click();
+  query('.mdc-draft-input').value = 'code selection';
+  click('#sidebar-draft [data-act="submit"]');
+  const codeSelection = sent.findLast((message) => message.type === 'createThread');
+  assert.equal(codeSelection.selection.quote, 'txt');
+  assert.equal(codeSelection.selection.before, '');
+  assert.equal(codeSelection.selection.after, '\n');
   assert.deepEqual(errors, []);
   console.log(
     'PASS: DOM safe Markdown, raw edit/create/reply lifecycle, draft refresh retention, attachment ordering/removal, image-only submission, failure preservation, cancellation and code-copy structure/payload. Layout remains a browser check.',

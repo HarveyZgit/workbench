@@ -274,7 +274,7 @@ function markText(block: HTMLElement, t: WireThread): boolean {
   const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = node.parentElement;
-      return parent?.closest('.katex-mathml, [aria-hidden="true"], template')
+      return parent?.closest('.mdc-code-toolbar, .katex-mathml, [aria-hidden="true"], template')
         ? NodeFilter.FILTER_REJECT
         : NodeFilter.FILTER_ACCEPT;
     },
@@ -1156,19 +1156,35 @@ function hideButton(): void {
   pending = null;
 }
 
+/** Read only document text, never generated code toolbar labels or controls. */
+function textWithoutCodeToolbars(node: Node): string {
+  const clone = node.cloneNode(true) as HTMLElement | DocumentFragment;
+  clone.querySelectorAll?.('.mdc-code-toolbar').forEach((toolbar) => toolbar.remove());
+  return clone.textContent ?? '';
+}
+
+function inCodeToolbar(node: Node): boolean {
+  const element = node instanceof Element ? node : node.parentElement;
+  return !!element?.closest('.mdc-code-toolbar');
+}
+
 function onSelect(): void {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) {
     hideButton();
     return;
   }
-  const rawQuote = sel.toString();
+  const range = sel.getRangeAt(0);
+  if (inCodeToolbar(range.startContainer) || inCodeToolbar(range.endContainer)) {
+    hideButton();
+    return;
+  }
+  const rawQuote = textWithoutCodeToolbars(range.cloneContents());
   const quote = rawQuote.trim();
   if (!quote) {
     hideButton();
     return;
   }
-  const range = sel.getRangeAt(0);
   // 选区落在侧栏里就不处理。
   if (!content || !content.contains(range.commonAncestorContainer)) {
     hideButton();
@@ -1191,11 +1207,13 @@ function onSelect(): void {
   let before = '';
   let after = '';
   if (!spansMultipleBlocks) {
-    const blockText = startBlock.textContent ?? '';
+    const blockText = textWithoutCodeToolbars(startBlock);
     const prefixRange = document.createRange();
     prefixRange.selectNodeContents(startBlock);
     prefixRange.setEnd(range.startContainer, range.startOffset);
-    const idx = prefixRange.toString().length + (rawQuote.length - rawQuote.trimStart().length);
+    const idx =
+      textWithoutCodeToolbars(prefixRange.cloneContents()).length +
+      (rawQuote.length - rawQuote.trimStart().length);
     if (idx >= 0) {
       before = blockText.slice(Math.max(0, idx - CONTEXT_LEN), idx);
       after = blockText.slice(idx + quote.length, idx + quote.length + CONTEXT_LEN);

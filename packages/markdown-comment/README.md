@@ -68,3 +68,7 @@ Pack the VSIX from the package directory:
 ```sh
 (cd packages/markdown-comment && rushx package)
 ```
+
+### 代码块语言标签
+
+预览和评论中的代码块在左上角显示语言，右上角保留复制按钮；横向滚动只移动代码。优先使用围栏声明的语言（支持别名；未支持高亮的语言仍显示声明的名称）。未声明时尝试保守识别；短内容、结果不明确或超过 10,000 字符时显示 `txt`。显式 `txt` / `text` / `plaintext` 不触发识别。自动识别是启发式判断；需要准确标记时请写明围栏语言。复制仅包含原始代码，不包含标签。
