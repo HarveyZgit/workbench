@@ -1,0 +1,109 @@
+name: Markdown Comment release
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'packages/markdown-comment/**'
+      - 'common/config/rush/**'
+      - 'common/scripts/**'
+      - 'rush.json'
+      - 'scripts/markdown-comment-release*'
+      - '.github/workflows/markdown-comment-release.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'packages/markdown-comment/**'
+      - 'common/config/rush/**'
+      - 'common/scripts/**'
+      - 'rush.json'
+      - 'scripts/markdown-comment-release*'
+      - '.github/workflows/markdown-comment-release.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+      version: ${{ steps.release.outputs.version }}
+      asset: ${{ steps.release.outputs.asset }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - run: node --test scripts/markdown-comment-release.test.mjs
+      - id: release
+        if: github.event_name == 'push'
+        run: node scripts/markdown-comment-release.mjs prepare
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  build:
+    needs: prepare
+    if: github.event_name == 'pull_request' || needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - run: node common/scripts/install-run-rush.js install
+        env:
+          HUSKY: '0'
+      - run: node common/scripts/install-run-rush.js typecheck --to vscode-markdown-comment
+      - run: node common/scripts/install-run-rush.js build --to vscode-markdown-comment
+      - run: node common/scripts/install-run-rush.js test --to vscode-markdown-comment
+      - run: node ../../common/scripts/install-run-rushx.js package
+        working-directory: packages/markdown-comment
+      - name: Name versioned VSIX
+        if: github.event_name == 'push'
+        env:
+          ASSET: ${{ needs.prepare.outputs.asset }}
+        run: |
+          mkdir release-assets
+          cp packages/markdown-comment/dist/vscode-markdown-comment.vsix "release-assets/$ASSET"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name == 'push'
+        with:
+          name: markdown-comment-vsix
+          path: release-assets/*.vsix
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [prepare, build]
+    if: github.event_name == 'push' && needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    concurrency:
+      group: markdown-comment-release
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: markdown-comment-vsix
+          path: release-assets
+      - name: Publish stable GitHub Release
+        run: node scripts/markdown-comment-release.mjs publish
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
