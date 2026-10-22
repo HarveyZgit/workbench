@@ -5,6 +5,7 @@ import { createMarkdownRenderer } from './markdown';
 import { renderCommentMarkdown } from './comment-rendering';
 import { addCodeCopyButtons } from './code-copy';
 import { installSelectionCopy } from './selection-copy';
+import { GENERATED_TOOLBARS, selectedSourceBlocks, sourceRangeTargets } from './selection-range';
 import { createAttachmentComposer, type AttachmentComposer } from './attachment-composer';
 import { createOutlineUi } from './outline-ui';
 import { createMermaidRuntime, type MermaidCommentIntent, type MermaidViewStates } from './mermaid';
@@ -275,7 +276,7 @@ function markText(block: HTMLElement, t: WireThread): boolean {
   const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = node.parentElement;
-      return parent?.closest('.mdc-code-toolbar, .katex-mathml, [aria-hidden="true"], template')
+      return parent?.closest(`${GENERATED_TOOLBARS}, .katex-mathml, [aria-hidden="true"], template`)
         ? NodeFilter.FILTER_REJECT
         : NodeFilter.FILTER_ACCEPT;
     },
@@ -330,7 +331,7 @@ function clearHighlights(): void {
     parent.normalize();
   });
   content?.querySelectorAll('.mdc-block-hl').forEach((el) => {
-    el.classList.remove('mdc-block-hl');
+    el.classList.remove('mdc-block-hl', 'active');
     el.removeAttribute('data-thread-id');
     el.removeAttribute('data-thread-ids');
   });
@@ -339,19 +340,6 @@ function clearHighlights(): void {
     el.removeAttribute('data-thread-id');
     el.removeAttribute('data-thread-ids');
   });
-}
-
-/** 锚点行范围 [startLine, endLineExcl) 覆盖的顶层块（多块选区时不止第一块）。 */
-function blocksInRange(startLine: number, endLineExcl: number): HTMLElement[] {
-  const out: HTMLElement[] = [];
-  content?.querySelectorAll<HTMLElement>(':scope > [data-line]').forEach((el) => {
-    const s = Number(el.getAttribute('data-line'));
-    const e = Number(el.getAttribute('data-end-line'));
-    if (s < endLineExcl && e > startLine) {
-      out.push(el);
-    }
-  });
-  return out;
 }
 
 function applyHighlights(threads: WireThread[]): void {
@@ -392,12 +380,21 @@ function applyHighlights(threads: WireThread[]): void {
     if (startBlock && markText(startBlock, t)) {
       continue;
     }
-    // 退回整块高亮：覆盖锚点行范围内的所有块（多块选区不止第一块）。
-    const blocks = blocksInRange(t.blockStartLine, t.blockEndLine);
-    const targets = blocks.length ? blocks : startBlock ? [startBlock] : [];
-    for (const b of targets) {
-      b.classList.add('mdc-block-hl');
-      b.setAttribute('data-thread-id', t.id);
+    // Only paint source-covered descendants, never their partially covered container.
+    const targets = content ? sourceRangeTargets(content, t.blockStartLine, t.blockEndLine) : [];
+    for (const target of targets) {
+      if (target instanceof Text) {
+        const mark = document.createElement('mark');
+        mark.className = `mdc-hl${t.status === 'resolved' ? ' resolved' : ''}`;
+        mark.dataset.threadId = t.id;
+        target.replaceWith(mark);
+        mark.append(target);
+      } else {
+        target.classList.add('mdc-block-hl');
+        const ids = new Set((target.dataset.threadIds ?? '').split(',').filter(Boolean));
+        ids.add(t.id);
+        target.dataset.threadIds = [...ids].join(',');
+      }
     }
   }
 }
@@ -1146,29 +1143,21 @@ document.body.appendChild(commentBtn);
 
 let pending: RenderedSelection | null = null;
 
-function nearestBlock(node: Node | null): HTMLElement | null {
-  let el: HTMLElement | null = node instanceof HTMLElement ? node : (node?.parentElement ?? null);
-  while (el && !el.hasAttribute('data-line')) {
-    el = el.parentElement;
-  }
-  return el;
-}
-
 function hideButton(): void {
   commentBtn.style.display = 'none';
   pending = null;
 }
 
-/** Read only document text, never generated code toolbar labels or controls. */
-function textWithoutCodeToolbars(node: Node): string {
+/** Read only document text, never generated toolbar labels or controls. */
+function textWithoutToolbars(node: Node): string {
   const clone = node.cloneNode(true) as HTMLElement | DocumentFragment;
-  clone.querySelectorAll?.('.mdc-code-toolbar').forEach((toolbar) => toolbar.remove());
+  clone.querySelectorAll?.(GENERATED_TOOLBARS).forEach((toolbar) => toolbar.remove());
   return clone.textContent ?? '';
 }
 
-function inCodeToolbar(node: Node): boolean {
+function inToolbar(node: Node): boolean {
   const element = node instanceof Element ? node : node.parentElement;
-  return !!element?.closest('.mdc-code-toolbar');
+  return !!element?.closest(GENERATED_TOOLBARS);
 }
 
 function onSelect(): void {
@@ -1178,11 +1167,11 @@ function onSelect(): void {
     return;
   }
   const range = sel.getRangeAt(0);
-  if (inCodeToolbar(range.startContainer) || inCodeToolbar(range.endContainer)) {
+  if (inToolbar(range.startContainer) || inToolbar(range.endContainer)) {
     hideButton();
     return;
   }
-  const rawQuote = textWithoutCodeToolbars(range.cloneContents());
+  const rawQuote = textWithoutToolbars(range.cloneContents());
   const quote = rawQuote.trim();
   if (!quote) {
     hideButton();
@@ -1193,13 +1182,13 @@ function onSelect(): void {
     hideButton();
     return;
   }
-  const startBlock = nearestBlock(range.startContainer);
-  const endBlock = nearestBlock(range.endContainer);
-  if (!startBlock || !endBlock) {
+  const blocks = selectedSourceBlocks(content, range);
+  if (!blocks) {
     hideButton();
     return;
   }
 
+  const [startBlock, endBlock] = blocks;
   const spansMultipleBlocks =
     startBlock !== endBlock ||
     startBlock.classList.contains('mdc-safe-html-block') ||
@@ -1210,12 +1199,12 @@ function onSelect(): void {
   let before = '';
   let after = '';
   if (!spansMultipleBlocks) {
-    const blockText = textWithoutCodeToolbars(startBlock);
+    const blockText = textWithoutToolbars(startBlock);
     const prefixRange = document.createRange();
     prefixRange.selectNodeContents(startBlock);
     prefixRange.setEnd(range.startContainer, range.startOffset);
     const idx =
-      textWithoutCodeToolbars(prefixRange.cloneContents()).length +
+      textWithoutToolbars(prefixRange.cloneContents()).length +
       (rawQuote.length - rawQuote.trimStart().length);
     if (idx >= 0) {
       before = blockText.slice(Math.max(0, idx - CONTEXT_LEN), idx);
@@ -1246,7 +1235,7 @@ document.addEventListener('scroll', hideButton, true);
 
 // ─── 事件：正文点高亮 → 边栏；边栏点卡片/按钮 ───────────────────────
 content?.addEventListener('click', (e) => {
-  if ((e.target as HTMLElement).closest('.mdc-code-toolbar') || !window.getSelection()?.isCollapsed) {
+  if ((e.target as HTMLElement).closest(GENERATED_TOOLBARS) || !window.getSelection()?.isCollapsed) {
     return;
   }
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-thread-id], [data-thread-ids]');
@@ -1350,7 +1339,7 @@ sidebar?.addEventListener('click', (e) => {
     }
     return;
   }
-  if (target.closest('.mdc-code-toolbar')) {
+  if (target.closest(GENERATED_TOOLBARS)) {
     return;
   }
   const card = target.closest<HTMLElement>('.mdc-card');

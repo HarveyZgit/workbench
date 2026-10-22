@@ -428,9 +428,22 @@ function createMarkdownIt(context: 'document' | 'comment'): MarkdownIt {
           }
         }
         target.attrJoin('class', 'mdc-safe-html-block');
+        token.attrJoin('class', 'mdc-safe-html-block');
       }
     }
   });
+
+  // Tight-list paragraphs normally disappear from the DOM. Retain an inline
+  // source boundary so selecting the parent's text cannot absorb its nested list.
+  for (const type of ['paragraph_open', 'paragraph_close']) {
+    markdown.renderer.rules[type] = (tokens, index, options, _environment, renderer) => {
+      const token = tokens[index];
+      if (context !== 'comment' && token.hidden) {
+        return token.nesting === 1 ? `<span${renderer.renderAttrs(token)}>` : '</span>';
+      }
+      return renderer.renderToken(tokens, index, options);
+    };
+  }
 
   markdown.renderer.rules.front_matter = (tokens, index, _options, environment, renderer) => {
     const token = tokens[index];

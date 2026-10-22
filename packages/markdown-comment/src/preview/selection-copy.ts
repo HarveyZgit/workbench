@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { GENERATED_TOOLBARS } from './selection-range';
 
 /** Keep native copy and host shortcuts working for rendered text, without taking
  * over editing shortcuts in the comment composers. */
@@ -19,8 +20,8 @@ export function installSelectionCopy(copyText: (text: string) => void): void {
     if (
       !start?.closest('#content, .mdc-body') ||
       !end?.closest('#content, .mdc-body') ||
-      start.closest('.mdc-code-toolbar') ||
-      end.closest('.mdc-code-toolbar')
+      start.closest(GENERATED_TOOLBARS) ||
+      end.closest(GENERATED_TOOLBARS)
     ) {
       return;
     }
