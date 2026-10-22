@@ -86,3 +86,21 @@ PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_EXECUTABLE=/path/to/chromium node
 ```
 
 在仓库根目录执行上述命令。`JSDOM_MODULE` 和 `PLAYWRIGHT_MODULE` 指向测试环境安装的模块；浏览器检查覆盖工具栏布局与实际换行。
+
+## 自动发布 GitHub Release
+
+`.github/workflows/markdown-comment-release.yml` 在 PR 合入 `master`（或直接推送到 `master`）后，根据本包 `package.json` 的 `version` 发布正式版。版本号只接受 `x.y.z`；要发布修复时，在同一个 PR 中把版本号递增，例如 `1.7.0` → `1.7.1`。不需要手动打 tag。版本不变且对应 tag / Release 已存在时跳过；其他包的无关修改不会触发。
+
+流程先用 Node 22 和 Rush 锁定依赖，执行类型检查、生产构建、单元测试、VSIX 打包，再创建 `markdown-comment-v<version>` 和附件 `vscode-markdown-comment-<version>.vsix`。Release 说明来自上一个 Markdown Comment 版本之后的本包提交。PR 阶段也执行构建验证，但不会发布。合入自动发布工作流本身不会重新发布已有的 `1.7.0`。
+
+发布 job 单独使用临时 `GITHUB_TOKEN` 的 `contents: write` 权限；构建 job 只有读取权限，不需要 PAT、Marketplace token 或新增 secret，也不修改仓库设置。这里只发布 GitHub Release，不发布 VS Code Marketplace / npm。先上传到内部草稿，附件完整后才公开为非预发布正式版并标记 Latest；较旧版本的延迟重试不会覆盖本包更新的 Latest。
+
+失败时在 GitHub Actions 对原运行选择 **Re-run all jobs**。网络、权限或 API 错误会直接失败，不会当作“版本不存在”。同一提交留下的工作流草稿可以继续上传；已有正式版、已有独立 tag 或人工创建的草稿不会被覆盖。其他提交留下的同名草稿需要维护者先检查，不能通过重跑改写其内容。发布 job 串行执行，并使用 GitHub concurrency 的 `queue: max` 保留最多 100 个待执行发布任务，避免重复发布或连续合并时挤掉待发布版本。
+
+发布脚本自身的无网络回归测试：
+
+```sh
+node --test scripts/markdown-comment-release.test.mjs
+```
+
+CI 的单元测试不代替上文合成浏览器测试或真实 VS Code 宿主验证；UI 改动仍需运行相应回归。
