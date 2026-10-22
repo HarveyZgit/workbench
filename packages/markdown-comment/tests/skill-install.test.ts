@@ -51,10 +51,7 @@ test('detectAgentSkillRoots only finds dot-folder skills dirs', () => {
   fs.mkdirSync(path.join(home, '.plain'), { recursive: true });
   write(path.join(home, '.filehome', 'skills'), 'not-a-dir');
   const found = detectAgentSkillRoots(home);
-  assert.deepEqual(
-    found,
-    [path.join(home, '.claude', 'skills'), path.join(home, '.codex', 'skills')].sort(),
-  );
+  assert.deepEqual(found, [path.join(home, '.claude', 'skills'), path.join(home, '.codex', 'skills')].sort());
   assert.equal(detectAgentSkillRoots(path.join(home, 'missing-home')).length, 0);
 });
 
@@ -229,4 +226,12 @@ test('reconcile no-ops on empty, reinstalls missing ours, drops foreign-real roo
   assert.equal(state.roots.includes(path.resolve(foreign)), false);
   assert.equal(linkStatus(ours, canonicalDir(gs)).kind, 'ours');
   assert.equal(fs.readFileSync(canonicalSkillFile(gs), 'utf8'), '# newer\n');
+});
+
+test('bundled Skill replies by default and resolves only on explicit user request', () => {
+  const file = new URL('../resources/skills/markdown-comment/SKILL.md', import.meta.url);
+  const body = fs.readFileSync(file, 'utf8');
+  assert.match(body, /默认保留线程未解决/);
+  assert.match(body, /只有用户明确要求解决具体线程或一组线程时/);
+  assert.doesNotMatch(body, /已答复且无需跟进的/);
 });

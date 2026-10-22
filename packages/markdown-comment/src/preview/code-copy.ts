@@ -2,6 +2,8 @@
 
 const COPY_ICON =
   '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="5" y="5" width="8" height="9" rx="1"/><path d="M10 5V2H2v9h3"/></svg>';
+const WRAP_ICON =
+  '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 3h12M2 7h9a3 3 0 0 1 0 6H8m2-2-2 2 2 2M2 11h3"/></svg>';
 
 /** Keep controls outside the scrolling pre, with a dedicated toolbar that never covers code. */
 export function addCodeCopyButtons(root: ParentNode): void {
@@ -29,6 +31,17 @@ export function addCodeCopyButtons(root: ParentNode): void {
     const label = document.createElement('span');
     label.className = 'mdc-code-language';
     label.textContent = code.dataset.codeLanguage || 'txt';
+    const wrapButton = document.createElement('button');
+    wrapButton.type = 'button';
+    wrapButton.className = 'mdc-code-wrap';
+    wrapButton.innerHTML = WRAP_ICON;
+    wrapButton.setAttribute('aria-label', '自动换行');
+    wrapButton.setAttribute('aria-pressed', 'false');
+    wrapButton.title = '自动换行';
+    wrapButton.addEventListener('click', () => {
+      const wrapped = block.classList.toggle('mdc-code-wrap-enabled');
+      wrapButton.setAttribute('aria-pressed', String(wrapped));
+    });
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'mdc-code-copy';
@@ -71,7 +84,7 @@ export function addCodeCopyButtons(root: ParentNode): void {
         button.title = '复制代码块';
       }, 1600);
     });
-    toolbar.append(label, button);
+    toolbar.append(label, wrapButton, button);
     pre.before(block);
     block.append(toolbar, pre);
   });

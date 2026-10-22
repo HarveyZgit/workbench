@@ -2,12 +2,12 @@
 name: markdown-comment
 description: 读取并回复 Markdown Comment 里的划词、全文、Mermaid 整图或节点评论。当用户说”看看我在文档里的评论/批注”、”逐条回复我标注的问题”，粘贴 `/markdown-comment <target>`，或要求处理 Markdown / Mermaid 上的人工评论时使用。通过 markdown-comment CLI 的 list、reply、resolve 命令操作评论，输出精简、省 token。
 metadata:
-  version: 1.3.0
+  version: 1.4.0
 ---
 
 # markdown-comment
 
-Markdown Comment 为 Markdown 提供划词、全文和 Mermaid 图表评论。本 skill 让你读取评论、逐条在原处回复并标记已解决，无需把整篇文档读进上下文。
+Markdown Comment 为 Markdown 提供划词、全文和 Mermaid 图表评论。本 skill 让你读取评论、逐条在原处回复，默认保留线程未解决，无需把整篇文档读进上下文。
 
 ## CLI
 
@@ -72,7 +72,7 @@ u_f7309791
 1. 用户让你处理评论时：若给了 `/markdown-comment <target>`，去掉前缀后 `{{CLI}} list <target> --open`；否则 `{{CLI}} list --open`（需要 untitled 时加 `-g`）。
 2. 按 `[类型]` 和 `「引用」` 理解每条问的是哪段；Mermaid 节点评论同时参考 `nodeId`。需要更多上下文时，再用行号去读对应 Markdown 的局部，不要整篇读入。
 3. 逐条 `{{CLI}} reply <短id> "<回复>"`。回复以 `author: agent` 写回，用户在 VS Code 里即时看到（插件监听存储变化自动刷新）。
-4. 已答复且无需跟进的，`{{CLI}} resolve <短id>`。
+4. 回复后保持线程原有状态。只有用户明确要求解决具体线程或一组线程时，才对这些线程执行 `{{CLI}} resolve <短id>`；“处理评论”“回复评论”或完成修改都不代表允许自动解决。
 
 ## 注意
 

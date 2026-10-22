@@ -109,13 +109,18 @@ const image = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=',
   'base64',
 );
-const selectFiles = async (selector, names) => {
-  const picker = query(selector);
-  Object.defineProperty(picker, 'files', {
-    configurable: true,
-    value: names.map((name) => new window.File([image], name, { type: 'image/png' })),
+const pasteFiles = async (selector, names) => {
+  const input = query(selector);
+  const event = new window.Event('paste', { bubbles: true, cancelable: true });
+  const files = names.map((name) => new window.File([image], name, { type: 'image/png' }));
+  Object.defineProperty(event, 'clipboardData', {
+    value: {
+      items: files.map((file) => ({ kind: 'file', type: file.type, getAsFile: () => file })),
+      files,
+      getData: () => '',
+    },
   });
-  picker.dispatchEvent(new window.Event('change'));
+  input.dispatchEvent(event);
   await tick();
 };
 try {
@@ -132,6 +137,9 @@ try {
     },
   });
   await tick();
+  assert.match(query('.mdc-reply').placeholder, /回复或粘贴图片…（回车换行/);
+  assert.equal(query('.mdc-reply').getAttribute('aria-label'), query('.mdc-reply').placeholder);
+  assert.equal(document.querySelector('.mdc-attachment-hint'), null);
   assert.equal(query('.mdc-body strong').textContent, 'bold');
   assert.equal(
     document.querySelector('.mdc-body script, .mdc-body [onerror], .mdc-body a[href^="javascript:"]'),
@@ -146,6 +154,7 @@ try {
   await tick();
   assert.equal(copied, 'long code\n');
   click('[data-comment-id="comment-1"] [data-act="editComment"]');
+  assert.match(query('.mdc-edit-input').placeholder, /编辑评论或粘贴图片/);
   assert.equal(query('.mdc-edit-input').value, raw);
   host({ type: 'threads', threads });
   assert.equal(query('.mdc-edit-input').value, raw, 'host refresh preserves edit draft');
@@ -159,11 +168,13 @@ try {
   assert.equal(document.querySelector('.mdc-edit'), null);
 
   click('#mdc-add-doc');
-  await selectFiles('#sidebar-draft input[type="file"]', ['first.png', 'second.png', 'third.png']);
+  await pasteFiles('#sidebar-draft textarea', ['first.png', 'second.png', 'third.png']);
   assert.equal(document.querySelectorAll('#sidebar-draft .mdc-attachment-tile').length, 3);
   click('#sidebar-draft button[aria-label="前移 third.png"]');
   click('#sidebar-draft button[aria-label="删除 first.png"]');
   const docDraft = query('#sidebar-draft .mdc-draft');
+  assert.match(query('.mdc-draft-input').placeholder, /写下评论或粘贴图片…（Markdown/);
+  assert.match(query('.mdc-draft-input').title, /最多 10 张/);
   host({ type: 'render', text: '# Source changed while composing', threads, options });
   await tick();
   assert.equal(query('#sidebar-draft .mdc-draft'), docDraft, 'source render preserves document draft');
@@ -207,7 +218,7 @@ try {
     .find((button) => button.textContent === '💬 评论')
     .click();
   query('.mdc-draft-input').value = 'selection draft retained';
-  await selectFiles('#sidebar-draft input[type="file"]', ['selection.png']);
+  await pasteFiles('#sidebar-draft textarea', ['selection.png']);
   const selectionDraft = query('#sidebar-draft .mdc-draft');
   host({ type: 'render', text: '# Source changes again', threads, options });
   await tick();
@@ -294,7 +305,7 @@ try {
   assert.equal(query('.mdc-comment-image img').hasAttribute('data-src'), false);
   host({ type: 'threads', threads });
 
-  await selectFiles('.mdc-card-reply input[type="file"]', ['reply.png']);
+  await pasteFiles('.mdc-card-reply textarea', ['reply.png']);
   query('.mdc-reply').value = '  **reply**\n';
   host({ type: 'threads', threads });
   assert.equal(query('.mdc-reply').value, '  **reply**\n');

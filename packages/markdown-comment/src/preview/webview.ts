@@ -4,6 +4,7 @@ import './webview.css';
 import { createMarkdownRenderer } from './markdown';
 import { renderCommentMarkdown } from './comment-rendering';
 import { addCodeCopyButtons } from './code-copy';
+import { installSelectionCopy } from './selection-copy';
 import { createAttachmentComposer, type AttachmentComposer } from './attachment-composer';
 import { createOutlineUi } from './outline-ui';
 import { createMermaidRuntime, type MermaidCommentIntent, type MermaidViewStates } from './mermaid';
@@ -428,7 +429,7 @@ function cardHtml(t: WireThread): string {
         <button class="mdc-icon mdc-tip" data-act="delComment" data-tip="删除这条评论">${ICON_DELETE}</button>
       </span>
     </div>
-    <div class="mdc-body">${renderCommentMarkdown(c.body, renderOptions, `comment-${c.id}`)}${(c.attachments ?? []).map((image) => `<figure class="mdc-comment-image">${image.uri ? `<img src="${esc(image.uri)}" alt="${esc(image.name)}" loading="lazy">` : '<span>图片不可用</span>'}<figcaption>${esc(image.name)}</figcaption></figure>`).join('')}</div>
+    <div class="mdc-body" role="group" tabindex="0" aria-label="评论正文">${renderCommentMarkdown(c.body, renderOptions, `comment-${c.id}`)}${(c.attachments ?? []).map((image) => `<figure class="mdc-comment-image">${image.uri ? `<img src="${esc(image.uri)}" alt="${esc(image.name)}" loading="lazy">` : '<span>图片不可用</span>'}<figcaption>${esc(image.name)}</figcaption></figure>`).join('')}</div>
   </div>`,
     )
     .join('');
@@ -448,7 +449,7 @@ function cardHtml(t: WireThread): string {
   </div>
   <div class="mdc-card-comments">${comments}</div>
   <div class="mdc-card-reply">
-    <textarea class="mdc-reply" placeholder="回复…（回车换行，${submitKey}+回车 发送）"></textarea>
+    <textarea class="mdc-reply" placeholder="回复或粘贴图片…（回车换行，${submitKey}+回车 发送）"></textarea>
     <button class="mdc-icon mdc-send mdc-tip" data-act="reply" data-tip="发送（${submitKey}+回车）">${ICON_SEND}</button>
   </div>
 </div>`;
@@ -541,7 +542,7 @@ function renderDraft(labelHtml: string): void {
   expandSidebar();
   draftEl.innerHTML = `<div class="mdc-draft">
   <div class="mdc-card-quote">${labelHtml}</div>
-  <textarea class="mdc-draft-input" placeholder="写下你的评论…（Markdown，${submitKey}+Enter 提交，Esc 取消）"></textarea>
+  <textarea class="mdc-draft-input" placeholder="写下评论或粘贴图片…（Markdown，${submitKey}+Enter 提交，Esc 取消）"></textarea>
   <div class="mdc-card-actions">
     <button data-act="cancel">取消</button>
     <button data-act="submit">评论</button>
@@ -1122,6 +1123,8 @@ function render(
     });
 }
 
+installSelectionCopy((text) => post({ type: 'copySelection', text }));
+
 // ─── 浮动「评论」按钮 ───────────────────────────────────────────────
 const commentBtn = document.createElement('button');
 commentBtn.textContent = '💬 评论';
@@ -1243,6 +1246,9 @@ document.addEventListener('scroll', hideButton, true);
 
 // ─── 事件：正文点高亮 → 边栏；边栏点卡片/按钮 ───────────────────────
 content?.addEventListener('click', (e) => {
+  if ((e.target as HTMLElement).closest('.mdc-code-toolbar') || !window.getSelection()?.isCollapsed) {
+    return;
+  }
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-thread-id], [data-thread-ids]');
   if (el && content.contains(el)) {
     const directId = el.getAttribute('data-thread-id');
@@ -1275,7 +1281,7 @@ function enterEdit(cmt: HTMLElement): void {
   }
   const form = document.createElement('div');
   form.className = 'mdc-edit';
-  form.innerHTML = `<textarea class="mdc-edit-input"></textarea>
+  form.innerHTML = `<textarea class="mdc-edit-input" placeholder="编辑评论或粘贴图片…"></textarea>
     <div class="mdc-card-actions">
       <button data-act="editCancel">取消</button>
       <button data-act="editSave">保存</button>
@@ -1344,7 +1350,7 @@ sidebar?.addEventListener('click', (e) => {
     }
     return;
   }
-  if (target.closest('.mdc-code-copy')) {
+  if (target.closest('.mdc-code-toolbar')) {
     return;
   }
   const card = target.closest<HTMLElement>('.mdc-card');

@@ -37,7 +37,7 @@ Preview settings:
 
 评论提交后使用与预览区共用的 Markdown 引擎渲染，编辑时仍是原始 Markdown。评论不执行原始 HTML，并经过清洗；即使文件只在本地使用，也不会信任粘贴内容或 Agent 回复里的 HTML。评论内容不会参与文档大纲、划词锚点或源码定位。
 
-预览侧栏的创建、回复和编辑框支持一次选择多张图片，也支持纯图片评论。提交前可删除图片或调整顺序；取消不会保存新图片。支持 PNG、JPEG、GIF、WebP，每条评论最多 10 张、每张最多 10 MiB、合计最多 30 MiB，服务端同时检查文件内容与类型。
+预览侧栏的创建、回复和编辑框支持直接粘贴剪贴板中的图片（可连续粘贴，也可一次粘贴多张），也支持纯图片评论。提交前可删除图片或调整顺序；取消不会保存新图片。支持 PNG、JPEG、GIF、WebP，每条评论最多 10 张、每张最多 10 MiB、合计最多 30 MiB，服务端同时检查文件内容与类型。
 
 图片保存在当前评论存储目录的 `attachments/` 下，不写进 Markdown 文档或项目目录，也不会上传到外部服务。文件名由系统生成，评论只保存有序的附件元数据；文档另存为或迁移存储键时不需要搬动图片。当前实现仍沿用 VS Code 全局存储及 CLI 指针兼容层，不引入新的默认存储位置。备份评论时应备份整个存储目录，包括附件。
 
@@ -71,4 +71,18 @@ Pack the VSIX from the package directory:
 
 ### 代码块语言标签
 
-预览和评论中的代码块在左上角显示语言，右上角保留复制按钮；横向滚动只移动代码。优先使用围栏声明的语言（支持别名；未支持高亮的语言仍显示声明的名称）。未声明时尝试保守识别；短内容、结果不明确或超过 10,000 字符时显示 `txt`。显式 `txt` / `text` / `plaintext` 不触发识别。自动识别是启发式判断；需要准确标记时请写明围栏语言。复制仅包含原始代码，不包含标签。
+预览和评论中的代码块在左上角显示语言，右上角提供自动换行开关和复制按钮；横向滚动只移动代码。优先使用围栏声明的语言（支持别名；未支持高亮的语言仍显示声明的名称）。未声明时尝试保守识别；短内容、结果不明确或超过 10,000 字符时显示 `txt`。显式 `txt` / `text` / `plaintext` 不触发识别。自动识别是启发式判断；需要准确标记时请写明围栏语言。换行只改变显示，不修改源码；复制仅包含原始代码，不包含标签。正文和评论中的选中文本可用 Cmd/Ctrl+C 或右键「复制所选文字」复制。
+
+## 交互回归测试
+
+在构建后运行合成 DOM 与浏览器检查（不等同于 VS Code 宿主测试）：
+
+```sh
+JSDOM_MODULE=/path/to/jsdom node packages/markdown-comment/tests/webview-dom.mjs
+JSDOM_MODULE=/path/to/jsdom node packages/markdown-comment/tests/code-wrap-dom.mjs
+JSDOM_MODULE=/path/to/jsdom node packages/markdown-comment/tests/selection-copy-dom.mjs
+JSDOM_MODULE=/path/to/jsdom node --test packages/markdown-comment/tests/attachment-composer-dom.mjs
+PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_EXECUTABLE=/path/to/chromium node packages/markdown-comment/tests/webview-browser.mjs
+```
+
+在仓库根目录执行上述命令。`JSDOM_MODULE` 和 `PLAYWRIGHT_MODULE` 指向测试环境安装的模块；浏览器检查覆盖工具栏布局与实际换行。

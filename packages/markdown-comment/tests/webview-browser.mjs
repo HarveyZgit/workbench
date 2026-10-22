@@ -111,20 +111,52 @@ try {
   assert.equal(await code.locator('.mdc-code-language').textContent(), 'txt');
   assert.equal(await page.locator('.mdc-body .mdc-code-language').first().textContent(), 'txt');
   const labelBefore = await code.locator('.mdc-code-language').boundingBox();
-  const before = await code.locator('button').boundingBox();
+  const before = await code.locator('.mdc-code-copy').boundingBox();
   assert.ok(labelBefore.x + labelBefore.width < before.x);
   await code.locator('pre').evaluate((element) => {
     element.scrollLeft = 300;
   });
   assert.ok(await code.locator('pre').evaluate((element) => element.scrollLeft > 0));
-  const after = await code.locator('button').boundingBox();
+  const after = await code.locator('.mdc-code-copy').boundingBox();
   assert.equal(before.x, after.x);
   const labelAfter = await code.locator('.mdc-code-language').boundingBox();
   assert.equal(labelBefore.x, labelAfter.x);
   assert.ok(labelAfter.y + labelAfter.height <= (await code.locator('pre').boundingBox()).y);
   assert.ok(after.y + after.height <= (await code.locator('pre').boundingBox()).y);
-  await code.locator('button').click();
+  await code.locator('.mdc-code-copy').click();
   assert.equal(await page.evaluate(() => window.copied), `${'long code '.repeat(100)}\n`);
+
+  const originalCode = await code.locator('pre code').textContent();
+  const unwrappedHeight = (await code.locator('pre').boundingBox()).height;
+  await code.locator('.mdc-code-wrap').focus();
+  await page.keyboard.press('Space');
+  assert.equal(await code.locator('.mdc-code-wrap').getAttribute('aria-pressed'), 'true');
+  assert.ok((await code.locator('pre').boundingBox()).height > unwrappedHeight);
+  assert.ok(await code.locator('pre').evaluate((element) => element.scrollWidth <= element.clientWidth + 1));
+  assert.equal(await code.locator('pre code').textContent(), originalCode);
+  assert.equal(await page.locator('.mdc-body .mdc-code-wrap').first().getAttribute('aria-pressed'), 'false');
+  await code.locator('.mdc-code-copy').click();
+  assert.equal(await page.evaluate(() => window.copied), originalCode);
+  await code.locator('.mdc-code-wrap').click();
+  assert.equal(await code.locator('.mdc-code-wrap').getAttribute('aria-pressed'), 'false');
+  // Exercise browser Selection across rendered blocks, including the non-selectable toolbar.
+  const selected = await page.evaluate(() => {
+    document.activeElement?.blur();
+    const range = document.createRange();
+    range.selectNodeContents(document.querySelector('#content'));
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return selection.toString();
+  });
+  await page.keyboard.press('Control+c');
+  const selectionCopy = await page.evaluate(() =>
+    window.sent.findLast((message) => message.type === 'copySelection'),
+  );
+  assert.equal(selectionCopy.text, selected);
+  assert.ok(selectionCopy.text.includes('long code'));
+  assert.ok(!selectionCopy.text.includes('txt'), 'code language label is not selected copy content');
+  await page.evaluate(() => window.getSelection().removeAllRanges());
 
   await page.locator('[data-comment-id="comment-1"] [data-act="editComment"]').click();
   assert.equal(await page.locator('.mdc-edit-input').inputValue(), raw);
@@ -141,10 +173,15 @@ try {
   await page.locator('.mdc-edit [data-act="editCancel"]').click();
 
   await page.locator('#mdc-add-doc').click();
-  const picker = page.locator('#sidebar-draft input[type="file"]');
-  await picker.setInputFiles(
-    ['first.png', 'second.png', 'third.png'].map((name) => ({ name, mimeType: 'image/png', buffer: image })),
-  );
+  await page.locator('#sidebar-draft textarea').evaluate((input, bytes) => {
+    const data = new DataTransfer();
+    for (const name of ['first.png', 'second.png', 'third.png']) {
+      data.items.add(new File([new Uint8Array(bytes)], name, { type: 'image/png' }));
+    }
+    input.dispatchEvent(
+      new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }),
+    );
+  }, Array.from(image));
   await page.waitForFunction(
     () => document.querySelectorAll('#sidebar-draft .mdc-attachment-tile').length === 3,
   );
@@ -210,7 +247,7 @@ try {
     await page.screenshot({ path: process.env.SCREENSHOT_PATH, fullPage: true });
   }
   console.log(
-    'PASS: safe Markdown, raw edit round trip, fixed code toolbar, copy payload, multi-image ordering, image-only submission, failure retention, cancellation.',
+    'PASS: safe Markdown, raw edit round trip, fixed code toolbar, keyboard wrap/layout, exact code and selected-text copy excluding controls, image paste/order, image-only submission, failure retention, cancellation.',
   );
 } finally {
   await browser.close();

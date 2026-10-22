@@ -25,3 +25,5 @@ rush typecheck --to vscode-markdown-comment
 ```
 
 Do not run `pnpm` at the repository root. When the migration changes the build or test setup, update this file and the package README in the same change.
+
+Synthetic DOM/browser interaction regressions and their environment variables are documented in the package README under “交互回归测试”. Run the affected suites for clipboard, code-toolbar, or composer changes; they supplement rather than replace native VS Code smoke checks.

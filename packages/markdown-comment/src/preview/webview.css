@@ -135,7 +135,8 @@ body.vscode-high-contrast {
   margin-top: 0;
 }
 
-.mdc-code-copy {
+.mdc-code-copy,
+.mdc-code-wrap {
   position: absolute;
   top: 7px;
   right: 7px;
@@ -153,6 +154,8 @@ body.vscode-high-contrast {
 }
 
 .mdc-code-block:hover .mdc-code-copy,
+.mdc-code-block:hover .mdc-code-wrap,
+.mdc-code-wrap:focus-visible,
 .mdc-code-copy:focus-visible {
   opacity: 1;
 }
@@ -301,6 +304,7 @@ body.vscode-high-contrast {
   min-height: 24px;
 }
 .mdc-code-language {
+  margin-right: auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -314,7 +318,8 @@ body.vscode-high-contrast {
   overflow: auto;
   background: transparent;
 }
-.mdc-code-toolbar .mdc-code-copy {
+.mdc-code-toolbar .mdc-code-copy,
+.mdc-code-toolbar .mdc-code-wrap {
   flex-shrink: 0;
   position: static;
   display: inline-flex;
@@ -372,10 +377,6 @@ body.vscode-high-contrast {
   opacity: 0.4;
   cursor: default;
 }
-.mdc-attachment-hint {
-  margin-left: 6px;
-  opacity: 0.6;
-}
 .mdc-attachment-list {
   display: flex;
   flex-wrap: wrap;
@@ -415,4 +416,15 @@ body.vscode-high-contrast {
 }
 .mdc-card-reply.mdc-has-attachments .mdc-send {
   display: inline-flex;
+}
+
+.mdc-code-wrap[aria-pressed='true'] {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  opacity: 1;
+}
+.mdc-code-wrap-enabled > pre,
+.mdc-code-wrap-enabled > pre > code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

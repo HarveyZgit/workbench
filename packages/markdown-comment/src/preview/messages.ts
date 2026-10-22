@@ -127,5 +127,6 @@ export type WebviewToHost = (
   | { type: 'revealSourceLine'; line: number }
   | { type: 'previewScroll'; line: number }
   | { type: 'copySkillPrompt' }
+  | { type: 'copySelection'; text: string }
 ) &
   CommentSubmission;
