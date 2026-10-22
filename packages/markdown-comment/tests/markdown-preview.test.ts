@@ -106,3 +106,10 @@ test('renderer covers task lists footnotes alerts deflist emoji and image policy
   assert.match(comment, /before/);
   assert.match(comment, /after/);
 });
+
+test('tight list text retains an inline source boundary separate from nested children', () => {
+  const html = createMarkdownRenderer().render('- parent\n  - child\n- sibling');
+  assert.match(html, /<span class="mdc-source-block" data-line="0" data-end-line="1">parent<\/span>/);
+  assert.match(html, /<span class="mdc-source-block" data-line="1" data-end-line="2">child<\/span>/);
+  assert.doesNotMatch(html, /<p[^>]*>parent/);
+});

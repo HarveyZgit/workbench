@@ -63,6 +63,15 @@ export function relocate(doc: vscode.TextDocument, a: StoredAnchor): vscode.Rang
   if (a.quote.length === 0) {
     return new vscode.Range(Math.min(a.startLine, lastLine), 0, Math.min(a.startLine, lastLine), 0);
   }
+  // A whole-document anchor has no surrounding context. It can still move
+  // safely when its exact text survives once, but repeated text is ambiguous.
+  if (!a.before && !a.after) {
+    const index = text.indexOf(a.quote);
+    if (index >= 0 && text.indexOf(a.quote, index + 1) < 0) {
+      return new vscode.Range(doc.positionAt(index), doc.positionAt(index + a.quote.length));
+    }
+    return null;
+  }
   let best = -1;
   let bestScore = -1;
   for (let i = text.indexOf(a.quote); i >= 0; i = text.indexOf(a.quote, i + 1)) {
@@ -102,8 +111,8 @@ function locate(hay: string, needle: string, before: string, after: string): num
   if (occ.length <= 1) {
     return occ.length === 1 ? occ[0] : -1;
   }
-  let best = occ[0];
-  let bestScore = -1;
+  let best = -1;
+  let bestScore = 0;
   for (const i of occ) {
     const pre = hay.slice(Math.max(0, i - before.length), i);
     const post = hay.slice(i + needle.length, i + needle.length + after.length);
@@ -117,6 +126,8 @@ function locate(hay: string, needle: string, before: string, after: string): num
     if (score > bestScore) {
       bestScore = score;
       best = i;
+    } else if (score === bestScore) {
+      best = -1; // Rendered context may not match Markdown syntax; never guess.
     }
   }
   return best;
