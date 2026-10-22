@@ -75,6 +75,8 @@ Pack the VSIX from the package directory:
 
 ## 交互回归测试
 
+选区范围回归覆盖正向/反向和元素边界、紧凑/松散/多层混合列表、引用、表格、段落、代码、图片、数学和 Unicode；检查重新载入、重复文字、重叠评论、解决状态筛选与删除后的高亮。锚点单测使用真实映射/重定位代码和最小 VS Code 文档模型，覆盖持久化、插入/删除、LF/CRLF 与失联处理。合成测试不代替 VS Code 宿主和操作系统原生选区验证。
+
 在构建后运行合成 DOM 与浏览器检查（不等同于 VS Code 宿主测试）：
 
 ```sh
@@ -88,5 +90,3 @@ PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_EXECUTABLE=/path/to/chromium node
 ```
 
 在仓库根目录执行上述命令。`JSDOM_MODULE` 和 `PLAYWRIGHT_MODULE` 指向测试环境安装的模块；浏览器检查覆盖工具栏布局与实际换行。
-
-选区范围回归覆盖正向/反向和元素边界、紧凑/松散/多层混合列表、引用、表格、段落、代码、图片、数学和 Unicode；检查重新载入、重复文字、重叠评论、解决状态筛选与删除后的高亮。锚点单测使用真实映射/重定位代码和最小 VS Code 文档模型，覆盖持久化、插入/删除、LF/CRLF 与失联处理。合成测试不代替 VS Code 宿主和操作系统原生选区验证。
