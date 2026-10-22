@@ -30,3 +30,26 @@ test('draft validation rejects unsupported, empty, oversized, excessive and aggr
   );
   assert.throws(() => validateDraftFiles([{ size: 30 * 1024 * 1024 }], [{ size: 1, type: 'image/png' }]));
 });
+
+test('clipboard images preserve item order and do not duplicate the files fallback', async () => {
+  const { clipboardImageFiles } = await import('../src/preview/attachment-composer.ts');
+  const first = new File(['first'], 'first.png', { type: 'image/png' });
+  const second = new File(['second'], 'second.jpg', { type: 'image/jpeg' });
+  const text = new File(['plain'], 'notes.txt', { type: 'text/plain' });
+  const clipboard = {
+    items: [
+      { kind: 'string', getAsFile: () => null },
+      { kind: 'file', getAsFile: () => first },
+      { kind: 'file', getAsFile: () => null },
+      { kind: 'file', getAsFile: () => text },
+      { kind: 'file', getAsFile: () => second },
+    ],
+    files: [first, second],
+  } as unknown as DataTransfer;
+  assert.deepEqual(clipboardImageFiles(clipboard), [first, second]);
+  assert.deepEqual(
+    clipboardImageFiles({ items: [], files: [text, second, first] } as unknown as DataTransfer),
+    [second, first],
+  );
+  assert.deepEqual(clipboardImageFiles({ items: [], files: [text] } as unknown as DataTransfer), []);
+});

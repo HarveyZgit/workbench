@@ -93,6 +93,10 @@
         "command": "markdown-comment.delete-thread",
         "title": "删除整条评论线程",
         "icon": "$(trash)"
+      },
+      {
+        "command": "markdown-comment.copy-preview-selection",
+        "title": "复制所选文字"
       }
     ],
     "menus": {
@@ -171,6 +175,19 @@
           "command": "markdown-comment.save-edit",
           "when": "commentController == markdownComment",
           "group": "inline@2"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "markdown-comment.copy-preview-selection",
+          "when": "webviewId == 'markdownCommentPreview' && mdcHasSelection",
+          "group": "1_cutcopypaste@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "markdown-comment.copy-preview-selection",
+          "when": "false"
         }
       ]
     },

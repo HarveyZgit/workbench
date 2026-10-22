@@ -37,6 +37,39 @@ export function attachmentInputs(items: readonly DraftAttachment[]): AttachmentI
     'id' in item ? { id: item.id } : { name: item.name, mime: item.mime, data: item.data },
   );
 }
+/** Clipboard items and files often describe the same image. Prefer items, then fall back. */
+export function clipboardImageFiles(clipboard: Pick<DataTransfer, 'items' | 'files'>): File[] {
+  const items = Array.from(clipboard.items ?? [])
+    .filter((item) => item.kind === 'file')
+    .map((item) => item.getAsFile())
+    .filter((file): file is File => !!file && file.type.startsWith('image/'));
+  return items.length
+    ? items
+    : Array.from(clipboard.files ?? []).filter((file) => file.type.startsWith('image/'));
+}
+
+function readImage(file: File): Promise<DraftAttachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reader.onabort = () => reject(new Error('图片读取失败，请重试。'));
+    reader.onload = () => {
+      if (typeof reader.result !== 'string' || !reader.result.startsWith('data:')) {
+        reject(new Error('图片读取失败，请重试。'));
+        return;
+      }
+      const uri = reader.result;
+      resolve({
+        name: file.name,
+        mime: file.type,
+        size: file.size,
+        data: uri.slice(uri.indexOf(',') + 1),
+        uri,
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export interface AttachmentComposer {
   count: () => number;
   inputs: () => AttachmentInput[];
@@ -51,26 +84,18 @@ export function createAttachmentComposer(
 ): AttachmentComposer {
   let items = [...initial];
   let busy = false;
-  let loading = false;
+  let pendingFiles: File[] = [];
+  let queue = Promise.resolve();
+  let generation = 0;
+  const isBusy = (): boolean => busy || pendingFiles.length > 0;
   const root = document.createElement('div');
   root.className = 'mdc-attachment-composer';
-  const picker = document.createElement('input');
-  picker.type = 'file';
-  picker.multiple = true;
-  picker.accept = 'image/png,image/jpeg,image/gif,image/webp';
-  picker.hidden = true;
-  const add = document.createElement('button');
-  add.type = 'button';
-  add.textContent = '添加图片';
-  const hint = document.createElement('span');
-  hint.className = 'mdc-attachment-hint';
-  hint.textContent = '最多 10 张 · 每张 10 MiB';
   const list = document.createElement('div');
   list.className = 'mdc-attachment-list';
   const error = document.createElement('div');
   error.className = 'mdc-composer-error';
   error.setAttribute('role', 'alert');
-  root.append(picker, add, hint, list, error);
+  root.append(list, error);
   container.append(root);
   root.addEventListener('click', (event) => event.stopPropagation());
   function render(): void {
@@ -96,9 +121,11 @@ export function createAttachmentComposer(
         button.type = 'button';
         button.textContent = label;
         button.setAttribute('aria-label', `${label} ${item.name}`);
-        button.disabled =
-          busy || loading || (delta !== 0 && (index + delta < 0 || index + delta >= items.length));
+        button.disabled = isBusy() || (delta !== 0 && (index + delta < 0 || index + delta >= items.length));
         button.addEventListener('click', () => {
+          if (isBusy()) {
+            return;
+          }
           if (delta) {
             moveAttachment(items, index, delta);
           } else {
@@ -111,51 +138,67 @@ export function createAttachmentComposer(
       tile.append(image, name, actions);
       list.append(tile);
     });
-    add.disabled = busy || loading || items.length >= MAX_COUNT;
     container.classList.toggle('mdc-has-attachments', items.length > 0);
   }
-  add.addEventListener('click', () => picker.click());
-  picker.addEventListener('change', async () => {
-    const files = Array.from(picker.files ?? []);
-    picker.value = '';
-    error.textContent = '';
+  const input = container.querySelector<HTMLTextAreaElement>('textarea');
+  if (input) {
+    const imageHelp = '可粘贴图片，最多 10 张，每张 10 MiB';
+    if (!input.hasAttribute('aria-label')) {
+      input.setAttribute('aria-label', input.placeholder || '评论');
+    }
+    input.setAttribute('aria-description', imageHelp);
+    input.title = imageHelp;
+  }
+  input?.addEventListener('paste', (event) => {
+    const clipboard = event.clipboardData;
+    if (!clipboard || event.defaultPrevented || busy || input.disabled || input.readOnly) {
+      return;
+    }
+    const files = clipboardImageFiles(clipboard);
+    if (!files.length) {
+      return; // Ordinary text (including Markdown image links) keeps native paste behavior.
+    }
+    if (!clipboard.getData('text/plain')) {
+      event.preventDefault();
+    }
     try {
-      validateDraftFiles(items, files);
-      loading = true;
-      render();
-      const selected = await Promise.all(
-        files.map(
-          (file) =>
-            new Promise<DraftAttachment>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onerror = () => reject(new Error('图片读取失败，请重试。'));
-              reader.onload = () => {
-                const uri = String(reader.result);
-                resolve({
-                  name: file.name,
-                  mime: file.type,
-                  size: file.size,
-                  data: uri.slice(uri.indexOf(',') + 1),
-                  uri,
-                });
-              };
-              reader.readAsDataURL(file);
-            }),
-        ),
-      );
-      items.push(...selected);
+      // Reserve limits immediately, before another paste can enqueue more files.
+      validateDraftFiles([...items, ...pendingFiles], files);
     } catch (reason) {
       error.textContent = reason instanceof Error ? reason.message : '图片读取失败。';
-    } finally {
-      loading = false;
-      render();
+      return;
     }
+    error.textContent = '';
+    pendingFiles.push(...files);
+    const currentGeneration = generation;
+    render();
+    // Serial batches preserve clipboard order even if individual reads complete out of order.
+    queue = queue.then(async () => {
+      if (currentGeneration !== generation) {
+        return;
+      }
+      try {
+        const selected = await Promise.all(files.map(readImage));
+        if (currentGeneration === generation) {
+          items.push(...selected);
+        }
+      } catch (reason) {
+        if (currentGeneration === generation) {
+          error.textContent = reason instanceof Error ? reason.message : '图片读取失败。';
+        }
+      } finally {
+        if (currentGeneration === generation) {
+          pendingFiles.splice(0, files.length);
+          render();
+        }
+      }
+    });
   });
   render();
   return {
     count: () => items.length,
     inputs: () => attachmentInputs(items),
-    isBusy: () => busy || loading,
+    isBusy,
     setBusy(value) {
       busy = value;
       render();
@@ -164,6 +207,10 @@ export function createAttachmentComposer(
       error.textContent = message;
     },
     clear() {
+      // Late reads from a cleared draft must not repopulate it or affect a new paste.
+      generation += 1;
+      pendingFiles = [];
+      queue = Promise.resolve();
       items = [];
       error.textContent = '';
       render();

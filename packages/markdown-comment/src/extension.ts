@@ -80,8 +80,7 @@ const recentSelfWrite = new Map<string, number>();
 
 /** Save As 前记住 untitled 键与正文，便于 didSave(file) 时迁移评论。 */
 let pendingUntitledSave:
-  | { untitledKey: string; untitledUriString: string; content: string; at: number }
-  | undefined;
+  { untitledKey: string; untitledUriString: string; content: string; at: number } | undefined;
 
 const keyOf = (uri: vscode.Uri) => uri.toString();
 
@@ -660,7 +659,7 @@ export function activate(context: vscode.ExtensionContext): void {
     flushPersist(doc.uri);
     const untitledKey = storageKey(doc.uri);
     const hasStored = loadDoc(storageDir, untitledKey).threads.length > 0;
-    if (!hasStored && !hasPreview(doc.uri) && !(docThreads.get(keyOf(doc.uri))?.size)) {
+    if (!hasStored && !hasPreview(doc.uri) && !docThreads.get(keyOf(doc.uri))?.size) {
       return;
     }
     pendingUntitledSave = {
@@ -738,6 +737,20 @@ export function activate(context: vscode.ExtensionContext): void {
   register('markdown-comment.add-comment', () => startThread('selection'));
   register('markdown-comment.add-document-comment', () => startThread('document'));
   register('markdown-comment.open-preview', () => openPreview(context));
+  register('markdown-comment.copy-preview-selection', (value: unknown) => {
+    if (!value || typeof value !== 'object') {
+      return;
+    }
+    const selection = value as { mdcHasSelection?: unknown; mdcSelectedText?: unknown };
+    if (
+      selection.mdcHasSelection === true &&
+      typeof selection.mdcSelectedText === 'string' &&
+      selection.mdcSelectedText.length > 0 &&
+      selection.mdcSelectedText.length <= 10 * 1024 * 1024
+    ) {
+      return vscode.env.clipboard.writeText(selection.mdcSelectedText);
+    }
+  });
   register('markdown-comment.create-thread', (reply: vscode.CommentReply) => addReply(reply));
   register('markdown-comment.reply', (reply: vscode.CommentReply) => addReply(reply));
   register('markdown-comment.resolve', (thread: vscode.CommentThread) => setResolved(thread, true));

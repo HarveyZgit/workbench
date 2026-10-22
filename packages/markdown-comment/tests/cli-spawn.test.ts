@@ -286,7 +286,7 @@ test('empty cwd prints the scoped empty message', () => {
   assert.match(globalEmptyStore.stdout, /没有评论/);
 });
 
-test('reply appends an agent comment', () => {
+test('reply appends an agent comment without resolving the thread', () => {
   const ctx = seed();
   const result = run(['reply', ctx.ids.selection, 'agent', 'says', 'hi'], {
     cwd: ctx.workspace,
@@ -298,9 +298,11 @@ test('reply appends an agent comment', () => {
   const listed = run(['list', '--json'], { cwd: ctx.workspace, storage: ctx.storage, home: ctx.home });
   const rows = JSON.parse(listed.stdout) as Array<{
     threadId: string;
+    status: string;
     comments: Array<{ author: string; body: string }>;
   }>;
   const target = rows.find((row) => row.threadId === ctx.ids.selection);
+  assert.equal(target?.status, 'open');
   assert.ok(
     target?.comments.some((comment) => comment.author === 'agent' && comment.body === 'agent says hi'),
   );

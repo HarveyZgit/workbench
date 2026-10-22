@@ -316,6 +316,8 @@ function isWebviewMessage(value: unknown): value is WebviewToHost {
     case 'revealSourceLine':
     case 'previewScroll':
       return hasFiniteNumber('line');
+    case 'copySelection':
+      return hasBoundedString('text', 10 * 1024 * 1024);
     case 'copySkillPrompt':
       return true;
     default:
@@ -425,6 +427,9 @@ function toWire(t: StoredThread, doc?: vscode.TextDocument): WireThread {
 
 const STYLE = `
 :root { color-scheme: light dark; }
+body.vscode-light { color-scheme: light; }
+body.vscode-dark, body.vscode-high-contrast { color-scheme: dark; }
+body.vscode-high-contrast-light { color-scheme: light; }
 html, body { height: 100%; }
 body {
   margin: 0;
@@ -715,8 +720,21 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 textarea.mdc-reply, textarea.mdc-draft-input, textarea.mdc-edit-input {
   width: 100%; box-sizing: border-box; resize: vertical; font-family: inherit;
   font-size: 0.9em; line-height: 1.5; padding: 6px; border-radius: 4px;
-  background: var(--vscode-input-background); color: var(--vscode-input-foreground);
-  border: 1px solid var(--vscode-input-border, transparent);
+  background: var(--vscode-editor-background, var(--vscode-input-background));
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-input-border, var(--vscode-descriptionForeground, currentColor));
+  opacity: 1;
+}
+textarea.mdc-reply::placeholder, textarea.mdc-draft-input::placeholder, textarea.mdc-edit-input::placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground)); opacity: 1;
+}
+textarea.mdc-reply:focus, textarea.mdc-draft-input:focus, textarea.mdc-edit-input:focus {
+  outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px;
+  border-color: var(--vscode-focusBorder);
+}
+textarea.mdc-reply:disabled, textarea.mdc-draft-input:disabled, textarea.mdc-edit-input:disabled {
+  background: var(--vscode-input-background); color: var(--vscode-disabledForeground);
+  opacity: 0.65; cursor: not-allowed;
 }
 textarea.mdc-edit-input { min-height: 56px; }
 textarea.mdc-reply { min-height: 34px; padding-right: 36px; }
@@ -776,7 +794,7 @@ function buildHtml(
     <nav id="outline-tree" aria-label="大纲"></nav>
   </aside>
   <button type="button" id="mdc-peek-outline" class="mdc-peek mdc-tip" data-tip="展开目录" aria-label="展开目录" title="展开目录"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M3 8h10M3 11.5h7"/><path d="M3 4.5v7"/></svg></button>
-  <main id="content"></main>
+  <main id="content" tabindex="0" aria-label="Markdown 预览"></main>
   <button type="button" id="mdc-peek-sidebar" class="mdc-peek mdc-tip" data-tip="展开评论" aria-label="展开评论" title="展开评论"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5A1.5 1.5 0 0 1 12.5 11H8.2L5 13.5V11H3.5A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3z"/></svg></button>
   <aside id="sidebar">
     <div id="sidebar-head">
@@ -1247,6 +1265,9 @@ export function openPreview(context: vscode.ExtensionContext, editor?: vscode.Te
           break;
         case 'openImage':
           void openImage(msg.source);
+          break;
+        case 'copySelection':
+          void vscode.env.clipboard.writeText(msg.text);
           break;
         case 'copyImageFallback':
           void vscode.env.clipboard.writeText(msg.source);
