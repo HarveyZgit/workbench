@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import Foundation
 
 public protocol ChromeLaunching: Sendable {
@@ -48,6 +50,7 @@ public struct BrowserLauncher: ChromeLaunching {
     private let chromeProfileSnapshot: @Sendable () -> ChromeProfileSnapshot
     private let reuseRunningChrome: @Sendable (URL, URL, String) throws -> Void
 
+    #if os(macOS)
     public init() {
         self.init(
             commandRunner: Self.runCommand,
@@ -59,6 +62,8 @@ public struct BrowserLauncher: ChromeLaunching {
             reuseRunningChrome: Self.openWithRunningChrome
         )
     }
+
+    #endif
 
     init(
         commandRunner: @escaping @Sendable (LaunchCommand) throws -> Int32?,
@@ -181,6 +186,7 @@ public struct BrowserLauncher: ChromeLaunching {
         }
     }
 
+    #if os(macOS)
     private static func locateInstalledChromeApplication() throws -> URL {
         if let resolved = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.Chrome") {
             return resolved
@@ -198,6 +204,8 @@ public struct BrowserLauncher: ChromeLaunching {
         throw FastFinickyError.chromeNotFound
     }
 
+    #endif
+
     private static func runCommand(_ command: LaunchCommand) throws -> Int32? {
         let process = Process()
         process.qualityOfService = .userInitiated
@@ -212,6 +220,7 @@ public struct BrowserLauncher: ChromeLaunching {
         return process.processIdentifier
     }
 
+    #if os(macOS)
     private static func openWithRunningChrome(targetURL: URL, appURL: URL, profile: String) throws {
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
@@ -277,9 +286,11 @@ public struct BrowserLauncher: ChromeLaunching {
             action()
         }
     }
+    #endif
 }
 
 struct LaunchCommand: Equatable, Sendable {
     let executableURL: URL
     let arguments: [String]
 }
+

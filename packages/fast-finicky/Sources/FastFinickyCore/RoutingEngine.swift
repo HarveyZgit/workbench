@@ -17,6 +17,7 @@ public struct RoutingEngine: Sendable {
                         originalURL: urlString,
                         matchText: matchText,
                         profile: rule.profile,
+                        browser: rule.browser,
                         matchedRuleIndex: index,
                         matchedToken: token
                     )
@@ -59,3 +60,4 @@ public struct RoutingEngine: Sendable {
         return normalizeToken(trimmed)
     }
 }
+

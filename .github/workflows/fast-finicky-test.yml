@@ -1,0 +1,48 @@
+name: Fast Finicky test build
+on:
+  pull_request:
+    paths:
+      - 'packages/fast-finicky/**'
+      - '.github/workflows/fast-finicky-test.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fast-finicky-test-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test-and-build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: packages/fast-finicky
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Swift and native core tests
+        run: ./scripts/test-core.sh
+      - name: Build app and universal test executable
+        run: |
+          ./scripts/build-app.sh debug
+          swift build -c debug --product FastFinicky --arch arm64 --arch x86_64
+          BIN_DIR="$(swift build -c debug --arch arm64 --arch x86_64 --show-bin-path)"
+          cp "$BIN_DIR/FastFinicky" "dist/Fast Finicky.app/Contents/MacOS/FastFinicky"
+          lipo "dist/Fast Finicky.app/Contents/MacOS/FastFinicky" -verify_arch arm64 x86_64
+          codesign --force --deep --sign - "dist/Fast Finicky.app"
+          codesign --verify --deep --strict "dist/Fast Finicky.app"
+          ditto -c -k --sequesterRsrc --keepParent "dist/Fast Finicky.app" dist/Fast-Finicky-test-universal.zip
+          shasum -a 256 dist/Fast-Finicky-test-universal.zip > dist/SHA256SUMS.txt
+      - name: Upload test app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Fast-Finicky-test-universal
+          path: |
+            packages/fast-finicky/dist/Fast-Finicky-test-universal.zip
+            packages/fast-finicky/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14

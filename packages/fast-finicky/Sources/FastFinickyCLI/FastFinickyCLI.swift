@@ -27,8 +27,20 @@ struct FastFinickyCLI {
                 guard let launchURL = URL(string: url) else {
                     throw FastFinickyError.invalidURL(url)
                 }
-                let launcher = BrowserLauncher()
-                _ = try launcher.launch(targetURL: launchURL, profile: decision.profile)
+                if decision.browser == .ego {
+                    // The diagnostic CLI waits for the result; the menu-bar app
+                    // uses the same adapter asynchronously.
+                    let completion = EgoCLICompletion()
+                    try EgoBrowserLauncher().launch(targetURL: launchURL, profile: decision.profile) {
+                        completion.finish($0)
+                    }
+                    let outcome = completion.wait()
+                    guard outcome.exitCode == 0 else {
+                        throw EgoLaunchError.commandFailed(outcome.exitCode, outcome.errorOutput)
+                    }
+                } else {
+                    _ = try BrowserLauncher().launch(targetURL: launchURL, profile: decision.profile)
+                }
             }
 
             let payload = CLIOutput(configPath: paths.configURL.path, decision: decision)
@@ -96,5 +108,26 @@ private extension JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return encoder
+    }
+}
+
+
+private final class EgoCLICompletion: @unchecked Sendable {
+    private let done = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var outcome = EgoLaunchOutcome(exitCode: -1)
+
+    func finish(_ value: EgoLaunchOutcome) {
+        lock.lock()
+        outcome = value
+        lock.unlock()
+        done.signal()
+    }
+
+    func wait() -> EgoLaunchOutcome {
+        done.wait()
+        lock.lock()
+        defer { lock.unlock() }
+        return outcome
     }
 }
