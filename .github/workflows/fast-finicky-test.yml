@@ -32,7 +32,7 @@ jobs:
           swift build -c debug --product FastFinicky --arch arm64 --arch x86_64
           BIN_DIR="$(swift build -c debug --arch arm64 --arch x86_64 --show-bin-path)"
           cp "$BIN_DIR/FastFinicky" "dist/Fast Finicky.app/Contents/MacOS/FastFinicky"
-          lipo -verify_arch arm64 x86_64 "dist/Fast Finicky.app/Contents/MacOS/FastFinicky"
+          lipo "dist/Fast Finicky.app/Contents/MacOS/FastFinicky" -verify_arch arm64 x86_64
           codesign --force --deep --sign - "dist/Fast Finicky.app"
           codesign --verify --deep --strict "dist/Fast Finicky.app"
           ditto -c -k --sequesterRsrc --keepParent "dist/Fast Finicky.app" dist/Fast-Finicky-test-universal.zip
