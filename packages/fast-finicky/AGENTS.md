@@ -8,11 +8,11 @@ A deliberately narrow macOS replacement for Finicky.
 
 Scope:
 
-- Route only to `Google Chrome`
-- Choose a Chrome profile using simple `host + path` substring matching
+- Default to `Google Chrome`; allow explicit per-rule `browser: "ego"` for Ego Lite
+- Choose a browser/profile using simple `host + path` substring matching
 - Stay menubar-only
 - Keep the hot path as short as possible
-- Avoid JS config, rewrite rules, short-link expansion, and general browser-routing features
+- Avoid JS config, rewrite rules, short-link expansion, and browsers beyond Chrome/Ego Lite
 
 Do not turn this into a general Finicky clone unless the user explicitly asks.
 
@@ -192,3 +192,16 @@ If browser-launch logic changed, also verify:
 - local `index.html` or another HTML file still opens
 - the app still behaves as a valid browser handler for `http` / `https`
 - web URLs still take the direct-binary path instead of silently falling back to `open`
+
+
+## Ego Lite routing
+
+The user explicitly expanded scope to Ego Lite with optional per-rule browser, keeping the existing profile field and Chrome fallback. Do not add a target layer or Space ID setting.
+
+Enumerate native Spaces, filter exact profileId and ownership=user, then choose the first returned item. Exclude agent, agentDelegatedToUser and unknown ownership. No eligible item means failure, not Space creation. Recheck before claim and after claim; changed state means stop rather than silently selecting another Space.
+
+Use native claimTaskSpace → useTaskSpace → createTab → completeTaskSpace, preserving existing tabs and Space name. Check all error objects/rejections, do not close tabs/Spaces, do not retry or clean up uncertain outcomes. The public API has no atomic compare-and-claim: disclose the remaining concurrency race rather than promising complete exclusion. Never silently fall back to Chrome or another profile.
+
+Serialize same-profile Ego launches asynchronously within the process until the prior CLI completes; never block Apple Events while queued. Keep different profiles independent. This is not a cross-process ownership lock. JSON-encode script data and pass Process arguments without a shell. Chrome warming and completion probing must not run for Ego. Preserve browser identity through setup, normalization, saves and profile menus.
+
+Portable checks: `node --test scripts/test-ego-opener.mjs`. Still run Swift tests and app build on macOS; distinguish mocked checks from live profile/file/foreground verification.

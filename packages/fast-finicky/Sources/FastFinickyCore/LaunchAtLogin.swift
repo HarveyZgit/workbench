@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 
 public struct LaunchAtLogin {
     public static let defaultLabel = "com.harvey.fastfinicky"
@@ -169,3 +173,4 @@ public struct LaunchAtLogin {
         throw FastFinickyError.launchctlFailed(message)
     }
 }
+

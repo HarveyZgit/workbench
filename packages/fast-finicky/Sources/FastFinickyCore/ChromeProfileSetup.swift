@@ -32,6 +32,10 @@ enum ChromeProfileSetup {
         var keptRules: [ConfigRule] = []
         var labeled = 0
         for rule in config.rules {
+            guard rule.browser == .chrome else {
+                keptRules.append(rule)
+                continue
+            }
             remember(rule.profile, into: &present)
             let ruleKey = rule.profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             guard let extra = discoveredByKey[ruleKey] else {
@@ -47,6 +51,7 @@ enum ChromeProfileSetup {
                     ConfigRule(
                         contains: rule.contains,
                         profile: rule.profile,
+                        browser: rule.browser,
                         name: name,
                         email: email
                     )
@@ -107,3 +112,4 @@ enum ChromeProfileSetup {
         return trimmed.isEmpty ? nil : trimmed
     }
 }
+
