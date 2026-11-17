@@ -151,6 +151,13 @@ try {
         .join('')
         .replace(/\s+/g, '');
     assert.equal(markedText(), expectedText.replace(/\s+/g, ''), text);
+    assert.equal(document.querySelector('#content :is(table, thead, tbody, tfoot, tr) > mark.mdc-hl'), null);
+    if (config.tableMarks) {
+      const cellMarks = Array.from(document.querySelectorAll('#content tbody tr:first-child td'), (cell) =>
+        Array.from(cell.querySelectorAll('mark.mdc-hl'), (mark) => mark.textContent).join(''),
+      );
+      assert.deepEqual(cellMarks, config.tableMarks);
+    }
     delete thread.rendered;
     host({ type: 'threads', threads: [thread] });
     assert.equal(
