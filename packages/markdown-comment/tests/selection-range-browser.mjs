@@ -137,6 +137,18 @@ try {
       );
     assert.equal(highlighted.join('').replace(/\s+/g, ''), expectedText.replace(/\s+/g, ''), text);
     assert.equal(await page.locator('.mdc-code-toolbar mark').count(), 0);
+    if (config.tableMarks) {
+      const tableRows = page.locator('#content tbody tr');
+      const columnPositions = await tableRows.evaluateAll((rows) =>
+        rows.map((row) => Array.from(row.cells, (cell) => cell.getBoundingClientRect().x)),
+      );
+      assert.deepEqual(columnPositions[0], columnPositions[1], 'highlight must not insert an anonymous column');
+      const cellMarks = await tableRows.first().locator('td').evaluateAll((cells) =>
+        cells.map((cell) => Array.from(cell.querySelectorAll('mark.mdc-hl'), (mark) => mark.textContent).join('')),
+      );
+      assert.deepEqual(cellMarks, config.tableMarks);
+    }
+    assert.equal(await page.locator('#content :is(table, thead, tbody, tfoot, tr) > mark.mdc-hl').count(), 0);
     // Legacy/source comments without a rendered quote use the same bounded fallback.
     delete thread.rendered;
     await host({ type: 'threads', threads: [thread] });

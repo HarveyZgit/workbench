@@ -296,6 +296,11 @@ function markText(block: HTMLElement, t: WireThread): boolean {
   const end = idx + q.length;
   let wrapped = false;
   for (const { node, start } of nodes) {
+    // Keep renderer whitespace in the matched text, but never wrap it between
+    // table cells or rows: a <mark> in the table structure creates an anonymous cell.
+    if (node.parentElement?.matches('table, thead, tbody, tfoot, tr, colgroup')) {
+      continue;
+    }
     const len = (node.nodeValue ?? '').length;
     const segStart = Math.max(idx, start);
     const segEnd = Math.min(end, start + len);
