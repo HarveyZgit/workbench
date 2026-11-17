@@ -10,6 +10,7 @@ import { createAttachmentComposer, type AttachmentComposer } from './attachment-
 import { createOutlineUi } from './outline-ui';
 import { installSidebarResize } from './sidebar-resize';
 import { createTableViewer } from './table-viewer';
+import { captureDraftHighlight, paintDraftHighlight, type DraftHighlight } from './draft-highlight';
 import { createMermaidRuntime, type MermaidCommentIntent, type MermaidViewStates } from './mermaid';
 import type {
   HostToWebview,
@@ -565,6 +566,12 @@ function renderSidebar(threads: WireThread[]): void {
 let draftSelection: RenderedSelection | null = null;
 let draftIsDoc = false;
 let draftAnchorStale = false;
+let draftHighlight: DraftHighlight | undefined;
+
+function setDraftHighlight(snapshot?: DraftHighlight): void {
+  draftHighlight = snapshot;
+  paintDraftHighlight(content, draftHighlight);
+}
 
 function renderDraft(labelHtml: string): void {
   if (!draftEl) {
@@ -593,12 +600,13 @@ function renderDraft(labelHtml: string): void {
   draftEl.scrollIntoView({ block: 'nearest' });
 }
 
-function openSelDraft(sel: RenderedSelection): void {
+function openSelDraft(sel: RenderedSelection, snapshot?: DraftHighlight): void {
   if (draftSubmissionPending()) {
     return;
   }
   draftIsDoc = false;
   draftSelection = sel;
+  setDraftHighlight(snapshot);
   pendingMermaidComment = undefined;
   renderDraft(sel.spansMultipleBlocks ? '跨段落' : esc(clip(sel.quote, CONTEXT_LEN)));
 }
@@ -609,6 +617,7 @@ function openDocDraft(): void {
   }
   draftIsDoc = true;
   draftSelection = null;
+  setDraftHighlight();
   pendingMermaidComment = undefined;
   renderDraft('📄 全文评论');
 }
@@ -619,6 +628,7 @@ function renderBlockDraft(label: string): void {
   }
   draftIsDoc = false;
   draftSelection = null;
+  setDraftHighlight();
   renderDraft(esc(label));
 }
 
@@ -633,6 +643,7 @@ function closeDraft(): void {
     return;
   }
   draftSelection = null;
+  setDraftHighlight();
   draftIsDoc = false;
   pendingMermaidComment = undefined;
   if (draftEl) {
@@ -777,6 +788,7 @@ draftEl?.addEventListener('click', (e) => {
     }
     draftIsDoc = true;
     draftSelection = null;
+    setDraftHighlight();
     pendingMermaidComment = undefined;
     draftAnchorStale = false;
     const draft = draftEl.querySelector<HTMLElement>('.mdc-draft');
@@ -931,6 +943,7 @@ function refreshThreads(threads: WireThread[]): void {
   const shown = filterByTab(threads);
   clearHighlights();
   applyHighlights(shown);
+  paintDraftHighlight(content, draftHighlight);
   renderSidebar(shown);
   applySelected();
   tableViewer.restore(viewer);
@@ -1151,6 +1164,7 @@ function render(
     const draft = draftEl?.querySelector<HTMLElement>('.mdc-draft');
     if (draft && !draftAnchorStale) {
       draftAnchorStale = true;
+      setDraftHighlight();
       composer(draft).error('原文已变化。草稿已保留，可改为全文评论，或取消后重新选择原文。');
       const button = document.createElement('button');
       button.disabled = draftSubmissionPending();
@@ -1303,14 +1317,18 @@ function onSelect(): void {
 commentBtn.addEventListener('mousedown', (e) => e.preventDefault());
 commentBtn.addEventListener('click', () => {
   const sel = pending; // hideButton 会清空 pending，先存下来
-  window.getSelection()?.removeAllRanges();
+  const selection = window.getSelection();
+  const snapshot = sel && content && selection?.rangeCount
+    ? captureDraftHighlight(content, selection.getRangeAt(0))
+    : undefined;
+  selection?.removeAllRanges();
   hideButton();
   // 清选区会把焦点夺回正文，所以渲染草稿 + focus 放到最后一步。
   if (sel) {
     if (!draftSubmissionPending()) {
       tableViewer.adoptDraft();
     }
-    openSelDraft(sel);
+    openSelDraft(sel, snapshot);
   }
 });
 

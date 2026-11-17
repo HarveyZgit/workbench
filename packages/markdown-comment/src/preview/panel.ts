@@ -619,6 +619,7 @@ ol.contains-task-list { list-style: none; padding-left: 1.2em; }
 /* 高亮 */
 mark.mdc-hl { background: rgba(255, 209, 102, 0.28); border-radius: 2px; cursor: pointer; color: inherit; transition: background-color .15s, box-shadow .15s; }
 mark.mdc-hl.resolved { background: rgba(140, 140, 140, 0.20); }
+::highlight(mdc-selection-draft) { background-color: var(--vscode-editor-selectionBackground, rgba(85, 145, 230, 0.33)); }
 mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px rgba(255, 167, 38, 0.55); }
 .mdc-block-hl { background: rgba(255, 209, 102, 0.12); cursor: pointer; transition: background-color .15s; }
 .mdc-block-hl.active { background: rgba(255, 167, 38, 0.20); }
@@ -663,8 +664,8 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 #sidebar-inner { padding: 12px; }
 
 
-/* Dock collapsed pane controls in a reserved strip, inside the preview column. */
-#mdc-peek-dock { display: none; justify-content: flex-end; gap: 4px; padding: 4px 8px 0; }
+/* Dock each collapsed pane control to its own side of the preview column. */
+#mdc-peek-dock { display: none; gap: 4px; padding: 4px 8px 0; }
 #app:is(.outline-collapsed, .sidebar-collapsed) #mdc-peek-dock { display: flex; }
 .mdc-peek {
   display: none; width: 24px; height: 24px; padding: 0; border-radius: 4px;
@@ -675,6 +676,7 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
   outline: 1px solid var(--vscode-focusBorder, currentColor);
   outline-offset: -1px;
 }
+#mdc-peek-sidebar { margin-left: auto; }
 #app.outline-collapsed #mdc-peek-outline,
 #app.sidebar-collapsed #mdc-peek-sidebar { display: grid; place-content: center; }
 #mdc-sidebar-resize {

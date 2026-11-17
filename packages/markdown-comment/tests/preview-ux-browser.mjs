@@ -84,21 +84,38 @@ try {
       expected,
     );
   assert.equal(await width(), 320);
-  await page.getByRole('button', { name: '收起目录' }).click();
-  await page.getByRole('button', { name: '收起评论' }).click();
+  const isFocused = (locator) => locator.evaluate((el) => document.activeElement === el);
+  const collapsedPaneHasWidth = (id, target) =>
+    page.waitForFunction(
+      ({ id, target }) => Math.round(document.getElementById(id).getBoundingClientRect().width) === target,
+      { id, target },
+    );
+  const outlineToggle = page.getByRole('button', { name: '收起目录' });
+  const sidebarToggle = page.getByRole('button', { name: '收起评论' });
+  await outlineToggle.click();
+  await collapsedPaneHasWidth('outline', 0);
+  assert.equal(await sidebar.count(), 0);
+  assert.ok((await outline.boundingBox()).x < 12);
+  assert.equal(await isFocused(outline), true);
+
+  await sidebarToggle.click();
   assert.equal(await separator.count(), 0);
   await expectWidth(0);
   const a = await outline.boundingBox();
   const b = await sidebar.boundingBox();
-  assert.ok(a.width <= 24 && b.width <= 24 && b.x > a.x && b.x - a.x < 34);
+  assert.ok(a.width <= 24 && b.width <= 24);
   assert.equal(a.y, b.y);
-  assert.ok(1320 - (b.x + b.width) < 12);
-  await sidebar.click();
-  const sidebarRect = await page.locator('#sidebar').boundingBox();
-  const outlineRect = await outline.boundingBox();
-  assert.ok(outlineRect.x + outlineRect.width < sidebarRect.x);
+  assert.ok(a.x < 12 && 1320 - (b.x + b.width) < 12);
+  assert.equal(await isFocused(sidebar), true);
   await outline.click();
+  await collapsedPaneHasWidth('outline', 220);
+  assert.equal(await isFocused(outlineToggle), true);
+  assert.equal(await outline.count(), 0);
+  const right = await sidebar.boundingBox();
+  assert.ok(1320 - (right.x + right.width) < 12);
+  await sidebar.click();
   await expectWidth(320);
+  assert.equal(await isFocused(sidebarToggle), true);
 
   const split = await separator.boundingBox();
   await page.mouse.move(split.x + split.width / 2, split.y + 130);
@@ -143,6 +160,59 @@ try {
   assert.equal(await page.locator('#sidebar .mdc-card.active').count(), 0);
   await page.locator('.mdc-tab[data-tab="open"]').click();
   assert.equal(await active(), 'b');
+
+  const draftHighlight = () =>
+    page.evaluate(() => {
+      const fragments = [];
+      CSS.highlights.get('mdc-selection-draft')?.forEach((range) => fragments.push(range.toString()));
+      return fragments.join('');
+    });
+  const selectPartialParagraph = () =>
+    page
+      .locator('#content p')
+      .first()
+      .evaluate((paragraph) => {
+        const node = paragraph.lastChild;
+        const range = document.createRange();
+        range.setStart(node, 1);
+        range.setEnd(node, 4);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      });
+  const normalComment = page.getByRole('button', { name: '💬 评论', exact: true });
+  const normalDraft = page.locator('#sidebar #sidebar-draft textarea');
+  const normalCancel = page.locator('#sidebar #sidebar-draft button[data-act="cancel"]');
+  await selectPartialParagraph();
+  await normalComment.click();
+  assert.equal(await draftHighlight(), 'con');
+  await normalDraft.fill('retryable draft');
+  await render();
+  assert.equal(await draftHighlight(), 'con');
+  await normalDraft.press('Control+Enter');
+  const failed = await page.evaluate(() =>
+    window.sent.findLast((message) => message.type === 'createThread'),
+  );
+  await host({ type: 'commentResult', requestId: failed.requestId, ok: false, error: 'fixture failed' });
+  assert.equal(await normalDraft.inputValue(), 'retryable draft');
+  assert.equal(await draftHighlight(), 'con');
+  await normalDraft.press('Escape');
+  assert.equal(await draftHighlight(), '');
+  assert.equal(await normalDraft.count(), 0);
+
+  await selectPartialParagraph();
+  await normalComment.click();
+  assert.equal(await draftHighlight(), 'con');
+  await host({ type: 'render', text: text + '\n\nnew paragraph', threads, options });
+  assert.equal(await draftHighlight(), '');
+  assert.equal(await normalDraft.count(), 1);
+  await normalCancel.click();
+  await render();
+  await page.getByRole('button', { name: '全文评论' }).click();
+  assert.equal(await draftHighlight(), '');
+  await normalCancel.click();
+  assert.equal(await page.locator('#content mark.mdc-hl').count(), 3);
 
   const previewTable = page.locator('#content .mdc-table-view');
   const launch = previewTable.getByRole('button', { name: '全屏查看表格' });
@@ -192,9 +262,12 @@ try {
   await selectAcrossCells();
   await opened.getByRole('button', { name: '💬 评论', exact: true }).click();
   const draft = opened.locator('#sidebar-draft textarea');
+  assert.equal(await draftHighlight(), 'selected\nsecond');
+  assert.equal(await opened.locator('tr > mark').count(), 0);
   await draft.fill('in fullscreen');
   await render(); // keep the same draft (unsubmitted state and focus) through host updates
   assert.equal(await draft.inputValue(), 'in fullscreen');
+  assert.equal(await draftHighlight(), 'selected\nsecond');
   await draft.press('Control+Enter');
   const created = await page.evaluate(() =>
     window.sent.findLast((message) => message.type === 'createThread'),
@@ -204,15 +277,25 @@ try {
   assert.equal(created.selection.blockEndLine, 5);
   assert.equal(created.text, 'in fullscreen');
   await host({ type: 'commentResult', requestId: created.requestId, ok: true });
+  const saved = makeThread('saved-draft', 4, created.selection.quote);
+  await host({ type: 'threads', threads: [...threads, saved] });
   assert.equal(await opened.count(), 1);
   assert.equal(await draft.count(), 0);
+  assert.equal(await draftHighlight(), '');
+  assert.deepEqual(await opened.locator('mark[data-thread-id="saved-draft"]').allTextContents(), [
+    'selected',
+    'second',
+  ]);
+  await host({ type: 'threads', threads });
   await selectAcrossCells();
   await opened.getByRole('button', { name: '💬 评论', exact: true }).click();
   await draft.fill('retain on exit');
   await draft.press('Escape');
   assert.equal(await opened.count(), 0);
   assert.equal(await page.locator('#sidebar #sidebar-draft textarea').inputValue(), 'retain on exit');
+  assert.equal(await draftHighlight(), 'selected\nsecond');
   await page.locator('#sidebar #sidebar-draft button[data-act="cancel"]').click();
+  assert.equal(await draftHighlight(), '');
 
   await separator.press('End');
   await expectWidth(640);
@@ -272,7 +355,7 @@ try {
   assert.equal(await opened.count(), 0);
   assert.deepEqual(errors, []);
   console.log(
-    'PASS: right dock, sidebar resizing and clamping, visible-thread keys, fullscreen source and comment tables, selection/draft refresh and fullscreen submission.',
+    'PASS: left/right dock, exact draft highlighting, sidebar resizing and clamping, visible-thread keys, fullscreen source and comment tables, selection/draft refresh and fullscreen submission.',
   );
 } finally {
   await browser.close();
