@@ -214,8 +214,19 @@ try {
   assert.equal(await page.locator('#sidebar #sidebar-draft textarea').inputValue(), 'retain on exit');
   await page.locator('#sidebar #sidebar-draft button[data-act="cancel"]').click();
 
+  await separator.press('End');
+  await expectWidth(640);
   const commentTable = page.locator('.mdc-body .mdc-table-view');
   const commentLaunch = commentTable.getByRole('button', { name: '全屏查看表格' });
+  await commentTable.locator('th').last().hover();
+  const narrowTable = await commentTable.locator('th').last().boundingBox();
+  const narrowIcon = await commentLaunch.boundingBox();
+  assert.ok(Math.abs(narrowTable.x + narrowTable.width - (narrowIcon.x + narrowIcon.width)) < 20);
+  await page.mouse.move(2, 600);
+  await commentLaunch.focus();
+  assert.equal(await commentLaunch.evaluate((el) => getComputedStyle(el).opacity), '1');
+  await page.locator('#content').focus();
+  assert.equal(await commentLaunch.evaluate((el) => getComputedStyle(el).opacity), '0');
   await commentLaunch.focus();
   await commentLaunch.press('Enter');
   await opened
@@ -240,6 +251,9 @@ try {
   await launch.focus();
   const buttonX = (await launch.boundingBox()).x;
   const inlineScroll = previewTable.locator('.mdc-table-scroll');
+  const scroller = await inlineScroll.boundingBox();
+  const wideIcon = await launch.boundingBox();
+  assert.ok(Math.abs(scroller.x + scroller.width - (wideIcon.x + wideIcon.width)) < 20);
   await inlineScroll.evaluate((el) => {
     el.scrollLeft = 200;
   });

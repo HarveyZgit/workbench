@@ -553,6 +553,7 @@ th { background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.12));
   position: relative; display: block; width: auto; max-width: none; max-height: none; min-width: 0;
   margin: 0; padding: 0; border: 0; background: transparent; color: inherit; overflow: visible;
 }
+.mdc-table-view:not([open]) { width: fit-content; max-width: 100%; }
 .mdc-table-view[open] {
   position: fixed; inset: 0; display: flex; flex-direction: column;
   width: 100%; height: 100%; margin: 0; box-sizing: border-box;
