@@ -439,6 +439,7 @@ body {
   color: var(--vscode-foreground);
 }
 #app { position: relative; display: flex; height: 100vh; }
+#preview-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 #content { flex: 1; min-width: 0; overflow: auto; padding: 24px clamp(16px, 6%, 80px) 80px; box-sizing: border-box; }
 
 /* 左侧大纲（飞书文档风格：无边框，干净树） */
@@ -523,7 +524,7 @@ body {
 }
 
 #sidebar {
-  width: 320px; flex: none; overflow: auto; box-sizing: border-box;
+  width: var(--mdc-sidebar-width, 320px); flex: none; overflow: auto; box-sizing: border-box;
   border-left: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3));
   background: var(--vscode-sideBar-background, transparent);
   transition: width .23s cubic-bezier(0.4, 0, 0.2, 1), opacity .23s ease, min-width .23s ease, border-width .23s ease;
@@ -547,6 +548,41 @@ blockquote { margin-left: 0; padding: 0.2em 1em; border-left: 3px solid var(--vs
 table { border-collapse: collapse; }
 th, td { border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3)); padding: 6px 12px; }
 th { background: var(--vscode-textCodeBlock-background, rgba(128,128,128,0.12)); }
+.mdc-table-slot { margin: .7em 0; }
+.mdc-table-view {
+  position: relative; display: block; width: auto; max-width: none; max-height: none; min-width: 0;
+  margin: 0; padding: 0; border: 0; background: transparent; color: inherit; overflow: visible;
+}
+.mdc-table-view[open] {
+  position: fixed; inset: 0; display: flex; flex-direction: column;
+  width: 100%; height: 100%; margin: 0; box-sizing: border-box;
+  background: var(--vscode-editor-background, Canvas); color: var(--vscode-editor-foreground, CanvasText);
+}
+.mdc-table-view::backdrop { background: var(--vscode-editor-background, Canvas); }
+.mdc-table-scroll { overflow: auto; min-width: 0; min-height: 0; }
+.mdc-table-scroll > table { margin: 0; }
+.mdc-table-view[open] > .mdc-table-scroll { flex: 1; padding: 16px; }
+.mdc-table-view[open] > .mdc-table-scroll > table { min-width: 100%; }
+.mdc-table-tools { position: absolute; z-index: 1; top: 4px; right: 4px; }
+.mdc-table-view[open] > .mdc-table-tools {
+  position: static; display: flex; justify-content: flex-end; padding: 6px 8px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3));
+}
+.mdc-table-action {
+  display: inline-grid; place-content: center; width: 24px; height: 24px; padding: 0;
+  border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3)); border-radius: 4px; cursor: pointer;
+  background: var(--vscode-editorWidget-background, Canvas); color: inherit;
+}
+.mdc-table-action:hover { background: var(--vscode-toolbar-hoverBackground, ButtonFace); }
+.mdc-table-expand { opacity: 0; pointer-events: none; }
+.mdc-table-view:is(:hover, :focus-within) > .mdc-table-tools > .mdc-table-expand {
+  opacity: 1; pointer-events: auto;
+}
+.mdc-table-view:not([open]) > .mdc-table-tools > .mdc-table-close,
+.mdc-table-view[open] > .mdc-table-tools > .mdc-table-expand { display: none; }
+.mdc-table-draft { flex: none; max-height: 42%; overflow: auto; }
+.mdc-table-draft > #sidebar-draft:not(:empty) { max-width: 680px; margin: 0 auto; padding: 8px 16px; }
+
 img { max-width: 100%; }
 hr { border: none; border-top: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3)); margin: 1.6em 0; }
 ul.contains-task-list,
@@ -625,39 +661,30 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
 }
 #sidebar-inner { padding: 12px; }
 
-/* 收起后的浮动 peek 按钮（目录 / 评论）——置顶，visibility+opacity 淡入淡出 */
+
+/* Dock collapsed pane controls in a reserved strip, inside the preview column. */
+#mdc-peek-dock { display: none; justify-content: flex-end; gap: 4px; padding: 4px 8px 0; }
+#app:is(.outline-collapsed, .sidebar-collapsed) #mdc-peek-dock { display: flex; }
 .mdc-peek {
-  position: absolute; z-index: 40;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; padding: 0; border-radius: 10px; cursor: pointer;
-  border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.35));
-  background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #252526));
-  color: var(--vscode-foreground);
-  box-shadow: 0 2px 12px rgba(0,0,0,0.28);
-  visibility: hidden; opacity: 0; pointer-events: none;
-  transform: scale(0.88);
-  transition: opacity .22s ease, transform .22s cubic-bezier(0.4, 0, 0.2, 1), visibility .22s;
+  display: none; width: 24px; height: 24px; padding: 0; border-radius: 4px;
+  border: 0; background: transparent; color: var(--vscode-foreground); cursor: pointer;
 }
 .mdc-peek:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
-.mdc-peek svg { display: block; }
-#mdc-peek-outline { left: 12px; top: 10px; }
-#mdc-peek-sidebar { right: 12px; top: 10px; }
+.mdc-peek:focus-visible, #mdc-sidebar-resize:focus-visible, .mdc-table-action:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, currentColor);
+  outline-offset: -1px;
+}
 #app.outline-collapsed #mdc-peek-outline,
-#app.sidebar-collapsed #mdc-peek-sidebar {
-  visibility: visible; opacity: 0.94; pointer-events: auto; transform: scale(1);
+#app.sidebar-collapsed #mdc-peek-sidebar { display: grid; place-content: center; }
+#mdc-sidebar-resize {
+  position: relative; z-index: 6; flex: 0 0 8px; margin: 0 -4px;
+  cursor: col-resize; touch-action: none;
 }
-#app.outline-collapsed #mdc-peek-outline:hover,
-#app.sidebar-collapsed #mdc-peek-sidebar:hover { opacity: 1; }
-#mdc-peek-outline.mdc-tip::after,
-#mdc-peek-outline.mdc-tip:hover::after {
-  left: calc(100% + 8px); right: auto; top: 50%; margin-top: 0;
-  transform: translateY(-50%);
-}
-#mdc-peek-sidebar.mdc-tip::after,
-#mdc-peek-sidebar.mdc-tip:hover::after {
-  right: calc(100% + 8px); left: auto; top: 50%; margin-top: 0;
-  transform: translateY(-50%);
-}
+#app.sidebar-collapsed #mdc-sidebar-resize { display: none; }
+#mdc-sidebar-resize:is(:hover, :focus-visible),
+#app.sidebar-resizing #mdc-sidebar-resize { background: var(--vscode-sash-hoverBorder, rgba(128,128,128,0.25)); }
+#app.sidebar-resizing { user-select: none; cursor: col-resize; }
+#app.sidebar-resizing #sidebar { transition: none; }
 .mdc-empty { opacity: 0.6; padding: 16px 6px; font-size: 0.9em; }
 .mdc-card {
   border: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.3));
@@ -793,9 +820,14 @@ function buildHtml(
     </div>
     <nav id="outline-tree" aria-label="大纲"></nav>
   </aside>
-  <button type="button" id="mdc-peek-outline" class="mdc-peek mdc-tip" data-tip="展开目录" aria-label="展开目录" title="展开目录"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M3 8h10M3 11.5h7"/><path d="M3 4.5v7"/></svg></button>
-  <main id="content" tabindex="0" aria-label="Markdown 预览"></main>
-  <button type="button" id="mdc-peek-sidebar" class="mdc-peek mdc-tip" data-tip="展开评论" aria-label="展开评论" title="展开评论"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5A1.5 1.5 0 0 1 12.5 11H8.2L5 13.5V11H3.5A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3z"/></svg></button>
+  <div id="preview-pane">
+    <div id="mdc-peek-dock" role="group" aria-label="预览面板">
+      <button type="button" id="mdc-peek-outline" class="mdc-peek" aria-controls="outline" aria-label="展开目录" title="展开目录"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M3 8h10M3 11.5h7"/><path d="M3 4.5v7"/></svg></button>
+      <button type="button" id="mdc-peek-sidebar" class="mdc-peek" aria-controls="sidebar" aria-label="展开评论" title="展开评论"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v5A1.5 1.5 0 0 1 12.5 11H8.2L5 13.5V11H3.5A1.5 1.5 0 0 1 2 9.5v-5A1.5 1.5 0 0 1 3.5 3z"/></svg></button>
+    </div>
+    <main id="content" tabindex="0" aria-label="Markdown 预览"></main>
+  </div>
+  <div id="mdc-sidebar-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="sidebar" aria-label="调整评论栏宽度" aria-valuemin="320" aria-valuemax="640" aria-valuenow="320"></div>
   <aside id="sidebar">
     <div id="sidebar-head">
       <div id="mdc-tabs">

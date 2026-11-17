@@ -33,6 +33,13 @@ Preview settings:
 - `markdownComment.preview.renderedDiff`;
 - `markdownComment.preview.mermaidNodeComments`.
 
+## 预览操作
+
+- 收起大纲或评论栏后，可用预览右上角的一组小按钮重新展开。
+- 从左边缘拖动评论栏可调整宽度。聚焦分隔条后也可用 ←/→ 调整，Home/End 切换到最窄/最宽。宽度偏好会保存；最窄为 320 px，最宽为 640 px，有空间时为预览保留至少 360 px。
+- 鼠标移到表格或键盘聚焦表格按钮时，右上角出现全屏按钮。全屏表格可单独滚动，按 Esc 或点击关闭按钮退出。预览表格放大后仍可划词、输入和提交评论；关闭时未提交的草稿返回评论栏。评论正文里的表格可放大查看，不会创建文档评论。
+- 已选中一条评论时，按 ↑/↓ 可切换到当前筛选下的上一条/下一条，不循环；输入框和全屏表格中不拦截这两个键。
+
 ## 评论正文和图片
 
 评论提交后使用与预览区共用的 Markdown 引擎渲染，编辑时仍是原始 Markdown。评论不执行原始 HTML，并经过清洗；即使文件只在本地使用，也不会信任粘贴内容或 Agent 回复里的 HTML。评论内容不会参与文档大纲、划词锚点或源码定位。
@@ -87,6 +94,7 @@ JSDOM_MODULE=/path/to/jsdom node packages/markdown-comment/tests/selection-range
 JSDOM_MODULE=/path/to/jsdom node --test packages/markdown-comment/tests/attachment-composer-dom.mjs
 PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_EXECUTABLE=/path/to/chromium node packages/markdown-comment/tests/webview-browser.mjs
 PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_EXECUTABLE=/path/to/chromium node packages/markdown-comment/tests/selection-range-browser.mjs
+PLAYWRIGHT_MODULE=/path/to/playwright CHROMIUM_EXECUTABLE=/path/to/chromium node packages/markdown-comment/tests/preview-ux-browser.mjs
 ```
 
 在仓库根目录执行上述命令。`JSDOM_MODULE` 和 `PLAYWRIGHT_MODULE` 指向测试环境安装的模块；浏览器检查覆盖工具栏布局与实际换行。

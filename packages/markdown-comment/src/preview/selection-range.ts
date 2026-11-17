@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 
-export const GENERATED_TOOLBARS = '.mdc-code-toolbar, .mdc-image-tools';
+export const GENERATED_TOOLBARS = '.mdc-code-toolbar, .mdc-image-tools, .mdc-table-tools, .mdc-table-draft, .mdc-selection-tool';
 
 const SOURCE_BLOCK = '[data-line][data-end-line]';
 const GENERATED_TEXT = `${GENERATED_TOOLBARS}, .katex-mathml, [aria-hidden="true"], template`;
