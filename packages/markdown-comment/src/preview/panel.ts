@@ -672,7 +672,7 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
   border: 0; background: transparent; color: var(--vscode-foreground); cursor: pointer;
 }
 .mdc-peek:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,0.18)); }
-.mdc-peek:focus-visible, #mdc-sidebar-resize:focus-visible, .mdc-table-action:focus-visible {
+.mdc-peek:focus-visible, .mdc-table-action:focus-visible {
   outline: 1px solid var(--vscode-focusBorder, currentColor);
   outline-offset: -1px;
 }
@@ -684,8 +684,17 @@ mark.mdc-hl.active { background: rgba(255, 167, 38, 0.5); box-shadow: 0 0 0 1px 
   cursor: col-resize; touch-action: none;
 }
 #app.sidebar-collapsed #mdc-sidebar-resize { display: none; }
-#mdc-sidebar-resize:is(:hover, :focus-visible),
-#app.sidebar-resizing #mdc-sidebar-resize { background: var(--vscode-sash-hoverBorder, rgba(128,128,128,0.25)); }
+#mdc-sidebar-resize:focus { outline: none; }
+/* Highlight the existing divider without painting the full drag hit area. */
+#mdc-sidebar-resize::after {
+  content: ""; position: absolute; inset-block: 0; inset-inline-start: 50%;
+  width: 1px; pointer-events: none;
+}
+#mdc-sidebar-resize:hover::after,
+#app.sidebar-resizing #mdc-sidebar-resize::after {
+  background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder, currentColor));
+}
+#mdc-sidebar-resize:focus-visible::after { background: var(--vscode-focusBorder, currentColor); }
 #app.sidebar-resizing { user-select: none; cursor: col-resize; }
 #app.sidebar-resizing #sidebar { transition: none; }
 .mdc-empty { opacity: 0.6; padding: 16px 6px; font-size: 0.9em; }

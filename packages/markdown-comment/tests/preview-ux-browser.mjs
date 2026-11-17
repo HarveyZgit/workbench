@@ -118,9 +118,22 @@ try {
   assert.equal(await isFocused(sidebarToggle), true);
 
   const split = await separator.boundingBox();
-  await page.mouse.move(split.x + split.width / 2, split.y + 130);
+  assert.equal(split.width, 8);
+  const dragX = split.x + 1; // Off the painted line, still in the drag hit area.
+  await page.mouse.move(dragX, split.y + 130);
+  const sashColors = () => separator.evaluate((el) => {
+    const line = getComputedStyle(el, '::after');
+    const hitArea = getComputedStyle(el);
+    return { hitArea: hitArea.backgroundColor, outline: hitArea.outlineStyle, line: line.backgroundColor, width: line.width };
+  });
+  const hovered = await sashColors();
+  assert.equal(hovered.width, '1px');
+  assert.equal(hovered.hitArea, 'rgba(0, 0, 0, 0)');
+  assert.notEqual(hovered.line, hovered.hitArea);
+  assert.equal(hovered.outline, 'none');
   await page.mouse.down();
-  await page.mouse.move(split.x + split.width / 2 - 246, split.y + 130, { steps: 4 });
+  await page.mouse.move(dragX - 246, split.y + 130, { steps: 4 });
+  assert.deepEqual(await sashColors(), hovered);
   await page.mouse.up();
   await expectWidth(566);
   assert.equal((await page.evaluate(() => window.state)).sidebarWidth, 566);
