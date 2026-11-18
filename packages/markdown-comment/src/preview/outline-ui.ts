@@ -22,6 +22,7 @@ export interface OutlineUiOptions {
   peekBtn?: HTMLElement | null;
   getCollapsed: () => boolean;
   setCollapsedPersist: (collapsed: boolean) => void;
+  onLayoutChange?: () => void;
   getCollapsedIds: () => Set<string>;
   setCollapsedIds: (ids: Set<string>) => void;
   getSourceText: () => string;
@@ -47,6 +48,11 @@ export function createOutlineUi(options: OutlineUiOptions): {
 
   function setCollapsed(collapsed: boolean, persist = true): void {
     app?.classList.toggle('outline-collapsed', collapsed);
+    const outline = outlineTree?.parentElement;
+    if (outline) {
+      outline.inert = collapsed;
+    }
+    options.onLayoutChange?.();
     if (toggleBtn) {
       // Header toggle only visible while expanded; always shows collapse chevron.
       toggleBtn.setAttribute('data-tip', '收起目录');
@@ -160,10 +166,12 @@ export function createOutlineUi(options: OutlineUiOptions): {
 
   toggleBtn?.addEventListener('click', () => {
     setCollapsed(true);
+    peekBtn?.focus({ preventScroll: true });
   });
 
   peekBtn?.addEventListener('click', () => {
     setCollapsed(false);
+    toggleBtn?.focus({ preventScroll: true });
   });
 
   outlineTree?.addEventListener('click', (event) => {

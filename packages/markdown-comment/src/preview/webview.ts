@@ -8,6 +8,9 @@ import { installSelectionCopy } from './selection-copy';
 import { GENERATED_TOOLBARS, selectedSourceBlocks, sourceRangeTargets } from './selection-range';
 import { createAttachmentComposer, type AttachmentComposer } from './attachment-composer';
 import { createOutlineUi } from './outline-ui';
+import { installSidebarResize } from './sidebar-resize';
+import { createTableViewer } from './table-viewer';
+import { captureDraftHighlight, paintDraftHighlight, type DraftHighlight } from './draft-highlight';
 import { createMermaidRuntime, type MermaidCommentIntent, type MermaidViewStates } from './mermaid';
 import type {
   HostToWebview,
@@ -155,6 +158,7 @@ const ICON_SIDEBAR_COLLAPSE =
 
 interface WebviewState {
   sidebarCollapsed?: boolean;
+  sidebarWidth?: number;
   outlineCollapsed?: boolean;
   /** Heading ids whose children are collapsed in the outline tree. */
   outlineCollapsedIds?: string[];
@@ -167,6 +171,9 @@ function readWebviewState(): WebviewState {
 
 function setSidebarCollapsed(collapsed: boolean, persist = true): void {
   app?.classList.toggle('sidebar-collapsed', collapsed);
+  if (sidebar?.parentElement) {
+    sidebar.parentElement.inert = collapsed;
+  }
   if (toggleSidebarBtn) {
     // Header toggle only visible while expanded; always shows collapse chevron.
     toggleSidebarBtn.setAttribute('data-tip', '收起评论');
@@ -193,14 +200,36 @@ function expandSidebar(): void {
 setSidebarCollapsed(readWebviewState().sidebarCollapsed === true, false);
 toggleSidebarBtn?.addEventListener('click', () => {
   setSidebarCollapsed(true);
+  peekSidebarBtn?.focus({ preventScroll: true });
 });
 peekSidebarBtn?.addEventListener('click', () => {
   setSidebarCollapsed(false);
+  toggleSidebarBtn?.focus({ preventScroll: true });
 });
 
 function persistWebviewState(patch: Partial<WebviewState>): void {
   vscode.setState({ ...readWebviewState(), ...patch });
 }
+
+const updateSidebarWidth = installSidebarResize(
+  app,
+  document.getElementById('mdc-sidebar-resize'),
+  readWebviewState().sidebarWidth,
+  (sidebarWidth) => persistWebviewState({ sidebarWidth }),
+);
+
+const tableViewer = createTableViewer({
+  sourceRoot: content,
+  commentRoot: sidebar,
+  draft: draftEl,
+  onChange: (dialog, source) => {
+    (dialog && source ? dialog : document.body).append(commentBtn);
+    hideButton();
+    if (!dialog) {
+      queueMicrotask(onSelect);
+    }
+  },
+});
 
 const outlineUi = createOutlineUi({
   app,
@@ -210,6 +239,7 @@ const outlineUi = createOutlineUi({
   peekBtn: peekOutlineBtn,
   getCollapsed: () => readWebviewState().outlineCollapsed === true,
   setCollapsedPersist: (collapsed) => persistWebviewState({ outlineCollapsed: collapsed }),
+  onLayoutChange: updateSidebarWidth,
   getCollapsedIds: () => {
     const ids = readWebviewState().outlineCollapsedIds;
     return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []);
@@ -522,6 +552,7 @@ function renderSidebar(threads: WireThread[]): void {
     }
   }
   addCodeCopyButtons(sidebar);
+  tableViewer.wrap(sidebar, false);
   sidebar.querySelectorAll<HTMLImageElement>('.mdc-body img:not([data-src])').forEach((image) => {
     if (!image.closest('.mdc-comment-image')) {
       image.dataset.src = image.getAttribute('src') ?? '';
@@ -535,6 +566,12 @@ function renderSidebar(threads: WireThread[]): void {
 let draftSelection: RenderedSelection | null = null;
 let draftIsDoc = false;
 let draftAnchorStale = false;
+let draftHighlight: DraftHighlight | undefined;
+
+function setDraftHighlight(snapshot?: DraftHighlight): void {
+  draftHighlight = snapshot;
+  paintDraftHighlight(content, draftHighlight);
+}
 
 function renderDraft(labelHtml: string): void {
   if (!draftEl) {
@@ -544,7 +581,7 @@ function renderDraft(labelHtml: string): void {
   expandSidebar();
   draftEl.innerHTML = `<div class="mdc-draft">
   <div class="mdc-card-quote">${labelHtml}</div>
-  <textarea class="mdc-draft-input" placeholder="写下评论或粘贴图片…（Markdown，${submitKey}+Enter 提交，Esc 取消）"></textarea>
+  <textarea class="mdc-draft-input" placeholder="写下评论或粘贴图片…（Markdown，${submitKey}+Enter 提交）"></textarea>
   <div class="mdc-card-actions">
     <button data-act="cancel">取消</button>
     <button data-act="submit">评论</button>
@@ -563,12 +600,13 @@ function renderDraft(labelHtml: string): void {
   draftEl.scrollIntoView({ block: 'nearest' });
 }
 
-function openSelDraft(sel: RenderedSelection): void {
+function openSelDraft(sel: RenderedSelection, snapshot?: DraftHighlight): void {
   if (draftSubmissionPending()) {
     return;
   }
   draftIsDoc = false;
   draftSelection = sel;
+  setDraftHighlight(snapshot);
   pendingMermaidComment = undefined;
   renderDraft(sel.spansMultipleBlocks ? '跨段落' : esc(clip(sel.quote, CONTEXT_LEN)));
 }
@@ -579,6 +617,7 @@ function openDocDraft(): void {
   }
   draftIsDoc = true;
   draftSelection = null;
+  setDraftHighlight();
   pendingMermaidComment = undefined;
   renderDraft('📄 全文评论');
 }
@@ -589,6 +628,7 @@ function renderBlockDraft(label: string): void {
   }
   draftIsDoc = false;
   draftSelection = null;
+  setDraftHighlight();
   renderDraft(esc(label));
 }
 
@@ -603,10 +643,15 @@ function closeDraft(): void {
     return;
   }
   draftSelection = null;
+  setDraftHighlight();
   draftIsDoc = false;
   pendingMermaidComment = undefined;
   if (draftEl) {
+    const hadFocus = draftEl.contains(document.activeElement);
     draftEl.innerHTML = '';
+    if (hadFocus) {
+      tableViewer.refocusAfterDraft();
+    }
   }
 }
 
@@ -743,6 +788,7 @@ draftEl?.addEventListener('click', (e) => {
     }
     draftIsDoc = true;
     draftSelection = null;
+    setDraftHighlight();
     pendingMermaidComment = undefined;
     draftAnchorStale = false;
     const draft = draftEl.querySelector<HTMLElement>('.mdc-draft');
@@ -839,6 +885,34 @@ function applySelected(): void {
   sidebar?.querySelector(`.mdc-card[data-thread-id="${sel}"]`)?.classList.add('active');
 }
 
+document.addEventListener('keydown', (event) => {
+  if (
+    !selectedId ||
+    tableViewer.isOpen() ||
+    event.defaultPrevented ||
+    event.isComposing ||
+    event.ctrlKey || event.metaKey || event.altKey || event.shiftKey ||
+    (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') ||
+    (event.target instanceof Element &&
+      event.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="separator"]'))
+  ) {
+    return;
+  }
+  const cards = [...(sidebar?.querySelectorAll<HTMLElement>('.mdc-card[data-thread-id]') ?? [])];
+  const current = cards.findIndex((card) => card.dataset.threadId === selectedId);
+  if (current < 0) {
+    return;
+  }
+  const next = cards[current + (event.key === 'ArrowDown' ? 1 : -1)];
+  if (next?.dataset.threadId) {
+    event.preventDefault();
+    selectThread(next.dataset.threadId, 'content');
+    if (!app?.classList.contains('sidebar-collapsed')) {
+      next.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+});
+
 document.getElementById('mdc-tabs')?.addEventListener('click', (e) => {
   const tab = (e.target as HTMLElement).closest<HTMLElement>('.mdc-tab')?.getAttribute('data-tab') as
     Tab | undefined;
@@ -850,6 +924,8 @@ document.getElementById('mdc-tabs')?.addEventListener('click', (e) => {
 
 // ─── 渲染入口 ───────────────────────────────────────────────────────
 function refreshThreads(threads: WireThread[]): void {
+  const savedSelection = tableViewer.sourceSelection();
+  const viewer = sidebar?.querySelector('.mdc-table-view[open]') ? tableViewer.suspend() : undefined;
   const threadIds = new Set(threads.map((thread) => thread.id));
   const commentIds = new Set(threads.flatMap((thread) => thread.comments.map((comment) => comment.id)));
   for (const id of replyDrafts.keys()) {
@@ -867,8 +943,14 @@ function refreshThreads(threads: WireThread[]): void {
   const shown = filterByTab(threads);
   clearHighlights();
   applyHighlights(shown);
+  paintDraftHighlight(content, draftHighlight);
   renderSidebar(shown);
   applySelected();
+  tableViewer.restore(viewer);
+  tableViewer.restoreSourceSelection(savedSelection);
+  if (savedSelection) {
+    onSelect();
+  }
 }
 
 function requestLocalResources(): void {
@@ -1074,6 +1156,7 @@ function render(
   options: PreviewRenderOptions,
   lineChanges?: PreviewLineChanges,
 ): void {
+  const tableSnapshot = tableViewer.suspend();
   const navigationState = navigation?.captureState();
   const mermaidStates: MermaidViewStates = mermaidRuntime.captureViewState(content ?? document);
   const generation = ++renderGeneration;
@@ -1081,6 +1164,7 @@ function render(
     const draft = draftEl?.querySelector<HTMLElement>('.mdc-draft');
     if (draft && !draftAnchorStale) {
       draftAnchorStale = true;
+      setDraftHighlight();
       composer(draft).error('原文已变化。草稿已保留，可改为全文评论，或取消后重新选择原文。');
       const button = document.createElement('button');
       button.disabled = draftSubmissionPending();
@@ -1108,9 +1192,14 @@ function render(
   addImageTools();
   requestLocalResources();
   applyLineChanges(lineChanges);
+  tableViewer.wrap(content, true);
   outlineUi.refresh();
   refreshThreads(threads);
   hideButton();
+  tableViewer.restore(tableSnapshot);
+  if (tableViewer.sourceSelection()) {
+    onSelect();
+  }
   void mermaidRuntime
     .render(content ?? document, {
       viewStates: mermaidStates,
@@ -1130,6 +1219,7 @@ installSelectionCopy((text) => post({ type: 'copySelection', text }));
 // ─── 浮动「评论」按钮 ───────────────────────────────────────────────
 const commentBtn = document.createElement('button');
 commentBtn.textContent = '💬 评论';
+commentBtn.className = 'mdc-selection-tool';
 commentBtn.style.cssText = [
   'position:fixed',
   'z-index:1000',
@@ -1227,11 +1317,18 @@ function onSelect(): void {
 commentBtn.addEventListener('mousedown', (e) => e.preventDefault());
 commentBtn.addEventListener('click', () => {
   const sel = pending; // hideButton 会清空 pending，先存下来
-  window.getSelection()?.removeAllRanges();
+  const selection = window.getSelection();
+  const snapshot = sel && content && selection?.rangeCount
+    ? captureDraftHighlight(content, selection.getRangeAt(0))
+    : undefined;
+  selection?.removeAllRanges();
   hideButton();
   // 清选区会把焦点夺回正文，所以渲染草稿 + focus 放到最后一步。
   if (sel) {
-    openSelDraft(sel);
+    if (!draftSubmissionPending()) {
+      tableViewer.adoptDraft();
+    }
+    openSelDraft(sel, snapshot);
   }
 });
 
@@ -1240,7 +1337,7 @@ document.addEventListener('scroll', hideButton, true);
 
 // ─── 事件：正文点高亮 → 边栏；边栏点卡片/按钮 ───────────────────────
 content?.addEventListener('click', (e) => {
-  if ((e.target as HTMLElement).closest(GENERATED_TOOLBARS) || !window.getSelection()?.isCollapsed) {
+  if (tableViewer.isOpen() || (e.target as HTMLElement).closest(GENERATED_TOOLBARS) || !window.getSelection()?.isCollapsed) {
     return;
   }
   const el = (e.target as HTMLElement).closest<HTMLElement>('[data-thread-id], [data-thread-ids]');

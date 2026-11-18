@@ -350,10 +350,6 @@ body.vscode-high-contrast {
   max-width: 100%;
   height: auto;
 }
-.mdc-body table {
-  display: block;
-  overflow: auto;
-}
 .mdc-comment-image {
   margin: 8px 0;
 }
