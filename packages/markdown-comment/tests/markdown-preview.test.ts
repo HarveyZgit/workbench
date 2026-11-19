@@ -61,10 +61,70 @@ test('renderer covers front matter mermaid code math and images', () => {
   assert.match(code, /mdc-front-matter-code/);
   const invalid = renderer.render('---\n:\n---\n# H\n');
   assert.match(invalid, /mdc-front-matter/);
-  const details = renderer.render('<details open>\n<summary>More</summary>\n\ninside\n\n</details>\n');
-  assert.match(details, /<details|More|inside/);
-  const closedDetails = renderer.render('<details>\n<summary>More</summary>\n\ninside\n\n</details>\n');
-  assert.match(closedDetails, /details/);
+});
+
+test('details render as native disclosures with Markdown and precise source lines', () => {
+  const renderer = createMarkdownRenderer();
+  const html = renderer.render(
+    [
+      '# Intro',
+      'Paragraph before the disclosure',
+      '<details open="open">',
+      '',
+      '<summary>',
+      '**More**',
+      '</summary>',
+      'Body starts here.',
+      'It spans two lines.',
+      '',
+      '- List item',
+      '',
+      '<details><summary>Nested</summary>',
+      'Inner text',
+      '</details>',
+      '</details>',
+      'Paragraph after the disclosure',
+    ].join('\n'),
+  );
+  assert.match(html, /<details open=""[^>]*data-line="2"[^>]*data-end-line="16">/);
+  assert.match(
+    html,
+    /<summary[^>]*data-line="4"[^>]*data-end-line="7">\s*<strong>More<\/strong>\s*<\/summary>/,
+  );
+  assert.match(html, /<p[^>]*data-line="7"[^>]*data-end-line="9">Body starts here\./);
+  assert.match(html, /<details class="mdc-source-block" data-line="12" data-end-line="15">/);
+  assert.match(html, /<summary[^>]*data-line="12"[^>]*data-end-line="13">\s*Nested\s*<\/summary>/);
+  assert.match(html, /<p[^>]*data-line="13"[^>]*data-end-line="14">Inner text<\/p>/);
+  assert.match(html, /<\/details>\s*<p[^>]*data-line="16"[^>]*>Paragraph after the disclosure<\/p>/);
+  const compact = renderer.render('<details><summary>Label</summary>**Body**</details>');
+  assert.match(
+    compact,
+    /<details[^>]*>\s*<summary[^>]*>Label<\/summary>\s*<p[^>]*><strong>Body<\/strong><\/p>\s*<\/details>/,
+  );
+});
+
+test('details do not pass through arbitrary HTML, and ignore fence contents', () => {
+  const renderer = createMarkdownRenderer({}, 'comment');
+  const html = renderer.render(
+    [
+      '<details>',
+      '<summary>More</summary>',
+      '',
+      '```html',
+      '</details>',
+      '```',
+      '',
+      '    </details>',
+      '',
+      '<div hidden>Not raw HTML</div>',
+      '</details>',
+    ].join('\n'),
+  );
+  assert.match(html, /<details>\s*<summary>More<\/summary>/);
+  assert.equal((html.match(/<pre[\s>]/g) ?? []).length, 2);
+  assert.doesNotMatch(html, /<div hidden>/);
+  assert.match(html, /<\/details>\s*$/);
+  assert.doesNotMatch(renderer.render('<details data-test="no">\nLabel\n</details>'), /<details[\s>]/);
 });
 
 test('renderer covers task lists footnotes alerts deflist emoji and image policy', () => {

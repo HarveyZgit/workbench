@@ -1,6 +1,24 @@
 /** Shared source/DOM fixtures for synthetic DOM and Chromium selection coverage. */
 export const selectionRangeFixtures = [
   [
+    'disclosure summary',
+    'Intro\n\n<details open>\n\n<summary>Disclosure label</summary>\nBody line\n</details>',
+    '#content summary',
+    '#content summary',
+    4,
+    5,
+    'Disclosure label',
+  ],
+  [
+    'disclosure body',
+    'Intro\n\n<details open><summary>Disclosure label</summary>\nBody line\n</details>',
+    '#content details > p',
+    '#content details > p',
+    3,
+    4,
+    'Body line',
+  ],
+  [
     'loose list',
     '- one\n\n- two\n\n- three',
     '#content li:nth-child(2)',

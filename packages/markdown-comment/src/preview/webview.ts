@@ -864,6 +864,18 @@ function selectThread(id: string, scrollTo: 'content' | 'sidebar'): void {
           (element.dataset.threadIds ?? '').split(',').includes(id),
         ))
       : sidebar?.querySelector<HTMLElement>(`.mdc-card[data-thread-id="${sel}"]`);
+  if (scrollTo === 'content' && target) {
+    for (
+      let details = target.parentElement?.closest<HTMLDetailsElement>('details:not([open])');
+      details;
+      details = details.parentElement?.closest<HTMLDetailsElement>('details:not([open])')
+    ) {
+      // A disclosure's own summary is visible without opening its body.
+      if (!details.querySelector(':scope > summary')?.contains(target)) {
+        details.open = true;
+      }
+    }
+  }
   target?.scrollIntoView({ behavior: 'smooth', block: scrollTo === 'content' ? 'center' : 'nearest' });
 }
 

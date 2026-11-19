@@ -366,9 +366,80 @@ try {
   assert.ok(closeRect.x + closeRect.width < 1320 && closeRect.y < 15);
   await page.keyboard.press('Escape');
   assert.equal(await opened.count(), 0);
+  const disclosureText = [
+    '# Disclosure fixture',
+    '',
+    '<details><summary>Click **label**</summary>',
+    '',
+    'Inside the disclosure',
+    '</details>',
+    '',
+    '<details open>',
+    '<summary>Already open</summary>',
+    'Initially visible',
+    '</details>',
+  ].join('\n');
+  await host({ type: 'render', text: disclosureText, threads: [], options: { ...options, html: 'strict' } });
+  const disclosure = page.locator('#content details').first();
+  const label = disclosure.locator('summary');
+  const inside = disclosure.locator('p');
+  assert.equal(await inside.isVisible(), false);
+  assert.equal(await page.locator('#content details[open] p').isVisible(), true);
+  assert.equal(await label.locator('strong').textContent(), 'label');
+  await label.click();
+  assert.equal(await inside.isVisible(), true);
+  await inside.evaluate((paragraph) => {
+    const range = document.createRange();
+    range.setStart(paragraph.firstChild, 0);
+    range.setEnd(paragraph.firstChild, 'Inside'.length);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+  await page.getByRole('button', { name: '💬 评论', exact: true }).click();
+  const disclosureDraft = page.locator('#sidebar-draft textarea');
+  await disclosureDraft.fill('Disclosure comment');
+  await disclosureDraft.press('Control+Enter');
+  const disclosureComment = await page.evaluate(() =>
+    window.sent.findLast((message) => message.type === 'createThread'),
+  );
+  assert.equal(disclosureComment.selection.quote, 'Inside');
+  assert.equal(disclosureComment.selection.blockStartLine, 4);
+  assert.equal(disclosureComment.selection.blockEndLine, 5);
+  await host({ type: 'commentResult', requestId: disclosureComment.requestId, ok: true });
+  await label.click();
+  assert.equal(await inside.isVisible(), false);
+  const nestedDetailsText = [
+    'Start here',
+    '',
+    '<details><summary>Outer</summary>',
+    '<details><summary>Inner</summary>',
+    'Nested hidden comment',
+    '</details>',
+    '</details>',
+  ].join('\n');
+  const initialThread = makeThread('initial', 0, 'Start here');
+  const nestedThread = makeThread('nested', 4, 'Nested hidden comment');
+  await host({ type: 'render', text: nestedDetailsText, threads: [initialThread, nestedThread], options });
+  const initialCard = page.locator('.mdc-card[data-thread-id="initial"]');
+  const nestedCard = page.locator('.mdc-card[data-thread-id="nested"]');
+  const nestedMark = page.locator('#content mark[data-thread-id="nested"]');
+  assert.equal(await nestedMark.isVisible(), false);
+  await nestedCard.click();
+  assert.equal(await nestedMark.isVisible(), true);
+  assert.equal(await page.locator('#content details[open]').count(), 2);
+  await page.locator('#content details > summary').first().click();
+  assert.equal(await nestedMark.isVisible(), false);
+  await initialCard.click();
+  const cardOrder = await page.locator('.mdc-card[data-thread-id]').evaluateAll(
+    (cards) => cards.map((card) => card.dataset.threadId),
+  );
+  await page.keyboard.press(cardOrder.indexOf('nested') > cardOrder.indexOf('initial') ? 'ArrowDown' : 'ArrowUp');
+  assert.equal(await nestedMark.isVisible(), true);
+  assert.equal(await page.locator('#content details[open]').count(), 2);
   assert.deepEqual(errors, []);
   console.log(
-    'PASS: left/right dock, exact draft highlighting, sidebar resizing and clamping, visible-thread keys, fullscreen source and comment tables, selection/draft refresh and fullscreen submission.',
+    'PASS: left/right dock, exact draft highlighting, sidebar resizing and clamping, visible-thread keys, fullscreen source and comment tables, selection/draft refresh fullscreen submission, and native disclosure toggling and selection.',
   );
 } finally {
   await browser.close();
