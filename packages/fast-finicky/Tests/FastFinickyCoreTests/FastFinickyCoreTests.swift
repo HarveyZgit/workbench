@@ -461,6 +461,7 @@ final class FastFinickyCoreTests: XCTestCase {
     }
 
     func testChromeWarmerMapsAndKeepsFrameworkResident() throws {
+        #if os(macOS)
         let appURL = try makeFakeChromeApp()
         let frameworkURL = appURL
             .appendingPathComponent("Contents", isDirectory: true)
@@ -499,6 +500,9 @@ final class FastFinickyCoreTests: XCTestCase {
         let secondIdentity = try XCTUnwrap(warmer.mappedIdentityForTesting())
         XCTAssertNotEqual(secondIdentity.inode, firstIdentity.inode)
         XCTAssertEqual(secondIdentity.size, replacement.count)
+        #else
+        throw XCTSkip("Requires macOS native memory or app-update integration")
+        #endif
     }
 
     func testAppConfigDecodesMissingProfilesAsEmpty() throws {
@@ -985,6 +989,7 @@ final class FastFinickyCoreTests: XCTestCase {
     }
 
     func testReplacementScriptSwapsBundlesWithoutNesting() throws {
+        #if os(macOS)
         let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
         let current = temp.appendingPathComponent("Fast Finicky.app")
@@ -1012,9 +1017,13 @@ final class FastFinickyCoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: staging.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: current.appendingPathExtension("old").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: current.appendingPathComponent("Fast Finicky.app.new").path))
+        #else
+        throw XCTSkip("Requires macOS native memory or app-update integration")
+        #endif
     }
 
     func testReplacementScriptDoesNotMoveIntoExistingAppWhenRenameFails() throws {
+        #if os(macOS)
         let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
         let current = temp.appendingPathComponent("Fast Finicky.app")
@@ -1046,9 +1055,13 @@ final class FastFinickyCoreTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: current.appendingPathComponent("marker")), "old")
         XCTAssertTrue(FileManager.default.fileExists(atPath: staging.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: current.appendingPathComponent("Fast Finicky.app.new").path))
+        #else
+        throw XCTSkip("Requires macOS native memory or app-update integration")
+        #endif
     }
 
     func testChromeWarmerFaultsPagesOnFirstMap() throws {
+        #if os(macOS)
         let appURL = try makeFakeChromeApp(frameworkBytes: 2 * 1024 * 1024)
         let warmer = ChromeWarmer(
             chromeAppLocator: { appURL },
@@ -1063,9 +1076,13 @@ final class FastFinickyCoreTests: XCTestCase {
         XCTAssertTrue(warmer.didFaultPagesForTesting())
         let identity = try XCTUnwrap(warmer.mappedIdentityForTesting())
         XCTAssertEqual(identity.size, 2 * 1024 * 1024)
+        #else
+        throw XCTSkip("Requires macOS native memory or app-update integration")
+        #endif
     }
 
     func testChromeWarmerRemapResetsFaultFlag() throws {
+        #if os(macOS)
         let appURL = try makeFakeChromeApp(frameworkBytes: 2 * 1024 * 1024)
         let frameworkURL = appURL
             .appendingPathComponent("Contents", isDirectory: true)
@@ -1103,6 +1120,9 @@ final class FastFinickyCoreTests: XCTestCase {
         XCTAssertNotEqual(secondIdentity.inode, firstIdentity.inode)
         XCTAssertEqual(secondIdentity.size, replacementBytes)
         XCTAssertTrue(warmer.didFaultPagesForTesting())
+        #else
+        throw XCTSkip("Requires macOS native memory or app-update integration")
+        #endif
     }
 
     func testChromeOpenProbeReuseIsReadyImmediately() {
@@ -1190,7 +1210,7 @@ final class FastFinickyCoreTests: XCTestCase {
         )
 
         let polls = Counter()
-        let observation = ChromeOpenObserver.wait(
+        let observation = ChromeOpenObserver.observe(
             startedAt: startedAt,
             result: result,
             timeout: 1,
@@ -1220,7 +1240,7 @@ final class FastFinickyCoreTests: XCTestCase {
             spawnedProcessIdentifier: 99
         )
 
-        let observation = ChromeOpenObserver.wait(
+        let observation = ChromeOpenObserver.observe(
             startedAt: startedAt,
             result: result,
             timeout: 0.2,
@@ -1326,3 +1346,4 @@ private final class LauncherTestState: @unchecked Sendable {
     var reusedProfile: String?
     var reuseCalled = false
 }
+

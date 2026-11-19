@@ -59,7 +59,7 @@ public final class ConfigStore {
 
             let name = emptyToNil(rule.name)
             let email = emptyToNil(rule.email)
-            return ConfigRule(contains: contains, profile: profile, name: name, email: email)
+            return ConfigRule(contains: contains, profile: profile, browser: rule.browser, name: name, email: email)
         }
 
         let profiles = uniqueProfiles(config.profiles)
@@ -178,3 +178,4 @@ enum DefaultConfigFactory {
         )
     }
 }
+

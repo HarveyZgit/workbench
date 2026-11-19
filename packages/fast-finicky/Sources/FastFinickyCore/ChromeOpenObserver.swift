@@ -1,5 +1,7 @@
+#if os(macOS)
 import AppKit
 import Darwin
+#endif
 import Foundation
 
 public enum ChromeOpenStatus: String, Equatable, Sendable {
@@ -62,6 +64,7 @@ public enum ChromeOpenObserver {
         return nil
     }
 
+    #if os(macOS)
     public static func wait(
         startedAt: Date,
         result: LaunchResult,
@@ -79,6 +82,27 @@ public enum ChromeOpenObserver {
         isSpawnedAppFinishedLaunching: @escaping @Sendable (Int32) -> Bool = { pid in
             NSRunningApplication(processIdentifier: pid)?.isFinishedLaunching == true
         }
+    ) -> ChromeOpenObservation {
+        observe(
+            startedAt: startedAt, result: result, timeout: timeout, pollInterval: pollInterval,
+            now: now, sleep: sleep, isProcessRunning: isProcessRunning,
+            isChromeFinishedLaunching: isChromeFinishedLaunching,
+            isSpawnedAppFinishedLaunching: isSpawnedAppFinishedLaunching
+        )
+    }
+    #endif
+
+    /// Portable polling state machine. All platform observations are injected.
+    public static func observe(
+        startedAt: Date,
+        result: LaunchResult,
+        timeout: TimeInterval = defaultTimeout,
+        pollInterval: TimeInterval = defaultPollInterval,
+        now: @escaping @Sendable () -> Date,
+        sleep: @escaping @Sendable (TimeInterval) -> Void,
+        isProcessRunning: @escaping @Sendable (Int32) -> Bool,
+        isChromeFinishedLaunching: @escaping @Sendable () -> Bool,
+        isSpawnedAppFinishedLaunching: @escaping @Sendable (Int32) -> Bool
     ) -> ChromeOpenObservation {
         let elapsedMs = { Int((now().timeIntervalSince(startedAt) * 1_000).rounded()) }
 
@@ -105,3 +129,4 @@ public enum ChromeOpenObserver {
         return ChromeOpenObservation(status: .timeout, elapsedMs: elapsedMs())
     }
 }
+

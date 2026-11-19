@@ -109,12 +109,11 @@ private final class AddPageRuleViewController: NSObject, NSTextFieldDelegate, NS
     }
 
     func submittedDraft() -> (profile: ProfileOption, contains: String)? {
-        let directory = (popup.selectedItem?.representedObject as? String) ?? profiles.first?.directory
-        guard let directory,
-              let profile = profiles.first(where: { $0.directory.caseInsensitiveCompare(directory) == .orderedSame }) else {
+        let index = popup.indexOfSelectedItem
+        guard profiles.indices.contains(index) else {
             return nil
         }
-        return (profile, containsField.stringValue)
+        return (profiles[index], containsField.stringValue)
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -154,11 +153,16 @@ private final class AddPageRuleViewController: NSObject, NSTextFieldDelegate, NS
         separator.boxType = .separator
 
         for profile in profiles {
-            popup.addItem(withTitle: profile.title)
-            popup.lastItem?.representedObject = profile.directory
+            // Keep separate targets even when their display titles happen to match.
+            popup.menu?.addItem(NSMenuItem(title: profile.title, action: nil, keyEquivalent: ""))
+        }
+        if !profiles.isEmpty {
+            popup.selectItem(at: profiles.firstIndex(where: { $0.browser == .chrome }) ?? 0)
         }
         if let preferredProfile,
-           let index = profiles.firstIndex(where: { $0.directory.caseInsensitiveCompare(preferredProfile) == .orderedSame }) {
+           let index = profiles.firstIndex(where: {
+               $0.browser == .chrome && $0.directory.caseInsensitiveCompare(preferredProfile) == .orderedSame
+           }) {
             popup.selectItem(at: index)
         }
         popup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -253,3 +257,4 @@ private final class AddPageRuleViewController: NSObject, NSTextFieldDelegate, NS
         return label
     }
 }
+

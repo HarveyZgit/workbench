@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let logger: DailyLogger
     private let router = RoutingEngine()
     private let launcher: BrowserLauncher
+    private let egoLauncher = EgoBrowserLauncher()
     private let warmer: ChromeWarmer
     private let launchAtLogin = LaunchAtLogin()
 
@@ -297,6 +298,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         ConfigRule(
                             contains: [token],
                             profile: draft.profile.directory,
+                            browser: draft.profile.browser,
                             name: draft.profile.name,
                             email: draft.profile.email
                         )
@@ -487,6 +489,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         do {
             let decision = try router.decide(urlString: urlString, config: store.currentConfig)
+            if decision.browser == .ego {
+                return try openInEgo(launchURL, decision: decision, source: source, startedAt: startedAt)
+            }
             let launchResult = try launcher.launch(targetURL: launchURL, profile: decision.profile)
             warmer.warmNow()
 
@@ -495,6 +500,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 "url": urlString,
                 "match_text": decision.matchText,
                 "profile": decision.profile,
+                "browser": "chrome",
                 "result": "launched",
                 "launch_strategy": launchResult.strategy.rawValue,
                 "target_kind": launchResult.targetKind.rawValue,
@@ -529,6 +535,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private func openInEgo(
+        _ url: URL,
+        decision: RouteDecision,
+        source: String,
+        startedAt: Date
+    ) throws -> Bool {
+        let logger = self.logger
+        let fields: [String: String] = [
+            "source": source,
+            "url": decision.originalURL,
+            "profile": decision.profile,
+            "browser": "ego",
+            "launch_strategy": "egoCLI",
+            "target_kind": url.isFileURL ? "fileURL" : "webURL"
+        ]
+        try egoLauncher.launch(targetURL: url, profile: decision.profile) { outcome in
+            let exitCode = outcome.exitCode
+            var completed = fields
+            completed["status"] = exitCode == 0 ? "completed" : "failed"
+            completed["exit_code"] = String(exitCode)
+            completed["elapsed_ms"] = Self.elapsedMilliseconds(since: startedAt)
+            if exitCode != 0 {
+                completed["error"] = EgoLaunchError.commandFailed(exitCode, outcome.errorOutput).localizedDescription
+            }
+            logger.log("open", fields: completed)
+        }
+        var routed = fields
+        routed["result"] = "queued"
+        routed["match_text"] = decision.matchText
+        routed["rule_index"] = decision.matchedRuleIndex.map(String.init)
+        routed["matched_token"] = decision.matchedToken
+        routed["elapsed_ms"] = Self.elapsedMilliseconds(since: startedAt)
+        logger.log("route", fields: routed)
+        return true
+    }
+
     private static func elapsedMilliseconds(since startedAt: Date) -> String {
         String(Int(Date().timeIntervalSince(startedAt) * 1_000))
     }
@@ -547,6 +589,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 "source": source,
                 "url": urlString,
                 "profile": profile,
+                "browser": "chrome",
                 "launch_strategy": launchResult.strategy.rawValue,
                 "target_kind": launchResult.targetKind.rawValue,
                 "chrome_was_running": launchResult.chromeWasRunning ? "true" : "false",
@@ -580,3 +623,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.statusItem = statusItem
     }
 }
+

@@ -40,6 +40,9 @@ public final class DailyLogger: @unchecked Sendable {
         }
     }
 
+    /// Internal barrier for deterministic log tests.
+    func flushForTesting() { queue.sync {} }
+
     private static func escape(_ value: String) -> String {
         "\"\(value.replacingOccurrences(of: "\"", with: "\\\""))\""
     }
@@ -53,3 +56,4 @@ public final class DailyLogger: @unchecked Sendable {
         try handle.write(contentsOf: data)
     }
 }
+
