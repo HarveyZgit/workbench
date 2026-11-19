@@ -63,6 +63,15 @@ jobs:
       - run: node common/scripts/install-run-rush.js typecheck --to vscode-markdown-comment
       - run: node common/scripts/install-run-rush.js build --to vscode-markdown-comment
       - run: node common/scripts/install-run-rush.js test --to vscode-markdown-comment
+      - name: Verify Chromium preview interactions
+        if: github.event_name == 'pull_request'
+        run: |
+          npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/markdown-comment-browser" playwright@1.65.1
+          export PLAYWRIGHT_MODULE="$RUNNER_TEMP/markdown-comment-browser/node_modules/playwright"
+          CHROMIUM_EXECUTABLE="$(command -v google-chrome)"
+          export CHROMIUM_EXECUTABLE
+          node packages/markdown-comment/tests/preview-ux-browser.mjs
+          node packages/markdown-comment/tests/selection-range-browser.mjs
       - run: node ../../common/scripts/install-run-rushx.js package
         working-directory: packages/markdown-comment
       - name: Name versioned VSIX

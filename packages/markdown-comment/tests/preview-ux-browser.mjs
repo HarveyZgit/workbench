@@ -409,6 +409,34 @@ try {
   await host({ type: 'commentResult', requestId: disclosureComment.requestId, ok: true });
   await label.click();
   assert.equal(await inside.isVisible(), false);
+  const nestedDetailsText = [
+    'Start here',
+    '',
+    '<details><summary>Outer</summary>',
+    '<details><summary>Inner</summary>',
+    'Nested hidden comment',
+    '</details>',
+    '</details>',
+  ].join('\n');
+  const initialThread = makeThread('initial', 0, 'Start here');
+  const nestedThread = makeThread('nested', 4, 'Nested hidden comment');
+  await host({ type: 'render', text: nestedDetailsText, threads: [initialThread, nestedThread], options });
+  const initialCard = page.locator('.mdc-card[data-thread-id="initial"]');
+  const nestedCard = page.locator('.mdc-card[data-thread-id="nested"]');
+  const nestedMark = page.locator('#content mark[data-thread-id="nested"]');
+  assert.equal(await nestedMark.isVisible(), false);
+  await nestedCard.click();
+  assert.equal(await nestedMark.isVisible(), true);
+  assert.equal(await page.locator('#content details[open]').count(), 2);
+  await page.locator('#content details > summary').first().click();
+  assert.equal(await nestedMark.isVisible(), false);
+  await initialCard.click();
+  const cardOrder = await page.locator('.mdc-card[data-thread-id]').evaluateAll(
+    (cards) => cards.map((card) => card.dataset.threadId),
+  );
+  await page.keyboard.press(cardOrder.indexOf('nested') > cardOrder.indexOf('initial') ? 'ArrowDown' : 'ArrowUp');
+  assert.equal(await nestedMark.isVisible(), true);
+  assert.equal(await page.locator('#content details[open]').count(), 2);
   assert.deepEqual(errors, []);
   console.log(
     'PASS: left/right dock, exact draft highlighting, sidebar resizing and clamping, visible-thread keys, fullscreen source and comment tables, selection/draft refresh fullscreen submission, and native disclosure toggling and selection.',
