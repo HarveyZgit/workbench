@@ -174,6 +174,60 @@ try {
       throw error;
     }
   }
+  const nestedDisclosure = [
+    '<details><summary>Outer label</summary>',
+    '<details><summary>Inner label</summary>',
+    'Hidden selection',
+    '</details>',
+    '</details>',
+  ].join('\n');
+  const hiddenThread = {
+    id: 'closed-disclosure-thread',
+    kind: 'selection',
+    status: 'open',
+    blockStartLine: 2,
+    blockEndLine: 3,
+    quote: 'Hidden selection',
+    rendered: { quote: 'Hidden selection', before: '', after: '' },
+    comments: [{ id: 'nested-comment', author: 'user', body: 'saved', createdAt: '2026-01-01T00:00:00Z' }],
+  };
+  host({ type: 'render', text: nestedDisclosure, threads: [hiddenThread], options });
+  await tick();
+  const outerDetails = query('#content > details');
+  const innerDetails = query('#content > details > details');
+  assert.equal(outerDetails.open, false);
+  assert.equal(innerDetails.open, false);
+  host({ type: 'revealThread', threadId: hiddenThread.id });
+  assert.equal(outerDetails.open, true, 'reveal opens the outer disclosure');
+  assert.equal(innerDetails.open, true, 'reveal opens the inner disclosure');
+  assert.equal(query('mark[data-thread-id="closed-disclosure-thread"]').textContent, 'Hidden selection');
+
+  const summaryThread = {
+    ...hiddenThread,
+    id: 'visible-summary-thread',
+    blockStartLine: 0,
+    blockEndLine: 1,
+    quote: 'Outer label',
+    rendered: { quote: 'Outer label', before: '', after: '' },
+  };
+  host({ type: 'threads', threads: [summaryThread, hiddenThread] });
+  const card = (id) => query(`.mdc-card[data-thread-id="${id}"]`);
+  outerDetails.open = false;
+  innerDetails.open = false;
+  card(summaryThread.id).click();
+  assert.equal(outerDetails.open, false, 'a visible summary does not force its disclosure open');
+  card(hiddenThread.id).click();
+  assert.equal(outerDetails.open && innerDetails.open, true, 'sidebar click reveals the selection');
+  outerDetails.open = false;
+  innerDetails.open = false;
+  card(summaryThread.id).click();
+  const cards = Array.from(document.querySelectorAll('.mdc-card[data-thread-id]'));
+  const nextKey = cards.indexOf(card(hiddenThread.id)) > cards.indexOf(card(summaryThread.id))
+    ? 'ArrowDown'
+    : 'ArrowUp';
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: nextKey, bubbles: true }));
+  assert.equal(outerDetails.open && innerDetails.open, true, 'keyboard navigation reveals the selection');
+
   const list = Array.from({ length: 9 }, (_, i) => `${i + 1}. item ${i + 1}`).join('\n');
   await check(list, '#content li:nth-child(5)', '#content li:nth-child(7)', 4, 7, 'item 5 item 6 item 7');
   await check(
