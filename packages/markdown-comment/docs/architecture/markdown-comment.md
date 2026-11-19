@@ -58,6 +58,9 @@ still resolve to portable source anchors. A rendered Mermaid diagram therefore
 uses the opening fence line as its source anchor and optional display metadata;
 the stored thread never depends on generated SVG ids, layout coordinates, or a
 Mermaid runtime object.
+The shared preview renderer produces native `details` and `summary` tokens
+without enabling raw HTML. Only the boolean `open` attribute is accepted;
+summary and body keep their own source spans in document previews.
 
 ## Storage and compatibility
 

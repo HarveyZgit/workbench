@@ -256,8 +256,6 @@ function hashSource(source: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
-type MarkdownToken = ReturnType<MarkdownIt['parse']>[number];
-
 function createMarkdownIt(context: 'document' | 'comment'): MarkdownIt {
   const markdown = new MarkdownIt({
     breaks: false,
@@ -315,83 +313,162 @@ function createMarkdownIt(context: 'document' | 'comment'): MarkdownIt {
     return true;
   });
 
-  markdown.block.ruler.before('html_block', 'safe_details', (state, startLine, endLine, silent) => {
-    const opening = state.src.slice(state.bMarks[startLine], state.eMarks[startLine]).trim();
-    const openingMatch = /^<details(?:\s+(open))?\s*>$/i.exec(opening);
-    if (!openingMatch) {
-      return false;
-    }
-    let closingLine = startLine + 1;
-    let detailsDepth = 1;
-    let fence: { marker: string; length: number } | undefined;
-    while (closingLine < endLine) {
-      const line = state.src.slice(state.bMarks[closingLine], state.eMarks[closingLine]).trim();
-      if (fence) {
-        if (new RegExp(`^${fence.marker}{${fence.length},}\\s*$`).test(line)) {
-          fence = undefined;
+  // Generate only these two native elements. Do not forward source HTML attributes.
+  const disclosureOpen = /^<details(?:\s+(open)(?:\s*=\s*(?:"(?:open)?"|'(?:open)?'|open))?)?\s*>/i;
+  const disclosureClose = /^<\/details\s*>$/i;
+  const compactDisclosure = /^<summary\s*>(.*?)<\/summary\s*>(.*?)<\/details\s*>$/i;
+  const summaryStart = /^<summary\s*>/i;
+  const summaryEnd = /<\/summary\s*>\s*$/i;
+
+  markdown.block.ruler.before(
+    'html_block',
+    'safe_details',
+    (state, startLine, endLine, silent) => {
+      const readLine = (line: number) =>
+        state.src.slice(state.bMarks[line] + state.tShift[line], state.eMarks[line]).trim();
+      const openingLine = readLine(startLine);
+      const opening = disclosureOpen.exec(openingLine);
+      if (!opening) {
+        return false;
+      }
+      const rest = openingLine.slice(opening[0].length).trim();
+      if (rest && !summaryStart.test(rest)) {
+        return false;
+      }
+
+      const addSummary = (source: string, start: number, end: number) => {
+        const label = state.push('summary_open', 'summary', 1);
+        label.map = [start, end];
+        const inline = state.push('inline', '', 0);
+        inline.content = source;
+        inline.children = [];
+        state.push('summary_close', 'summary', -1);
+      };
+      const addOpening = (end: number) => {
+        const open = state.push('details_open', 'details', 1);
+        open.map = [startLine, end];
+        if (opening[1]) {
+          open.attrSet('open', '');
+        }
+      };
+      const compact = compactDisclosure.exec(rest);
+      if (compact) {
+        if (silent) {
+          return true;
+        }
+        const end = startLine + 1;
+        addOpening(end);
+        addSummary(compact[1], startLine, end);
+        if (compact[2].trim()) {
+          const paragraph = state.push('paragraph_open', 'p', 1);
+          paragraph.map = [startLine, end];
+          const body = state.push('inline', '', 0);
+          body.content = compact[2].trim();
+          body.children = [];
+          state.push('paragraph_close', 'p', -1);
+        }
+        state.push('details_close', 'details', -1);
+        state.line = end;
+        return true;
+      }
+
+      let closingLine = startLine + 1;
+      let depth = 1;
+      let fence: { marker: string; length: number } | undefined;
+      while (closingLine < endLine) {
+        if (state.sCount[closingLine] < state.blkIndent && !state.isEmpty(closingLine)) {
+          return false;
+        }
+        if (state.sCount[closingLine] - state.blkIndent >= 4) {
+          closingLine += 1;
+          continue;
+        }
+        const line = readLine(closingLine);
+        if (fence) {
+          if (new RegExp(`^${fence.marker}{${fence.length},}\\s*$`).test(line)) {
+            fence = undefined;
+          }
+        } else {
+          const fenceOpening = /^(`{3,}|~{3,})/.exec(line);
+          const nested = disclosureOpen.exec(line);
+          if (fenceOpening) {
+            fence = { marker: fenceOpening[1][0], length: fenceOpening[1].length };
+          } else if (nested) {
+            const tail = line.slice(nested[0].length).trim();
+            if (!tail || (summaryStart.test(tail) && !compactDisclosure.test(tail))) {
+              depth += 1;
+            }
+          } else if (disclosureClose.test(line) && --depth === 0) {
+            break;
+          }
         }
         closingLine += 1;
-        continue;
       }
-      const fenceOpening = /^(`{3,}|~{3,})/.exec(line);
-      if (fenceOpening) {
-        fence = { marker: fenceOpening[1][0], length: fenceOpening[1].length };
-        closingLine += 1;
-        continue;
+      if (closingLine >= endLine) {
+        return false;
       }
-      if (/^<details(?:\s+open)?\s*>$/i.test(line)) {
-        detailsDepth += 1;
-      } else if (/^<\/details\s*>$/i.test(line)) {
-        detailsDepth -= 1;
-        if (detailsDepth === 0) {
-          break;
+
+      let bodyStart = startLine + 1;
+      while (bodyStart < closingLine && state.isEmpty(bodyStart)) {
+        bodyStart += 1;
+      }
+      const summaryLine = rest ? startLine : bodyStart;
+      const firstSummaryLine = rest || readLine(summaryLine);
+      const summaryOpening = summaryStart.exec(firstSummaryLine);
+      let summary: { text: string; end: number } | undefined;
+      if (summaryOpening) {
+        const lines = [firstSummaryLine.slice(summaryOpening[0].length)];
+        for (let line = summaryLine; line < closingLine; line++) {
+          if (line !== summaryLine) {
+            const next = readLine(line);
+            if (disclosureOpen.test(next) || summaryStart.test(next) || disclosureClose.test(next)) {
+              break;
+            }
+            lines.push(next);
+          }
+          const last = lines.length - 1;
+          const summaryClosing = summaryEnd.exec(lines[last]);
+          if (summaryClosing) {
+            lines[last] = lines[last].slice(0, summaryClosing.index);
+            summary = { text: lines.join('\n').trim(), end: line + 1 };
+            bodyStart = line + 1;
+            break;
+          }
         }
       }
-      closingLine += 1;
-    }
-    if (closingLine >= endLine) {
-      return false;
-    }
-    if (silent) {
+      if (rest && !summary) {
+        return false;
+      }
+      if (silent) {
+        return true;
+      }
+
+      addOpening(closingLine + 1);
+      if (summary) {
+        addSummary(summary.text, summaryLine, summary.end);
+      }
+
+      if (bodyStart < closingLine) {
+        // Keep the original block state and line offsets (including block quotes/lists).
+        const lineMax = state.lineMax;
+        const parentType = state.parentType;
+        const tight = state.tight;
+        state.lineMax = closingLine;
+        try {
+          state.md.block.tokenize(state, bodyStart, closingLine);
+        } finally {
+          state.lineMax = lineMax;
+          state.parentType = parentType;
+          state.tight = tight;
+        }
+      }
+
+      state.push('details_close', 'details', -1);
+      state.line = closingLine + 1;
       return true;
-    }
-
-    const open = state.push('details_open', 'details', 1);
-    open.block = true;
-    open.map = [startLine, closingLine + 1];
-    if (openingMatch[1]) {
-      open.attrSet('open', '');
-    }
-
-    let bodyStartLine = startLine + 1;
-    const summaryLine = state.src.slice(state.bMarks[bodyStartLine], state.eMarks[bodyStartLine]).trim();
-    const summaryMatch = /^<summary>([\s\S]*?)<\/summary\s*>$/i.exec(summaryLine);
-    if (summaryMatch) {
-      state.push('summary_open', 'summary', 1);
-      const summary = state.push('inline', '', 0);
-      summary.content = summaryMatch[1];
-      summary.children = [];
-      summary.map = [bodyStartLine, bodyStartLine + 1];
-      state.push('summary_close', 'summary', -1);
-      bodyStartLine += 1;
-    }
-
-    if (bodyStartLine < closingLine) {
-      const bodySource = state.getLines(bodyStartLine, closingLine, state.blkIndent, false);
-      const bodyTokens: MarkdownToken[] = [];
-      state.md.block.parse(bodySource, state.md, state.env, bodyTokens);
-      for (const token of bodyTokens) {
-        if (token.map) {
-          token.map = [token.map[0] + bodyStartLine, token.map[1] + bodyStartLine];
-        }
-        state.tokens.push(token);
-      }
-    }
-
-    state.push('details_close', 'details', -1);
-    state.line = closingLine + 1;
-    return true;
-  });
+    },
+    { alt: ['paragraph', 'reference', 'blockquote', 'list'] },
+  );
 
   markdown.core.ruler.push('source_map', (state) => {
     if (context === 'comment') {
